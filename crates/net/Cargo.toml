@@ -1,0 +1,17 @@
+[package]
+name = "mt-net"
+description = "SSH（外部 ssh を PTY 起動、後で russh）、Telnet、ローカル PTY"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "mt_net"
+
+[dependencies]
+mt-core.workspace = true
+# 予定: portable-pty, russh
+
+[lints]
+workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "mt-serial"
+description = "シリアルポート制御、任意ボーレート、デバイス列挙とホットプラグ、自動再接続"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "mt_serial"
+
+[dependencies]
+mt-core.workspace = true
+# 予定: serialport、OS 別に IOKit / udev / SetupAPI（cfg 分岐）
+
+[lints]
+workspace = true

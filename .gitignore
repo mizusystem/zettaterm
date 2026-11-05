@@ -1,0 +1,14 @@
+/target
+.DS_Store
+
+# macOS app
+apps/macos/build/
+apps/macos/**/xcuserdata/
+apps/macos/**/*.xcframework
+apps/macos/Generated/
+
+# Linux app
+apps/linux/target/
+
+# local Claude settings
+.claude/settings.local.json

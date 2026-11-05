@@ -1,0 +1,20 @@
+[package]
+name = "mt-ffi"
+description = "UniFFI による公開 API と Swift バインディング生成"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "mt_ffi"
+# XCFramework を作る段階で crate-type = ["lib", "staticlib"] に変える
+
+[dependencies]
+mt-core.workspace = true
+mt-serial.workspace = true
+mt-net.workspace = true
+# 予定: uniffi
+
+[lints]
+workspace = true

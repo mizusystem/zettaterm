@@ -1,0 +1,21 @@
+[package]
+name = "mt-cli"
+description = "ヘッドレス端末と TTL 実行"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "mt"
+path = "src/main.rs"
+
+[dependencies]
+mt-core.workspace = true
+mt-serial.workspace = true
+mt-net.workspace = true
+mt-ttl.workspace = true
+# 予定: clap
+
+[lints]
+workspace = true

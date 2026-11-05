@@ -1,0 +1,16 @@
+[package]
+name = "mt-vt"
+description = "VT エミュレーション、画面グリッド、変更行の追跡、スクロールバック"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "mt_vt"
+
+[dependencies]
+# 予定: alacritty_terminal（libghostty-vt と比較中。docs/design.md の未決事項を参照）
+
+[lints]
+workspace = true
