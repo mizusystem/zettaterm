@@ -19,6 +19,7 @@ use std::time::Duration;
 use mt_vt::{GridSnapshot, Key, Modifiers, Row, Terminal, VtEvent};
 
 use crate::log::{LogOptions, Logger};
+use crate::newline::{NewlineReceive, NewlineSend, ReceiveConverter};
 use crate::transport::{SendDelay, SerialSettings, Transport, WindowSize};
 
 /// 既定のスクロールバック行数
@@ -45,10 +46,20 @@ pub trait SessionListener: Send + Sync {
     fn on_title(&self, title: String);
 }
 
+/// Tera Term の「設定 > 端末」のうち、Session が扱う項目。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct TerminalSettings {
+    pub newline_receive: NewlineReceive,
+    pub newline_send: NewlineSend,
+    /// 送ったキー入力を自分の画面にも出す
+    pub local_echo: bool,
+}
+
 pub struct SessionOptions {
     pub size: WindowSize,
     pub scrollback: usize,
     pub send_delay: SendDelay,
+    pub terminal: TerminalSettings,
     /// 相手が消えたときに自動でつなぎ直すか（Transport が対応している場合）
     pub auto_reconnect: bool,
 }
@@ -59,6 +70,7 @@ impl Default for SessionOptions {
             size: WindowSize::new(80, 24),
             scrollback: DEFAULT_SCROLLBACK,
             send_delay: SendDelay::default(),
+            terminal: TerminalSettings::default(),
             auto_reconnect: true,
         }
     }
@@ -86,6 +98,9 @@ struct Inner {
     closing: AtomicBool,
     auto_reconnect: AtomicBool,
     log: Mutex<Option<Logger>>,
+    newline_receive: Mutex<ReceiveConverter>,
+    newline_send: Mutex<NewlineSend>,
+    local_echo: AtomicBool,
 }
 
 impl Session {
@@ -111,6 +126,9 @@ impl Session {
             closing: AtomicBool::new(false),
             auto_reconnect: AtomicBool::new(options.auto_reconnect),
             log: Mutex::new(None),
+            newline_receive: Mutex::new(ReceiveConverter::new(options.terminal.newline_receive)),
+            newline_send: Mutex::new(options.terminal.newline_send),
+            local_echo: AtomicBool::new(options.terminal.local_echo),
         });
 
         let delay = options.send_delay;
@@ -136,16 +154,43 @@ impl Session {
     }
 
     /// キー入力を送る。カーソルキーなどは端末モードに合わせて変換する。
+    /// Enter は「送信」の改行コードで送る。
     pub fn key(&self, key: Key, mods: Modifiers) {
-        let bytes = self.inner.vt().encode_key(&key, mods);
-        self.write(bytes);
+        let mut bytes = self.inner.vt().encode_key(&key, mods);
+        if key == Key::Enter && bytes.ends_with(b"\r") {
+            bytes = self.inner.newline_send().apply(bytes);
+        }
+        self.send_user(bytes);
     }
 
-    /// 貼り付け。改行は CR に揃え、ブラケットペーストモードなら囲む。
+    /// 貼り付け。改行は「送信」の改行コードに揃え、ブラケットペーストモードなら囲む。
     /// 送信遅延は送信スレッドで効く。複数行の確認は UI 側で行う。
     pub fn paste(&self, text: String) {
         let bytes = self.inner.vt().encode_paste(&text);
+        let bytes = self.inner.newline_send().apply(bytes);
+        self.send_user(bytes);
+    }
+
+    /// 利用者の入力を送る。ローカルエコーなら自分の画面にも出す。
+    fn send_user(&self, bytes: Vec<u8>) {
+        if self.inner.local_echo.load(Ordering::SeqCst) {
+            self.inner.echo(&bytes);
+        }
         self.write(bytes);
+    }
+
+    pub fn set_terminal_settings(&self, t: TerminalSettings) {
+        self.inner
+            .newline_receive
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .set_mode(t.newline_receive);
+        *self
+            .inner
+            .newline_send
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = t.newline_send;
+        self.inner.local_echo.store(t.local_echo, Ordering::SeqCst);
     }
 
     pub fn resize(&self, size: WindowSize) {
@@ -264,6 +309,27 @@ impl Inner {
         self.vt.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    fn newline_send(&self) -> NewlineSend {
+        *self.newline_send.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// ローカルエコー。送った CR / LF はどちらも改行として表示する。
+    fn echo(&self, bytes: &[u8]) {
+        let mut shown = Vec::with_capacity(bytes.len() + 4);
+        let mut prev = 0u8;
+        for &b in bytes {
+            match b {
+                b'\r' => shown.extend_from_slice(b"\r\n"),
+                b'\n' if prev == b'\r' => {}
+                b'\n' => shown.extend_from_slice(b"\r\n"),
+                _ => shown.push(b),
+            }
+            prev = b;
+        }
+        self.vt().feed(&shown);
+        self.notify_damage();
+    }
+
     fn log(&self) -> MutexGuard<'_, Option<Logger>> {
         self.log.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -308,7 +374,13 @@ impl Inner {
                 *log = None;
             }
         }
-        let events = self.vt().feed(bytes);
+        let converted = self
+            .newline_receive
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .convert(bytes)
+            .into_owned();
+        let events = self.vt().feed(&converted);
         self.handle_events(events);
         self.notify_damage();
     }

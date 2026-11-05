@@ -45,6 +45,7 @@ struct TerminalWindow: View {
                 switch sheet {
                 case .newConnection: NewConnectionView(controller: controller)
                 case .serialSettings: SerialSettingsView(controller: controller)
+                case .terminalSettings: TerminalSettingsView(controller: controller)
                 case .log: LogOptionsView(controller: controller)
                 }
             }
@@ -91,6 +92,8 @@ struct TerminalCommands: Commands {
         }
 
         CommandMenu(TT.text("MENU_SETUP", "設定")) {
+            Button(TT.text("MENU_SETUP_TERMINAL", "端末...")) { controller?.sheet = .terminalSettings }
+                .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_SERIALPORT", "シリアルポート...")) { controller?.sheet = .serialSettings }
                 .disabled(controller == nil)
         }

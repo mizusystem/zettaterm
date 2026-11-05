@@ -383,6 +383,7 @@ mod hardware_tests {
     }
 
     /// 実機の USB シリアルを抜き差しすると、自動でつなぎ直す。
+    /// （ESP32 の内蔵 USB シリアルは RTS でチップを再起動しても USB が切れないので、手で抜き差しする）
     #[test]
     #[ignore]
     fn hardware_unplug_and_replug() {

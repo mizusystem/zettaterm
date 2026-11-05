@@ -1,0 +1,13 @@
+{
+  "nl": [
+    "CR",
+    "CR+LF",
+    "LF"
+  ],
+  "nlRcv": [
+    "CR",
+    "CR+LF",
+    "LF",
+    "AUTO"
+  ]
+}

@@ -12,7 +12,12 @@ enum TT {
     }()
 
     private static let options: [String: [String]] = {
-        loadJSON("serial-options") as? [String: [String]] ?? [:]
+        var all: [String: [String]] = [:]
+        for file in ["serial-options", "terminal-options"] {
+            let lists = loadJSON(file) as? [String: [String]] ?? [:]
+            all.merge(lists) { a, _ in a }
+        }
+        return all
     }()
 
     private static func loadJSON(_ name: String) -> Any? {
@@ -27,7 +32,8 @@ enum TT {
         clean(table[key] ?? fallback)
     }
 
-    /// シリアル設定の選択肢（serial_pp.cpp の `*List[]`）。`name` は baud / data / parity / stop / flow。
+    /// 設定の選択肢（serial_pp.cpp / term_pp.cpp の `*List[]`）。
+    /// `name` は baud / data / parity / stop / flow / nl（送信改行）/ nlRcv（受信改行）。
     static func options(_ name: String) -> [String] {
         options[name] ?? []
     }

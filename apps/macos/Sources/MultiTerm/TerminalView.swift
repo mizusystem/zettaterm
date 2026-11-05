@@ -10,6 +10,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var onError: ((Error) -> Void)?
 
     private(set) var session: Session?
+    /// 次に接続するときの改行コードとローカルエコー
+    var terminalSettings = defaultTerminalSettings()
     private var bridge: SessionBridge?
     /// 今の接続の識別子。前の接続から遅れて届いた通知を捨てるのに使う
     private var sessionToken = UUID()
@@ -106,7 +108,9 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             }
         )
         self.bridge = bridge
-        session = try Session.open(profile: profile, cols: size.cols, rows: size.rows, listener: bridge)
+        session = try Session.open(
+            profile: profile, cols: size.cols, rows: size.rows, terminal: terminalSettings, listener: bridge
+        )
     }
 
     /// 接続を閉じる。画面の内容は残す。

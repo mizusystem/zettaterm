@@ -289,3 +289,42 @@ fn log_records_received_text() {
     assert!(wait_until(|| screen_text(&session).contains("ignored")));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
 }
+
+#[test]
+fn lf_only_device_lines_start_at_column_zero_in_lf_mode() {
+    use mt_core::{NewlineReceive, TerminalSettings};
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_terminal_settings(TerminalSettings {
+        newline_receive: NewlineReceive::Lf,
+        ..Default::default()
+    });
+    remote.send(b"first\nsecond\n");
+    assert!(wait_until(
+        || screen_text(&session).starts_with("first\nsecond")
+    ));
+}
+
+#[test]
+fn enter_uses_send_newline_and_local_echo_shows_input() {
+    use mt_core::{NewlineSend, TerminalSettings};
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_terminal_settings(TerminalSettings {
+        newline_send: NewlineSend::CrLf,
+        local_echo: true,
+        ..Default::default()
+    });
+    session.key(Key::Text("ok".into()), Modifiers::default());
+    session.key(Key::Enter, Modifiers::default());
+    assert_eq!(remote.recv(WAIT).unwrap(), b"ok");
+    assert_eq!(remote.recv(WAIT).unwrap(), b"\r\n");
+    assert!(wait_until(|| screen_text(&session).starts_with("ok\n")));
+    let s = session.snapshot(0);
+    assert_eq!((s.cursor.row, s.cursor.col), (1, 0));
+
+    session.paste("a\nb".into());
+    assert_eq!(remote.recv(WAIT).unwrap(), b"a\r\nb");
+}

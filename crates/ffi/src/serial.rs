@@ -218,3 +218,59 @@ impl LogOptions {
         }
     }
 }
+
+// ---- 端末設定 ----
+
+/// 受信した改行の扱い（Tera Term の CRReceive）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum NewlineReceive {
+    Cr,
+    CrLf,
+    Lf,
+    Auto,
+}
+
+/// Enter と貼り付けで送る改行（Tera Term の CRSend）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum NewlineSend {
+    Cr,
+    CrLf,
+    Lf,
+}
+
+/// Tera Term の「設定 > 端末」のうち、接続ごとに効く項目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TerminalSettings {
+    pub newline_receive: NewlineReceive,
+    pub newline_send: NewlineSend,
+    pub local_echo: bool,
+}
+
+/// 既定値（受信 CR、送信 CR、ローカルエコーなし。TERATERM.INI と同じ）。
+#[uniffi::export]
+pub fn default_terminal_settings() -> TerminalSettings {
+    TerminalSettings {
+        newline_receive: NewlineReceive::Cr,
+        newline_send: NewlineSend::Cr,
+        local_echo: false,
+    }
+}
+
+impl TerminalSettings {
+    pub(crate) fn to_core(self) -> core::TerminalSettings {
+        core::TerminalSettings {
+            newline_receive: match self.newline_receive {
+                NewlineReceive::Cr => core::NewlineReceive::Cr,
+                NewlineReceive::CrLf => core::NewlineReceive::CrLf,
+                NewlineReceive::Lf => core::NewlineReceive::Lf,
+                NewlineReceive::Auto => core::NewlineReceive::Auto,
+            },
+            newline_send: match self.newline_send {
+                NewlineSend::Cr => core::NewlineSend::Cr,
+                NewlineSend::CrLf => core::NewlineSend::CrLf,
+                NewlineSend::Lf => core::NewlineSend::Lf,
+            },
+            local_echo: self.local_echo,
+        }
+    }
+}

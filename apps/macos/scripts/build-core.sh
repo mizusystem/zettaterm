@@ -79,6 +79,6 @@ cp "$GEN"/*.swift "$APP/Sources/MTCore/Generated/"
 RES="$APP/Sources/MultiTerm/Resources/spec"
 rm -rf "$APP/Sources/MultiTerm/Resources"
 mkdir -p "$RES"
-cp "$ROOT/spec/lang/ja_JP.json" "$ROOT/spec/lang/en_US.json" "$ROOT/spec/serial-options.json" "$RES/"
+cp "$ROOT/spec/lang/ja_JP.json" "$ROOT/spec/lang/en_US.json" "$ROOT"/spec/*-options.json "$RES/"
 
 echo "built: $XCF"

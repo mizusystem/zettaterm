@@ -21,7 +21,7 @@ final class TerminalController: ObservableObject {
     enum Status { case disconnected, connected, reconnecting }
 
     enum Sheet: String, Identifiable {
-        case newConnection, serialSettings, log
+        case newConnection, serialSettings, terminalSettings, log
         var id: String { rawValue }
     }
 
@@ -37,6 +37,7 @@ final class TerminalController: ObservableObject {
     /// シリアルで接続中ならそのポート
     @Published private(set) var serialPort: String?
     @Published private(set) var serialConfig = SerialConfig.saved
+    @Published private(set) var terminalConfig = TerminalConfig.saved
     private var isLocalShell = false
     private var closingByUser = false
 
@@ -92,6 +93,7 @@ final class TerminalController: ObservableObject {
         isLogging = false
         remoteTitle = ""
         do {
+            view.terminalSettings = terminalConfig.settings
             try view.connect(profile)
             connectionLabel = label
             status = .connected
@@ -114,6 +116,14 @@ final class TerminalController: ObservableObject {
         } catch {
             report(error)
         }
+    }
+
+    /// 「設定 > 端末」。保存して、接続中ならその場で効かせる。
+    func applyTerminal(_ config: TerminalConfig) {
+        terminalConfig = config
+        config.save()
+        view.terminalSettings = config.settings
+        view.session?.setTerminalSettings(settings: config.settings)
     }
 
     func disconnect() {

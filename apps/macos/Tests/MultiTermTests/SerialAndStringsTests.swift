@@ -53,3 +53,16 @@ final class SerialAndStringsTests: XCTestCase {
         XCTAssertEqual(SerialConfig().settings, defaultSerialSettings())
     }
 }
+
+final class TerminalConfigTests: XCTestCase {
+    func testNewlineLabelsComeFromTeraTerm() {
+        XCTAssertEqual(TerminalConfig.Receive.allCases.map(TerminalConfig.label), ["CR", "CR+LF", "LF", "AUTO"])
+        XCTAssertEqual(TerminalConfig.Send.allCases.map(TerminalConfig.label), ["CR", "CR+LF", "LF"])
+    }
+
+    func testConvertsToCoreSettings() {
+        let c = TerminalConfig(receive: .auto, send: .crLf, localEcho: true)
+        XCTAssertEqual(c.settings, TerminalSettings(newlineReceive: .auto, newlineSend: .crLf, localEcho: true))
+        XCTAssertEqual(TerminalConfig().settings, defaultTerminalSettings())
+    }
+}

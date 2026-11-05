@@ -13,8 +13,9 @@ use mt_serial::SerialTransport;
 
 mod serial;
 pub use serial::{
-    DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, Parity, SerialDevice,
-    SerialSettings, StopBits, default_serial_settings, list_serial_devices,
+    DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, NewlineReceive,
+    NewlineSend, Parity, SerialDevice, SerialSettings, StopBits, TerminalSettings,
+    default_serial_settings, default_terminal_settings, list_serial_devices,
 };
 
 uniffi::setup_scaffolding!();
@@ -272,6 +273,7 @@ impl Session {
         profile: Profile,
         cols: u16,
         rows: u16,
+        terminal: TerminalSettings,
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<Self>, MtError> {
         let size = core::WindowSize::new(cols, rows);
@@ -294,6 +296,7 @@ impl Session {
         let options = core::SessionOptions {
             size,
             send_delay,
+            terminal: terminal.to_core(),
             ..Default::default()
         };
         let inner = core::Session::open(transport, options, Arc::new(ListenerAdapter(listener)))?;
@@ -353,6 +356,11 @@ impl Session {
         self.inner.set_serial_settings(&settings.port())?;
         self.inner.set_send_delay(settings.delay());
         Ok(())
+    }
+
+    /// 改行コードとローカルエコーを変える（Tera Term の「設定 > 端末」）。
+    pub fn set_terminal_settings(&self, settings: TerminalSettings) {
+        self.inner.set_terminal_settings(settings.to_core());
     }
 
     /// 相手が消えたときに自動でつなぎ直すか（既定は true）。
