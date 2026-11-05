@@ -24,7 +24,42 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 UI だけを OS ごとに書き、接続・端末状態・マクロ・転送はすべて共通の Rust コアに置く。参考にしたのは Ghostty の構成（共通コア＋各 OS の薄い UI）。
 
-&#91;embedded content: 全体構成 · UI 4 種、共通コア 4 クレート、Transport 2 クレート\]
+**全体構成** · UI 4 種、共通コア 4 クレート、Transport 2 クレート（UI だけ OS ごとに書き、残りは共通 Rust コアに集める）
+
+```mermaid
+flowchart TB
+    subgraph UI["UI（OS ごと）"]
+        mac["macOS アプリ<br/>SwiftUI + AppKit<br/>Core Text で描画"]
+        linux["Linux アプリ<br/>GTK4（gtk-rs）<br/>Pango で描画"]
+        win["Windows アプリ<br/>WinUI 3 / Win32<br/>後回し"]
+        cli["cli<br/>ヘッドレス端末<br/>TTL 実行"]
+    end
+    ffi["ffi（UniFFI）"]
+    subgraph CORE["共通コア（Rust・全 OS でビルド）"]
+        core["core<br/>Session・ログ<br/>文字コード・設定"]
+        vt["vt<br/>VT 解釈<br/>画面グリッド"]
+        ttl["ttl<br/>TTL パーサ<br/>インタプリタ"]
+        xfer["xfer<br/>XMODEM 系<br/>Kermit"]
+    end
+    subgraph TRANSPORT["Transport：OS 固有コードはこの 2 つに閉じる"]
+        serial["serial<br/>termios・IOKit・udev・SetupAPI"]
+        net["net<br/>PTY・外部 ssh・Telnet・russh"]
+    end
+    usb[/"USB シリアル機器"/]
+    host[/"SSH / Telnet ホスト"/]
+    shell[/"ローカルシェル"/]
+
+    mac --> ffi --> CORE
+    linux -- 直接リンク --> CORE
+    win -. "C ABI（予定）" .-> CORE
+    cli -- 直接リンク --> CORE
+    CORE --> TRANSPORT
+    serial --> usb
+    net --> host
+    net --> shell
+```
+
+（元の設計書 Artifact の図をテキスト化したもの）
 
 UI からは write や resize を下ろし、コアからは変更通知だけを上げる。Linux 版と cli はコアと同じ Rust なので FFI を通らず直接リンクする。
 
@@ -131,7 +166,18 @@ Mac での読み替え
 
 Phase 1 を終えた時点で、Mac のシリアル端末として日常的に使える状態にする。それ以降は使いながら機能を足す。
 
-&#91;embedded content: ロードマップ · Phase 0〜5 と完了条件\]
+**ロードマップ** · Phase 0〜5 と完了条件（Phase 1 が終わった時点でシリアル端末として毎日使える）
+
+| Phase | 名前 | 中身 | 完了条件 |
+| --- | --- | --- | --- |
+| 0 | 雛形 | ワークスペース・CI（3 OS）／Mac でローカルシェルを表示 | 入力・リサイズ・スクロールが動く |
+| **1** | **シリアル** | 接続ダイアログ・設定シート／ホットプラグ・自動再接続・ログ | **実機の USB シリアルで日常使用** |
+| 2 | SSH / Telnet | 外部 ssh・Telnet・プロファイル／ネイティブタブ・一斉送信 | ssh_config がそのまま効く |
+| 3 | 転送・文字コード | XMODEM / YMODEM / ZMODEM / Kermit／Shift_JIS・EUC-JP の送受信 | lrzsz と相互に転送できる |
+| 4 | TTL・Linux | TTL 頻出サブセットと cli／GTK4 版の同等画面 | 既存マクロが Mac と Linux で動く |
+| 5 | 配布 | 署名・公証・自動更新／Windows 版に着手 | 公証済み dmg を配布 |
+
+（元の設計書 Artifact の図をテキスト化したもの）
 
 各 Phase は完了条件を満たすまで次に進まない。日程は置かず、順序だけを決めている。
 
