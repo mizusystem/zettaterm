@@ -30,7 +30,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 - UI に依存するコードは `crates/` に入れない
 - OS 固有コード（`cfg(target_os)`）は `crates/serial` と `crates/net` の中に閉じる。他のクレートには書かない
-- `crates/` 配下は macOS・Linux・Windows の 3 環境で `cargo test` を通す（`.github/workflows/ci.yml`）
+- `crates/` 配下は macOS・Linux・Windows の 3 環境で `cargo test` を通す。Linux と Windows は GitHub Actions（`.github/workflows/ci.yml`）、macOS はこの Mac で `scripts/ci-macos.sh`（push 前に回す。GitHub で回すときは `macos.yml` を手動実行）
 - 設定ファイルは TOML。`TERATERM.INI` のインポートは `core` が持つ
 - Tera Term のコードは持ってこない。仕様・UI 文言・設定キーは参照してよい（BSD-3-Clause、`THIRD_PARTY.md` に表示）
 
@@ -77,6 +77,9 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo run -p mt-cli
+
+# macOS の CI 相当（Rust + macOS アプリ）。push 前に回す
+scripts/ci-macos.sh
 
 # macOS アプリ（詳細は apps/macos/README.md）
 apps/macos/scripts/build-core.sh

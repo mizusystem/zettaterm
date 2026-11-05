@@ -1,5 +1,8 @@
 name: CI
 
+# macOS はランナーが混みやすいので、この Mac で scripts/ci-macos.sh を回す。
+# GitHub 上で回したいときは macos.yml を手動実行する。
+
 on:
   push:
     branches: [main]
@@ -23,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -34,25 +37,6 @@ jobs:
       - name: Install socat (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y socat
-      - name: Install socat (macOS)
-        if: runner.os == 'macOS'
-        run: brew install socat
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
-  macos-app:
-    name: macos app
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
-      - name: Build Rust core and Swift bindings
-        run: apps/macos/scripts/build-core.sh
-      - name: Swift build and test
-        working-directory: apps/macos
-        run: |
-          swift build
-          swift test

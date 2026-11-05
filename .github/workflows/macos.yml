@@ -1,0 +1,21 @@
+name: macOS
+
+# 手動実行のみ。普段はこの Mac で scripts/ci-macos.sh を回す。
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - run: brew install socat
+      - run: scripts/ci-macos.sh

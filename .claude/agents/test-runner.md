@@ -8,9 +8,7 @@ model: haiku
 ファイルは編集しない。
 
 実行するもの（指示がなければ全部）
-- cargo fmt --all --check
-- cargo clippy --workspace --all-targets -- -D warnings
-- cargo test --workspace
-- apps/macos に Xcode プロジェクトがあれば xcodebuild test
+- scripts/ci-macos.sh（cargo fmt / clippy / test と、macOS アプリの build-core / swift build / swift test）
+- Rust だけ見ればよいときは scripts/ci-macos.sh --rust、アプリだけなら --app
 
 返答は失敗したコマンドと、各失敗のテスト名・ファイル:行・エラー要旨だけを 10 行以内で。全部通ればそう書く。ログ全文は返さない。
