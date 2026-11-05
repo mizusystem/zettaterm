@@ -62,6 +62,7 @@ struct TerminalWindow: View {
                 case .broadcast: BroadcastView(controller: controller)
                 case .auth: AuthPromptView(controller: controller)
                 case .transfer: TransferView(controller: controller)
+                case .scp: ScpView(controller: controller)
                 }
             }
             .alert(
@@ -103,6 +104,7 @@ private func sendKey(_ k: TransferKind) -> String {
     case .xmodem: return "MENU_TRANS_X_SEND"
     case .ymodem: return "MENU_TRANS_Y_SEND"
     case .zmodem: return "MENU_TRANS_Z_SEND"
+    case .kermit: return "MENU_TRANS_KERMIT_SEND"
     }
 }
 
@@ -111,6 +113,7 @@ private func receiveKey(_ k: TransferKind) -> String {
     case .xmodem: return "MENU_TRANS_X_RCV"
     case .ymodem: return "MENU_TRANS_Y_RCV"
     case .zmodem: return "MENU_TRANS_Z_RCV"
+    case .kermit: return "MENU_TRANS_KERMIT_RCV"
     }
 }
 
@@ -152,6 +155,10 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_FILE_STOPLOG", "ログを終了")) { controller?.stopLog() }
                 .disabled(controller?.isLogging != true)
 
+            // TTSSH が「ファイル」メニューに足す項目
+            Button("SSH SCP...") { controller?.sheet = .scp }
+                .disabled(controller?.canScp != true || controller?.transfer != nil)
+
             Divider()
 
             Button(TT.text("MENU_FILE_DISCONNECT", "接続断")) { controller?.disconnect() }
@@ -170,7 +177,8 @@ struct TerminalCommands: Commands {
             ForEach(TransferKind.allCases) { kind in
                 Menu(kind.rawValue) {
                     Button(TT.text(sendKey(kind), "送信...")) { controller?.beginSend(kind) }
-                    Button(TT.text(receiveKey(kind), "受信...") + (kind == .zmodem ? "..." : "")) {
+                    // Tera Term の ZMODEM / Kermit の受信は保存先を尋ねないが、ここでは保存先フォルダを選ぶ
+                    Button(TT.text(receiveKey(kind), "受信...") + (kind == .zmodem || kind == .kermit ? "..." : "")) {
                         controller?.beginReceive(kind)
                     }
                 }

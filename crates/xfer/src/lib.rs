@@ -1,4 +1,4 @@
-//! ファイル転送プロトコル（XMODEM / YMODEM / ZMODEM）。Kermit は後で足す。
+//! ファイル転送プロトコル（XMODEM / YMODEM / ZMODEM / Kermit）。
 //!
 //! どのプロトコルも入出力を持たない状態機械として作る。受信バイトを [`Transfer::receive`] に渡すと、
 //! 相手に送るバイトが返る。時間切れの再送は [`Transfer::tick`] で行う。
@@ -6,6 +6,7 @@
 //! このクレートに `cfg(target_os)` を書かない。
 
 mod crc;
+mod kermit;
 mod xymodem;
 mod zmodem;
 
@@ -24,6 +25,8 @@ pub enum Protocol {
     YModem,
     /// ZMODEM
     ZModem,
+    /// Kermit（短いパケット、停止待ち）
+    Kermit,
 }
 
 /// 送るか受けるか。
@@ -97,6 +100,8 @@ pub fn new_transfer(protocol: Protocol, direction: Direction) -> io::Result<Box<
         (Protocol::YModem, Direction::Receive(dir)) => Box::new(xymodem::Receiver::ymodem(dir)?),
         (Protocol::ZModem, Direction::Send(files)) => Box::new(zmodem::Sender::new(files)?),
         (Protocol::ZModem, Direction::Receive(dir)) => Box::new(zmodem::Receiver::new(dir)?),
+        (Protocol::Kermit, Direction::Send(files)) => Box::new(kermit::Sender::new(files)?),
+        (Protocol::Kermit, Direction::Receive(dir)) => Box::new(kermit::Receiver::new(dir)?),
     })
 }
 

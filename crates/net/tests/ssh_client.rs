@@ -3,7 +3,7 @@
 //! ProxyJump、ProxyCommand、端末サイズの通知、データの往復を確かめる。
 //! 鍵は実行のたびに作る（リポジトリに秘密鍵を置かない）。
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -20,6 +20,9 @@ use russh::keys::ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey};
 use russh::server::{self, Auth, Msg, Response};
 use russh::{Channel, ChannelId, MethodKind, MethodSet};
 
+#[path = "support/exec.rs"]
+mod exec;
+
 // ---------------------------------------------------------------- テスト用サーバー
 
 #[derive(Clone)]
@@ -28,6 +31,99 @@ struct Server {
     log: Arc<Mutex<Vec<String>>>,
     /// シェル用のチャネル（踏み台のトンネル用チャネルのデータには手を出さない）
     sessions: Arc<Mutex<Vec<ChannelId>>>,
+    /// SCP で読み書きする「リモートのファイル」（全接続で共通）
+    remote_files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+    /// SCP の exec チャネルの状態（接続ごと）
+    scp: Arc<Mutex<HashMap<ChannelId, Scp>>>,
+    /// Some なら、scp は偽物ではなくこのフォルダで本物の scp を動かす
+    scp_root: Option<PathBuf>,
+    execs: exec::Execs,
+}
+
+/// テストサーバーの `scp -t` / `scp -f` の状態。
+enum Scp {
+    /// 受け取る側（`scp -t`）。`pending` は受け取り中のファイル名と大きさ
+    Sink {
+        buf: Vec<u8>,
+        pending: Option<(String, usize)>,
+    },
+    /// 送り出す側（`scp -f`）。`stage` はクライアントの `\0` を受け取った回数
+    Source { name: String, stage: u8 },
+}
+
+impl Server {
+    fn scp_data(
+        &self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut server::Session,
+    ) -> Result<bool, russh::Error> {
+        let mut map = self.scp.lock().unwrap();
+        let Some(state) = map.get_mut(&channel) else {
+            return Ok(false);
+        };
+        match state {
+            Scp::Sink { buf, pending } => {
+                buf.extend_from_slice(data);
+                loop {
+                    match pending.take() {
+                        None => {
+                            let Some(i) = buf.iter().position(|&b| b == b'\n') else {
+                                break;
+                            };
+                            let line: Vec<u8> = buf.drain(..=i).collect();
+                            let line =
+                                String::from_utf8_lossy(&line[..line.len() - 1]).into_owned();
+                            let mut parts = line.splitn(3, ' ');
+                            let _mode = parts.next();
+                            let size: usize = parts.next().unwrap().parse().unwrap();
+                            let name = parts.next().unwrap().to_owned();
+                            *pending = Some((name, size));
+                            session.data(channel, vec![0u8])?;
+                        }
+                        Some((name, size)) => {
+                            if buf.len() < size + 1 {
+                                *pending = Some((name, size));
+                                break;
+                            }
+                            let content: Vec<u8> = buf.drain(..size).collect();
+                            buf.remove(0); // \0
+                            self.remote_files.lock().unwrap().insert(name, content);
+                            session.data(channel, vec![0u8])?;
+                        }
+                    }
+                }
+            }
+            Scp::Source { name, stage } => {
+                for _ in data.iter().filter(|&&b| b == 0) {
+                    let content = self
+                        .remote_files
+                        .lock()
+                        .unwrap()
+                        .get(name.as_str())
+                        .cloned()
+                        .unwrap_or_default();
+                    match *stage {
+                        0 => session.data(
+                            channel,
+                            format!("C0644 {} {}\n", content.len(), name).into_bytes(),
+                        )?,
+                        1 => {
+                            let mut v = content;
+                            v.push(0);
+                            session.data(channel, v)?;
+                        }
+                        _ => {
+                            session.eof(channel)?;
+                            session.close(channel)?;
+                        }
+                    }
+                    *stage += 1;
+                }
+            }
+        }
+        Ok(true)
+    }
 }
 
 impl server::Handler for Server {
@@ -166,12 +262,83 @@ impl server::Handler for Server {
         Ok(())
     }
 
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        let cmd = String::from_utf8_lossy(data).into_owned();
+        self.log.lock().unwrap().push(format!("exec {cmd}"));
+        session.channel_success(channel)?;
+        if let Some(root) = &self.scp_root {
+            if !self
+                .execs
+                .spawn_scp(&cmd, root, channel, session.handle())
+                .await
+            {
+                session.close(channel)?;
+            }
+            return Ok(());
+        }
+        // 最後の引数（単一引用符で囲まれている）
+        let arg = cmd
+            .rsplit(' ')
+            .next()
+            .unwrap_or("")
+            .trim_matches('\'')
+            .to_owned();
+        if cmd.starts_with("scp ") && cmd.contains(" -t ") {
+            self.scp.lock().unwrap().insert(
+                channel,
+                Scp::Sink {
+                    buf: Vec::new(),
+                    pending: None,
+                },
+            );
+            session.data(channel, vec![0u8])?;
+        } else if cmd.starts_with("scp -f ") {
+            if self.remote_files.lock().unwrap().contains_key(&arg) {
+                self.scp.lock().unwrap().insert(
+                    channel,
+                    Scp::Source {
+                        name: arg,
+                        stage: 0,
+                    },
+                );
+            } else {
+                session.data(
+                    channel,
+                    format!("\x01scp: {arg}: No such file or directory\n").into_bytes(),
+                )?;
+                session.eof(channel)?;
+                session.close(channel)?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn channel_eof(
+        &mut self,
+        channel: ChannelId,
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.execs.eof(channel).await;
+        if self.scp.lock().unwrap().remove(&channel).is_some() {
+            session.close(channel)?;
+        }
+        Ok(())
+    }
+
     async fn data(
         &mut self,
         channel: ChannelId,
         data: &[u8],
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
+        if self.execs.write(channel, data).await || self.scp_data(channel, data, session)? {
+            return Ok(());
+        }
         if !self.sessions.lock().unwrap().contains(&channel) {
             return Ok(());
         }
@@ -199,17 +366,31 @@ impl server::Handler for Server {
 }
 
 struct TestServer {
+    remote_files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
     addr: SocketAddr,
     host_key: PublicKey,
     log: Arc<Mutex<Vec<String>>>,
 }
 
 fn start_server(host_key: PrivateKey, authorized: Vec<PublicKey>) -> TestServer {
+    start_server_with(host_key, authorized, None)
+}
+
+fn start_server_with(
+    host_key: PrivateKey,
+    authorized: Vec<PublicKey>,
+    scp_root: Option<PathBuf>,
+) -> TestServer {
     let log = Arc::new(Mutex::new(Vec::new()));
+    let remote_files: Arc<Mutex<HashMap<String, Vec<u8>>>> = Arc::default();
     let handler = Server {
         authorized,
         log: Arc::clone(&log),
         sessions: Arc::default(),
+        remote_files: Arc::clone(&remote_files),
+        scp: Arc::default(),
+        scp_root,
+        execs: exec::Execs::default(),
     };
     let public = host_key.public_key().clone();
     let config = Arc::new(server::Config {
@@ -236,6 +417,8 @@ fn start_server(host_key: PrivateKey, authorized: Vec<PublicKey>) -> TestServer 
                 // チャネル番号は接続ごとに振られるので、シェルの一覧も接続ごとに持つ
                 let handler = Server {
                     sessions: Arc::default(),
+                    scp: Arc::default(),
+                    execs: exec::Execs::default(),
                     ..handler.clone()
                 };
                 tokio::spawn(async move {
@@ -247,6 +430,7 @@ fn start_server(host_key: PrivateKey, authorized: Vec<PublicKey>) -> TestServer 
         });
     });
     TestServer {
+        remote_files,
         addr,
         host_key: public,
         log,
@@ -699,5 +883,171 @@ fn proxy_command_is_used_as_the_transport() {
     let prompter = Arc::new(Scripted::default());
     let session = open(connect(&config, "test", &prompter).unwrap());
     wait_for(&session, "welcome");
+    session.close();
+}
+
+#[test]
+fn scp_upload_and_download_over_the_same_connection() {
+    let client = random_key();
+    let server = start_server(random_key(), vec![client.public_key().clone()]);
+    let env = Env::new();
+    env.trust(&server);
+    let key = write_key(env.path(), "id_test", &client);
+    let config = env.config(&server, Some(&key), "");
+    let prompter = Arc::new(Scripted::default());
+    let transport = connect(&config, "test", &prompter).unwrap();
+    let files = transport.files().expect("scp available");
+    let session = open(transport);
+    wait_for(&session, "welcome");
+
+    // 送る（2 ファイル、30 万バイトを含む）
+    let a = env.path().join("up1.bin");
+    let b = env.path().join("up2.txt");
+    let big: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+    std::fs::write(&a, &big).unwrap();
+    std::fs::write(&b, b"scp text\n").unwrap();
+    let job = files.upload(vec![a, b], "uploads");
+    wait_job(&job);
+    assert_eq!(job.progress().status, mt_net::ScpStatus::Done);
+    assert_eq!(job.progress().files_done, 2);
+    {
+        let remote = server.remote_files.lock().unwrap();
+        assert_eq!(remote["up1.bin"], big);
+        assert_eq!(remote["up2.txt"], b"scp text\n");
+    }
+    assert!(
+        server
+            .log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l == "exec scp -d -t -- 'uploads'")
+    );
+
+    // 受け取る（端末を使いながら）
+    server
+        .remote_files
+        .lock()
+        .unwrap()
+        .insert("remote.log".into(), b"from the server\n".to_vec());
+    let out = env.path().join("down");
+    std::fs::create_dir(&out).unwrap();
+    let job = files.download("remote.log", out.clone());
+    session.write(b"still alive".to_vec());
+    wait_job(&job);
+    assert_eq!(job.progress().status, mt_net::ScpStatus::Done);
+    assert_eq!(
+        std::fs::read(out.join("remote.log")).unwrap(),
+        b"from the server\n"
+    );
+    assert_eq!(job.progress().saved, [out.join("remote.log")]);
+    wait_for(&session, "echo:still alive");
+
+    // 無いファイルは理由付きで失敗する
+    let job = files.download("missing.txt", out.clone());
+    wait_job(&job);
+    match job.progress().status {
+        mt_net::ScpStatus::Failed(msg) => assert!(msg.contains("No such file"), "{msg}"),
+        other => panic!("{other:?}"),
+    }
+    session.close();
+}
+
+fn wait_job(job: &mt_net::ScpJob) {
+    let start = Instant::now();
+    while job.progress().status == mt_net::ScpStatus::Running {
+        assert!(
+            start.elapsed() < Duration::from_secs(10),
+            "scp did not finish: {:?}",
+            job.progress()
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// 本物の scp（OpenSSH）が相手でも送受信できる。sh と scp が無い環境ではスキップ。
+#[test]
+fn scp_interoperates_with_openssh_scp() {
+    let has_scp = std::process::Command::new("sh")
+        .args(["-c", "command -v scp"])
+        .output()
+        .is_ok_and(|o| o.status.success());
+    if !has_scp {
+        eprintln!("scp が無いのでスキップ");
+        return;
+    }
+    let remote = tempfile::tempdir().unwrap();
+    std::fs::create_dir(remote.path().join("in")).unwrap();
+    let client = random_key();
+    let server = start_server_with(
+        random_key(),
+        vec![client.public_key().clone()],
+        Some(remote.path().to_owned()),
+    );
+    let env = Env::new();
+    env.trust(&server);
+    let key = write_key(env.path(), "id_test", &client);
+    let config = env.config(&server, Some(&key), "");
+    let prompter = Arc::new(Scripted::default());
+    let transport = connect(&config, "test", &prompter).unwrap();
+    let files = transport.files().expect("scp available");
+    let session = open(transport);
+    wait_for(&session, "welcome");
+
+    // 複数ファイルをフォルダへ
+    let a = env.path().join("one.bin");
+    let b = env.path().join("two words.txt");
+    let big: Vec<u8> = (0..200_000u32).map(|i| (i * 7 % 256) as u8).collect();
+    std::fs::write(&a, &big).unwrap();
+    std::fs::write(&b, b"two\n").unwrap();
+    let job = files.upload(vec![a.clone(), b], "in");
+    wait_job(&job);
+    assert_eq!(
+        job.progress().status,
+        mt_net::ScpStatus::Done,
+        "{:?}",
+        job.progress()
+    );
+    assert_eq!(
+        std::fs::read(remote.path().join("in/one.bin")).unwrap(),
+        big
+    );
+    assert_eq!(
+        std::fs::read(remote.path().join("in/two words.txt")).unwrap(),
+        b"two\n"
+    );
+
+    // 1 ファイルをホーム（空の宛先）へ
+    let job = files.upload(vec![a], "");
+    wait_job(&job);
+    assert_eq!(
+        job.progress().status,
+        mt_net::ScpStatus::Done,
+        "{:?}",
+        job.progress()
+    );
+    assert_eq!(std::fs::read(remote.path().join("one.bin")).unwrap(), big);
+
+    // 受け取る
+    let out = env.path().join("down");
+    std::fs::create_dir(&out).unwrap();
+    let job = files.download("in/two words.txt", out.clone());
+    wait_job(&job);
+    assert_eq!(
+        job.progress().status,
+        mt_net::ScpStatus::Done,
+        "{:?}",
+        job.progress()
+    );
+    assert_eq!(std::fs::read(out.join("two words.txt")).unwrap(), b"two\n");
+
+    // 無いファイルは scp の理由付きで失敗する
+    let job = files.download("nothing.here", out.clone());
+    wait_job(&job);
+    assert!(
+        matches!(job.progress().status, mt_net::ScpStatus::Failed(_)),
+        "{:?}",
+        job.progress()
+    );
     session.close();
 }

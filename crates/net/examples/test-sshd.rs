@@ -5,7 +5,14 @@
 //! 受け付ける認証：ユーザー kt のパスワード `secret`、キーボードインタラクティブの `1234`。
 //! 公開鍵はすべて断る（クライアントの自動認証が失敗して、認証ダイアログに進むのを確かめるため）。
 //! シェルは入力をそのまま「echo:」付きで返し、`exit` で閉じる。
+//! SSH SCP は本物の scp をフォルダ（2 つ目の引数、既定は一時フォルダの mt-test-sshd）で動かす。
+//!
+//!     cargo run -p mt-net --example test-sshd -- 2222 /tmp/scp-root
 
+#[path = "../tests/support/exec.rs"]
+mod exec;
+
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,9 +20,11 @@ use russh::keys::ssh_key::{Algorithm, HashAlg, PrivateKey};
 use russh::server::{self, Auth, Msg, Response};
 use russh::{Channel, ChannelId, MethodKind, MethodSet};
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Server {
     line: String,
+    root: Arc<PathBuf>,
+    execs: exec::Execs,
 }
 
 impl server::Handler for Server {
@@ -96,12 +105,43 @@ impl server::Handler for Server {
         Ok(())
     }
 
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        let cmd = String::from_utf8_lossy(data).into_owned();
+        println!("exec {cmd}");
+        session.channel_success(channel)?;
+        if !self
+            .execs
+            .spawn_scp(&cmd, &self.root, channel, session.handle())
+            .await
+        {
+            session.close(channel)?;
+        }
+        Ok(())
+    }
+
+    async fn channel_eof(
+        &mut self,
+        channel: ChannelId,
+        _: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.execs.eof(channel).await;
+        Ok(())
+    }
+
     async fn data(
         &mut self,
         channel: ChannelId,
         data: &[u8],
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
+        if self.execs.write(channel, data).await {
+            return Ok(());
+        }
         for &b in data {
             match b {
                 b'\r' => {
@@ -149,6 +189,13 @@ async fn main() {
         .nth(1)
         .and_then(|p| p.parse().ok())
         .unwrap_or(2222);
+    let root = std::env::args()
+        .nth(2)
+        .map(PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("mt-test-sshd"));
+    std::fs::create_dir_all(&root).unwrap();
+    println!("scp root: {}", root.display());
+    let root = Arc::new(root);
     let key = PrivateKey::random(&mut rand::rng(), Algorithm::Ed25519).unwrap();
     println!(
         "host key: {}",
@@ -169,8 +216,13 @@ async fn main() {
             continue;
         };
         let config = Arc::clone(&config);
+        let handler = Server {
+            line: String::new(),
+            root: Arc::clone(&root),
+            execs: exec::Execs::default(),
+        };
         tokio::spawn(async move {
-            if let Ok(session) = server::run_stream(config, stream, Server::default()).await {
+            if let Ok(session) = server::run_stream(config, stream, handler).await {
                 let _ = session.await;
             }
         });

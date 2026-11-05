@@ -14,6 +14,7 @@ pub enum TransferProtocol {
     XModem { crc: bool, one_k: bool },
     YModem,
     ZModem,
+    Kermit,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -113,6 +114,7 @@ pub(crate) fn create(
         TransferProtocol::XModem { crc, one_k } => Protocol::XModem { crc, one_k },
         TransferProtocol::YModem => Protocol::YModem,
         TransferProtocol::ZModem => Protocol::ZModem,
+        TransferProtocol::Kermit => Protocol::Kermit,
     };
     let direction = if send {
         Direction::Send(files.into_iter().map(PathBuf::from).collect())

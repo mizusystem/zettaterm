@@ -8,7 +8,7 @@ final class TerminalController: ObservableObject {
     enum Status { case disconnected, connecting, connected, reconnecting }
 
     enum Sheet: String, Identifiable {
-        case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer
+        case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp
         var id: String { rawValue }
     }
 

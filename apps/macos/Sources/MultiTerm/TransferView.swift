@@ -7,6 +7,7 @@ enum TransferKind: String, CaseIterable, Identifiable {
     case xmodem = "XMODEM"
     case ymodem = "YMODEM"
     case zmodem = "ZMODEM"
+    case kermit = "Kermit"
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ enum TransferKind: String, CaseIterable, Identifiable {
         case .xmodem: return .xModem(crc: true, oneK: false)
         case .ymodem: return .yModem
         case .zmodem: return .zModem
+        case .kermit: return .kermit
         }
     }
 
@@ -22,13 +24,25 @@ enum TransferKind: String, CaseIterable, Identifiable {
     var batch: Bool { self != .xmodem }
 }
 
-/// 進行中（か、終わったばかり）の転送。
+/// 進行中（か、終わったばかり）の転送。端末上の転送（XMODEM など）と SSH SCP で共通。
 struct ActiveTransfer {
-    let kind: TransferKind
+    /// ダイアログの見出し
+    let title: String
     let send: Bool
-    let handle: TransferHandle
+    let poll: () -> TransferProgress
+    let cancel: () -> Void
     let started = Date()
+    /// 終わった時刻（経過時間をそこで止める）
+    var finished: Date?
     var progress: TransferProgress
+
+    init(title: String, send: Bool, poll: @escaping () -> TransferProgress, cancel: @escaping () -> Void) {
+        self.title = title
+        self.send = send
+        self.poll = poll
+        self.cancel = cancel
+        progress = poll()
+    }
 }
 
 extension TerminalController {
@@ -87,18 +101,29 @@ extension TerminalController {
         guard let session = view.session else { return }
         do {
             let handle = try session.startTransfer(protocol: kind.core, send: send, files: files, destination: destination)
-            transfer = ActiveTransfer(kind: kind, send: send, handle: handle, progress: handle.progress())
-            sheet = .transfer
-            pollTransfer()
+            let title = "\(send ? TT.text("DLG_FILETRANS_TITLE", "ファイル送信") : "ファイル受信")（\(kind.rawValue)）"
+            show(ActiveTransfer(
+                title: title, send: send,
+                poll: { handle.progress() },
+                cancel: { [weak session] in session?.cancelTransfer() }
+            ))
         } catch {
             errorMessage = Self.describe(error)
         }
     }
 
+    /// 進み具合のダイアログを出し、終わるまで見張る。
+    func show(_ t: ActiveTransfer) {
+        transfer = t
+        sheet = .transfer
+        pollTransfer()
+    }
+
     /// 終わるまで 0.2 秒ごとに進み具合を取りに行く。
     private func pollTransfer() {
         guard var t = transfer else { return }
-        t.progress = t.handle.progress()
+        t.progress = t.poll()
+        if t.progress.status != .running, t.finished == nil { t.finished = Date() }
         transfer = t
         if t.progress.status == .running {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.pollTransfer() }
@@ -106,7 +131,7 @@ extension TerminalController {
     }
 
     func cancelTransfer() {
-        view.session?.cancelTransfer()
+        transfer?.cancel()
     }
 
     func closeTransfer() {
@@ -123,8 +148,7 @@ struct TransferView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let t = controller.transfer {
-                Text("\(t.send ? TT.text("DLG_FILETRANS_TITLE", "ファイル送信") : "ファイル受信")（\(t.kind.rawValue)）")
-                    .font(.headline)
+                Text(t.title).font(.headline)
                 Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
                     GridRow {
                         Text(TT.text("DLG_FILETRANS_FILENAME", "ファイル名:")).gridColumnAlignment(.trailing)
@@ -136,8 +160,8 @@ struct TransferView: View {
                     }
                     GridRow {
                         Text(TT.text("DLG_FILETRANS_ELAPSED", "経過時間:"))
-                        TimelineView(.periodic(from: t.started, by: 1)) { _ in
-                            Text(elapsed(since: t.started)).monospacedDigit()
+                        TimelineView(.periodic(from: t.started, by: 1)) { context in
+                            Text(elapsed(t.started, until: t.finished ?? context.date)).monospacedDigit()
                         }
                     }
                     if t.progress.filesDone > 0 {
@@ -194,8 +218,8 @@ struct TransferView: View {
         return "\(done) / \(f.string(fromByteCount: Int64(total)))"
     }
 
-    private func elapsed(since start: Date) -> String {
-        let s = Int(Date().timeIntervalSince(start))
+    private func elapsed(_ start: Date, until end: Date) -> String {
+        let s = max(0, Int(end.timeIntervalSince(start)))
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 }

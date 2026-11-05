@@ -13,11 +13,13 @@ use mt_serial::SerialTransport;
 
 mod auth;
 mod history;
+mod scp;
 mod transfer;
 pub use auth::{
     AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
     KeyboardPrompt, SshPrompter,
 };
+pub use scp::ScpHandle;
 pub use transfer::{TransferHandle, TransferProgress, TransferProtocol, TransferStatus};
 mod serial;
 pub use history::{HostHistory, ssh_config_hosts};
@@ -328,6 +330,8 @@ pub struct Modifiers {
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: Arc<core::Session>,
+    /// 内蔵 SSH のときだけ。SSH SCP に使う
+    files: Option<mt_net::SshFiles>,
 }
 
 #[uniffi::export]
@@ -346,6 +350,7 @@ impl Session {
     ) -> Result<Arc<Self>, MtError> {
         let size = core::WindowSize::new(cols, rows);
         let mut send_delay = core::SendDelay::default();
+        let mut files = None;
         let transport: Box<dyn core::Transport> = match profile {
             Profile::LocalShell { program, args, cwd } => {
                 let cmd = PtyCommand {
@@ -387,7 +392,9 @@ impl Session {
                     config_path: None,
                 };
                 let prompter = Arc::new(auth::PrompterAdapter(prompter));
-                Box::new(SshTransport::connect(&options, size, prompter)?)
+                let transport = SshTransport::connect(&options, size, prompter)?;
+                files = transport.files();
+                Box::new(transport)
             }
             Profile::Telnet { host, port, ip } => Box::new(TcpTransport::telnet(
                 &host,
@@ -406,7 +413,7 @@ impl Session {
             ..Default::default()
         };
         let inner = core::Session::open(transport, options, Arc::new(ListenerAdapter(listener)))?;
-        Ok(Arc::new(Self { inner }))
+        Ok(Arc::new(Self { inner, files }))
     }
 
     pub fn write(&self, bytes: Vec<u8>) {
@@ -501,6 +508,36 @@ impl Session {
         self.inner.is_transferring()
     }
 
+    /// SSH SCP が使えるか（内蔵の SSH で接続しているときだけ）。
+    pub fn can_scp(&self) -> bool {
+        self.files.is_some()
+    }
+
+    /// ローカルの `files` をリモートのフォルダ `remote_dir`（空ならホーム）へ SCP で送る。
+    pub fn scp_upload(
+        &self,
+        files: Vec<String>,
+        remote_dir: String,
+    ) -> Result<Arc<ScpHandle>, MtError> {
+        let ssh = self.files.as_ref().ok_or_else(scp_unavailable)?;
+        let job = ssh.upload(
+            files.into_iter().map(std::path::PathBuf::from).collect(),
+            &remote_dir,
+        );
+        Ok(Arc::new(ScpHandle { job }))
+    }
+
+    /// リモートの `remote_path` をローカルのフォルダ `local_dir` へ SCP で受け取る。
+    pub fn scp_download(
+        &self,
+        remote_path: String,
+        local_dir: String,
+    ) -> Result<Arc<ScpHandle>, MtError> {
+        let ssh = self.files.as_ref().ok_or_else(scp_unavailable)?;
+        let job = ssh.download(&remote_path, local_dir.into());
+        Ok(Arc::new(ScpHandle { job }))
+    }
+
     pub fn log_stop(&self) {
         self.inner.log_stop();
     }
@@ -522,4 +559,10 @@ impl Session {
 #[uniffi::export]
 pub fn core_version() -> String {
     env!("CARGO_PKG_VERSION").to_owned()
+}
+
+fn scp_unavailable() -> MtError {
+    MtError::Io {
+        message: "SSH SCP は内蔵の SSH で接続しているときだけ使えます".into(),
+    }
 }

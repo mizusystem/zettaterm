@@ -1,0 +1,376 @@
+//! SCP（Tera Term / TTSSH の「SSH SCP」）。ログイン済みの SSH 接続の上に別のチャネルを開き、
+//! 相手の `scp -t`（受け取り）/ `scp -f`（送り出し）と話す。端末はそのまま使える。
+//!
+//! 手順（古典的な rcp の手順）
+//! - 送る：`scp -t 先` → 0 を待つ → `C0644 大きさ 名前\n` → 0 → 中身 → `\0` → 0 → … → EOF
+//! - 受け取る：`scp -f パス` → `\0` を送る → `C…\n` を読む → `\0` → 中身と `\0` を読む → `\0` → … → EOF
+//!
+//! 応答の 1 バイト目：0 は成功、1 は警告、2 は失敗（どちらも続く 1 行が理由）。
+
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+use russh::client::{Handle, Msg};
+use russh::{Channel, ChannelMsg};
+use tokio::runtime;
+
+use crate::ssh_client::Client;
+
+const CHUNK: usize = 32 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScpStatus {
+    Running,
+    Done,
+    Canceled,
+    Failed(String),
+}
+
+/// 進み具合（TTSSH の「SCP ファイル送信中 / 受信中」）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScpProgress {
+    pub status: ScpStatus,
+    pub file: Option<String>,
+    pub bytes: u64,
+    pub total: Option<u64>,
+    pub files_done: usize,
+    /// 受け取ったファイルの保存先
+    pub saved: Vec<PathBuf>,
+}
+
+impl Default for ScpProgress {
+    fn default() -> Self {
+        Self {
+            status: ScpStatus::Running,
+            file: None,
+            bytes: 0,
+            total: None,
+            files_done: 0,
+            saved: Vec::new(),
+        }
+    }
+}
+
+/// 進行中の SCP。
+#[derive(Clone)]
+pub struct ScpJob {
+    progress: Arc<Mutex<ScpProgress>>,
+    cancel: Arc<AtomicBool>,
+}
+
+impl ScpJob {
+    pub fn progress(&self) -> ScpProgress {
+        self.progress
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    pub fn cancel(&self) {
+        self.cancel.store(true, Ordering::SeqCst);
+    }
+
+    fn update(&self, f: impl FnOnce(&mut ScpProgress)) {
+        f(&mut self.progress.lock().unwrap_or_else(|e| e.into_inner()));
+    }
+
+    fn canceled(&self) -> bool {
+        self.cancel.load(Ordering::SeqCst)
+    }
+}
+
+/// SSH 接続でファイルをやり取りする窓口。
+#[derive(Clone)]
+pub struct SshFiles {
+    handle: Arc<Handle<Client>>,
+    rt: runtime::Handle,
+}
+
+impl SshFiles {
+    pub(crate) fn new(handle: Arc<Handle<Client>>, rt: runtime::Handle) -> Self {
+        Self { handle, rt }
+    }
+
+    /// ローカルの `files` をリモートの `remote_dir`（空ならホーム）へ送る。
+    pub fn upload(&self, files: Vec<PathBuf>, remote_dir: &str) -> ScpJob {
+        let job = ScpJob {
+            progress: Arc::default(),
+            cancel: Arc::default(),
+        };
+        let (handle, j) = (Arc::clone(&self.handle), job.clone());
+        let dest = if remote_dir.trim().is_empty() {
+            ".".to_owned()
+        } else {
+            remote_dir.trim().to_owned()
+        };
+        self.rt.spawn(async move {
+            let result = upload(&handle, &files, &dest, &j).await;
+            finish(&j, result);
+        });
+        job
+    }
+
+    /// リモートの `remote_path` をローカルの `local_dir` へ受け取る。
+    pub fn download(&self, remote_path: &str, local_dir: PathBuf) -> ScpJob {
+        let job = ScpJob {
+            progress: Arc::default(),
+            cancel: Arc::default(),
+        };
+        let (handle, j) = (Arc::clone(&self.handle), job.clone());
+        let path = remote_path.trim().to_owned();
+        self.rt.spawn(async move {
+            let result = download(&handle, &path, &local_dir, &j).await;
+            finish(&j, result);
+        });
+        job
+    }
+}
+
+fn finish(job: &ScpJob, result: io::Result<()>) {
+    job.update(|p| {
+        p.status = match result {
+            Ok(()) => ScpStatus::Done,
+            Err(_) if job.canceled() => ScpStatus::Canceled,
+            Err(e) => ScpStatus::Failed(e.to_string()),
+        }
+    });
+}
+
+fn other(e: impl std::fmt::Display) -> io::Error {
+    io::Error::other(e.to_string())
+}
+
+/// ローカルのファイルの失敗に、どのファイルかを書き足す。
+fn with_path(e: io::Error, path: &Path) -> io::Error {
+    io::Error::new(e.kind(), format!("{}: {e}", path.display()))
+}
+
+/// リモートのシェルに渡すため、単一引用符で囲む。
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// チャネルからの受信を、行やバイト数で読めるようにする。
+struct ChannelIn {
+    channel: Channel<Msg>,
+    buf: Vec<u8>,
+    eof: bool,
+}
+
+impl ChannelIn {
+    async fn fill(&mut self) -> io::Result<()> {
+        while !self.eof {
+            match self.channel.wait().await {
+                Some(ChannelMsg::Data { data }) => {
+                    self.buf.extend_from_slice(&data);
+                    return Ok(());
+                }
+                Some(ChannelMsg::Eof) | Some(ChannelMsg::Close) | None => self.eof = true,
+                _ => {}
+            }
+        }
+        Err(io::Error::from(io::ErrorKind::UnexpectedEof))
+    }
+
+    async fn byte(&mut self) -> io::Result<u8> {
+        while self.buf.is_empty() {
+            self.fill().await?;
+        }
+        Ok(self.buf.remove(0))
+    }
+
+    async fn line(&mut self) -> io::Result<String> {
+        loop {
+            if let Some(i) = self.buf.iter().position(|&b| b == b'\n') {
+                let line: Vec<u8> = self.buf.drain(..=i).collect();
+                return Ok(String::from_utf8_lossy(&line[..line.len() - 1]).into_owned());
+            }
+            self.fill().await?;
+        }
+    }
+
+    /// 相手の応答（0 / 1 / 2）を読む。
+    async fn ack(&mut self) -> io::Result<()> {
+        match self.byte().await? {
+            0 => Ok(()),
+            1 | 2 => Err(other(format!("scp: {}", self.line().await?))),
+            b => Err(other(format!("scp: unexpected reply {b:#x}"))),
+        }
+    }
+
+    /// 受信が残っていないか、相手が閉じたかを見る（受け取りの終わりの判定）。
+    async fn at_end(&mut self) -> bool {
+        if !self.buf.is_empty() {
+            return false;
+        }
+        self.fill().await.is_err()
+    }
+}
+
+async fn open_exec(handle: &Handle<Client>, command: String) -> io::Result<Channel<Msg>> {
+    let channel = handle.channel_open_session().await.map_err(other)?;
+    channel.exec(true, command).await.map_err(other)?;
+    Ok(channel)
+}
+
+async fn upload(
+    handle: &Handle<Client>,
+    files: &[PathBuf],
+    dest: &str,
+    job: &ScpJob,
+) -> io::Result<()> {
+    let dir_flag = if files.len() > 1 { "-d " } else { "" };
+    let channel = open_exec(handle, format!("scp {dir_flag}-t -- {}", shell_quote(dest))).await?;
+    let mut input = ChannelIn {
+        channel,
+        buf: Vec::new(),
+        eof: false,
+    };
+    input.ack().await?;
+    for path in files {
+        let data = std::fs::read(path).map_err(|e| with_path(e, path))?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        job.update(|p| {
+            p.file = Some(name.clone());
+            p.bytes = 0;
+            p.total = Some(data.len() as u64);
+        });
+        let header = format!("C0644 {} {}\n", data.len(), name.replace('\n', " "));
+        input.channel.data(header.as_bytes()).await.map_err(other)?;
+        input.ack().await?;
+        for chunk in data.chunks(CHUNK) {
+            if job.canceled() {
+                let _ = input.channel.close().await;
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "canceled"));
+            }
+            input.channel.data(chunk).await.map_err(other)?;
+            job.update(|p| p.bytes += chunk.len() as u64);
+        }
+        input.channel.data(&[0u8][..]).await.map_err(other)?;
+        input.ack().await?;
+        job.update(|p| p.files_done += 1);
+    }
+    let _ = input.channel.eof().await;
+    let _ = input.channel.close().await;
+    Ok(())
+}
+
+async fn download(
+    handle: &Handle<Client>,
+    remote: &str,
+    local_dir: &Path,
+    job: &ScpJob,
+) -> io::Result<()> {
+    if remote.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "remote path is empty",
+        ));
+    }
+    let channel = open_exec(handle, format!("scp -f -- {}", shell_quote(remote))).await?;
+    let mut input = ChannelIn {
+        channel,
+        buf: Vec::new(),
+        eof: false,
+    };
+    input.channel.data(&[0u8][..]).await.map_err(other)?;
+    loop {
+        if input.at_end().await {
+            break;
+        }
+        let first = input.byte().await?;
+        match first {
+            b'C' => {}
+            // 時刻（-p）。使わないが、受け取ったら応答する
+            b'T' => {
+                input.line().await?;
+                input.channel.data(&[0u8][..]).await.map_err(other)?;
+                continue;
+            }
+            1 | 2 => return Err(other(format!("scp: {}", input.line().await?))),
+            b'D' | b'E' => return Err(other("scp: folders are not supported")),
+            _ => return Err(other("scp: unexpected data")),
+        }
+        // Cmmmm size name
+        let line = input.line().await?;
+        let mut parts = line.splitn(3, ' ');
+        let _mode = parts.next();
+        let size: u64 = parts
+            .next()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| other("scp: bad header"))?;
+        let name = parts.next().unwrap_or("received").to_owned();
+        let path = unique_path(local_dir, &name);
+        let mut file = std::fs::File::create(&path).map_err(|e| with_path(e, &path))?;
+        job.update(|p| {
+            p.file = Some(name.clone());
+            p.bytes = 0;
+            p.total = Some(size);
+        });
+        input.channel.data(&[0u8][..]).await.map_err(other)?;
+        let mut left = size;
+        while left > 0 {
+            if job.canceled() {
+                drop(file);
+                let _ = std::fs::remove_file(&path);
+                let _ = input.channel.close().await;
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "canceled"));
+            }
+            if input.buf.is_empty() {
+                input.fill().await?;
+            }
+            let n = (left as usize).min(input.buf.len());
+            file.write_all(&input.buf[..n])?;
+            input.buf.drain(..n);
+            left -= n as u64;
+            job.update(|p| p.bytes += n as u64);
+        }
+        file.sync_all()?;
+        input.ack().await?;
+        input.channel.data(&[0u8][..]).await.map_err(other)?;
+        job.update(|p| {
+            p.files_done += 1;
+            p.saved.push(path.clone());
+        });
+    }
+    let _ = input.channel.close().await;
+    Ok(())
+}
+
+/// 既存のファイルと重ならない名前（`a.txt` → `a.1.txt`）。相手から来た名前のフォルダ部分は捨てる。
+fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    let base = Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty() && n != "." && n != "..")
+        .unwrap_or_else(|| "received".to_owned());
+    let candidate = dir.join(&base);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let (stem, ext) = match base.rfind('.') {
+        Some(i) if i > 0 => (&base[..i], &base[i..]),
+        _ => (base.as_str(), ""),
+    };
+    (1..)
+        .map(|n| dir.join(format!("{stem}.{n}{ext}")))
+        .find(|p| !p.exists())
+        .unwrap_or(candidate)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quoting_and_names() {
+        assert_eq!(shell_quote("my file's.txt"), r"'my file'\''s.txt'");
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(unique_path(dir.path(), "../x"), dir.path().join("x"));
+    }
+}

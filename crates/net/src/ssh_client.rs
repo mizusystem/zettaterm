@@ -56,6 +56,8 @@ pub struct SshTransport {
     runtime: Option<Runtime>,
     commands: mpsc::UnboundedSender<Command>,
     received: Option<std_mpsc::Receiver<Vec<u8>>>,
+    /// SCP など、同じ接続の上に別のチャネルを開くため
+    handle: Arc<Handle<Client>>,
 }
 
 impl SshTransport {
@@ -82,12 +84,20 @@ impl SshTransport {
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (data_tx, data_rx) = std_mpsc::channel();
-        runtime.spawn(pump(handle, channel, cmd_rx, data_tx));
+        let handle = Arc::new(handle);
+        runtime.spawn(pump(Arc::clone(&handle), channel, cmd_rx, data_tx));
         Ok(Self {
             runtime: Some(runtime),
             commands: cmd_tx,
             received: Some(data_rx),
+            handle,
         })
+    }
+
+    /// この接続でファイルをやり取りする窓口（SCP）。接続が閉じると使えなくなる。
+    pub fn files(&self) -> Option<crate::scp::SshFiles> {
+        let rt = self.runtime.as_ref()?.handle().clone();
+        Some(crate::scp::SshFiles::new(Arc::clone(&self.handle), rt))
     }
 }
 
@@ -177,7 +187,7 @@ fn other(e: impl std::fmt::Display) -> io::Error {
 
 /// チャネルとターミナルの間でデータを運ぶ。どちらかが閉じたら終わる。
 async fn pump(
-    handle: Handle<Client>,
+    handle: Arc<Handle<Client>>,
     channel: russh::Channel<client::Msg>,
     mut commands: mpsc::UnboundedReceiver<Command>,
     received: std_mpsc::Sender<Vec<u8>>,
@@ -373,7 +383,7 @@ fn spawn_proxy_command(
 }
 
 /// russh のコールバック。ホスト鍵の確認とバナーの受け取り。
-struct Client {
+pub(crate) struct Client {
     host: String,
     port: u16,
     strict: StrictHostKeyChecking,
