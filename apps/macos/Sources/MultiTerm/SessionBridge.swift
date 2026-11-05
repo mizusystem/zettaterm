@@ -12,15 +12,18 @@ final class SessionBridge: SessionListener, @unchecked Sendable {
     private let handleState: @Sendable (SessionState) -> Void
     private let handleTitle: @Sendable (String) -> Void
     private let handleBell: @Sendable () -> Void
+    private let handleTransfer: @Sendable (TransferRequest) -> Void
 
     init(
         onState: @escaping @Sendable (SessionState) -> Void,
         onTitle: @escaping @Sendable (String) -> Void,
-        onBell: @escaping @Sendable () -> Void
+        onBell: @escaping @Sendable () -> Void,
+        onTransferRequest: @escaping @Sendable (TransferRequest) -> Void
     ) {
         handleState = onState
         handleTitle = onTitle
         handleBell = onBell
+        handleTransfer = onTransferRequest
     }
 
     /// 前回から再描画が必要になったかを返し、フラグを下ろす。
@@ -46,6 +49,11 @@ final class SessionBridge: SessionListener, @unchecked Sendable {
     func onBell() {
         let handler = handleBell
         DispatchQueue.main.async { handler() }
+    }
+
+    func onTransferRequest(request: TransferRequest) {
+        let handler = handleTransfer
+        DispatchQueue.main.async { handler(request) }
     }
 
     func onTitle(title: String) {

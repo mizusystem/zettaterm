@@ -244,6 +244,31 @@ pub struct TerminalSettings {
     pub newline_receive: NewlineReceive,
     pub newline_send: NewlineSend,
     pub local_echo: bool,
+    /// Tera Term の「エンコーディング-受信」
+    pub charset_receive: Charset,
+    /// Tera Term の「エンコーディング-送信」
+    pub charset_send: Charset,
+}
+
+/// 相手との間の文字コード。端末の中は UTF-8 で扱う。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum Charset {
+    Utf8,
+    ShiftJis,
+    EucJp,
+    /// ISO-2022-JP
+    Jis,
+}
+
+impl From<Charset> for core::Charset {
+    fn from(c: Charset) -> Self {
+        match c {
+            Charset::Utf8 => Self::Utf8,
+            Charset::ShiftJis => Self::ShiftJis,
+            Charset::EucJp => Self::EucJp,
+            Charset::Jis => Self::Jis,
+        }
+    }
 }
 
 /// 既定値（受信 CR、送信 CR、ローカルエコーなし。TERATERM.INI と同じ）。
@@ -253,6 +278,8 @@ pub fn default_terminal_settings() -> TerminalSettings {
         newline_receive: NewlineReceive::Cr,
         newline_send: NewlineSend::Cr,
         local_echo: false,
+        charset_receive: Charset::Utf8,
+        charset_send: Charset::Utf8,
     }
 }
 
@@ -271,6 +298,8 @@ impl TerminalSettings {
                 NewlineSend::Lf => core::NewlineSend::Lf,
             },
             local_echo: self.local_echo,
+            charset_receive: self.charset_receive.into(),
+            charset_send: self.charset_send.into(),
         }
     }
 }

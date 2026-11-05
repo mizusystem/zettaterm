@@ -8,7 +8,7 @@ final class TerminalController: ObservableObject {
     enum Status { case disconnected, connecting, connected, reconnecting }
 
     enum Sheet: String, Identifiable {
-        case newConnection, serialSettings, terminalSettings, log, broadcast, auth
+        case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer
         var id: String { rawValue }
     }
 
@@ -18,6 +18,8 @@ final class TerminalController: ObservableObject {
     let prompter = SshPrompterBridge()
     /// 答え待ちの問い合わせ（sheet == .auth のときに出す）
     @Published private(set) var authPrompt: AuthPrompt?
+    /// 進行中（か、終わったばかり）のファイル転送
+    @Published var transfer: ActiveTransfer?
 
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false
@@ -36,6 +38,7 @@ final class TerminalController: ObservableObject {
         view.onState = { [weak self] state in self?.handle(state) }
         view.onTitle = { [weak self] title in self?.remoteTitle = title }
         view.onError = { [weak self] error in self?.report(error) }
+        view.onTransferRequest = { [weak self] request in self?.handleTransferRequest(request) }
         view.prompter = prompter
         prompter.controller = self
         SessionRegistry.shared.register(self)
@@ -233,7 +236,7 @@ final class TerminalController: ObservableObject {
         }
     }
 
-    private func report(_ error: Error) {
+    func report(_ error: Error) {
         errorMessage = Self.describe(error)
     }
 

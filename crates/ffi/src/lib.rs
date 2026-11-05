@@ -13,14 +13,16 @@ use mt_serial::SerialTransport;
 
 mod auth;
 mod history;
+mod transfer;
 pub use auth::{
     AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
     KeyboardPrompt, SshPrompter,
 };
+pub use transfer::{TransferHandle, TransferProgress, TransferProtocol, TransferStatus};
 mod serial;
 pub use history::{HostHistory, ssh_config_hosts};
 pub use serial::{
-    DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, NewlineReceive,
+    Charset, DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, NewlineReceive,
     NewlineSend, Parity, SerialDevice, SerialSettings, StopBits, TerminalSettings,
     default_serial_settings, default_terminal_settings, list_serial_devices,
 };
@@ -137,6 +139,17 @@ pub trait SessionListener: Send + Sync {
     fn on_state(&self, state: SessionState);
     fn on_bell(&self);
     fn on_title(&self, title: String);
+    /// 相手で ZMODEM の sz / rz が動いた（Tera Term の自動切り替え）。
+    fn on_transfer_request(&self, request: TransferRequest);
+}
+
+/// 相手で始まった ZMODEM の向き。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TransferRequest {
+    /// 相手で sz が動いた（こちらが受け取る）
+    ZmodemReceive,
+    /// 相手で rz が動いた（こちらから送る）
+    ZmodemSend,
 }
 
 struct ListenerAdapter(Arc<dyn SessionListener>);
@@ -153,6 +166,12 @@ impl core::SessionListener for ListenerAdapter {
     }
     fn on_title(&self, title: String) {
         self.0.on_title(title);
+    }
+    fn on_transfer_request(&self, request: core::TransferRequest) {
+        self.0.on_transfer_request(match request {
+            core::TransferRequest::ZmodemReceive => TransferRequest::ZmodemReceive,
+            core::TransferRequest::ZmodemSend => TransferRequest::ZmodemSend,
+        });
     }
 }
 
@@ -458,6 +477,28 @@ impl Session {
     /// 受信データのログを始める。記録中なら切り替える。
     pub fn log_start(&self, options: LogOptions) -> Result<(), MtError> {
         Ok(self.inner.log_start(&options.to_core())?)
+    }
+
+    /// ファイル転送を始める。`files` は送るファイル（XMODEM は 1 つ）、`destination` は受け取り先
+    /// （XMODEM はファイル、YMODEM / ZMODEM はフォルダ）。進み具合は返る TransferHandle で見る。
+    pub fn start_transfer(
+        &self,
+        protocol: TransferProtocol,
+        send: bool,
+        files: Vec<String>,
+        destination: Option<String>,
+    ) -> Result<Arc<TransferHandle>, MtError> {
+        let (handle, divert) = transfer::create(protocol, send, files, destination)?;
+        self.inner.start_transfer(divert)?;
+        Ok(handle)
+    }
+
+    pub fn cancel_transfer(&self) {
+        self.inner.cancel_transfer();
+    }
+
+    pub fn is_transferring(&self) -> bool {
+        self.inner.is_transferring()
     }
 
     pub fn log_stop(&self) {

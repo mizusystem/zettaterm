@@ -61,6 +61,7 @@ struct TerminalWindow: View {
                 case .log: LogOptionsView(controller: controller)
                 case .broadcast: BroadcastView(controller: controller)
                 case .auth: AuthPromptView(controller: controller)
+                case .transfer: TransferView(controller: controller)
                 }
             }
             .alert(
@@ -94,6 +95,22 @@ extension TerminalWindow {
         frame.size = CGSize(width: w, height: h)
         if let screen = window.screen?.visibleFrame { frame = frame.intersection(screen) }
         window.setFrame(frame, display: true, animate: true)
+    }
+}
+
+private func sendKey(_ k: TransferKind) -> String {
+    switch k {
+    case .xmodem: return "MENU_TRANS_X_SEND"
+    case .ymodem: return "MENU_TRANS_Y_SEND"
+    case .zmodem: return "MENU_TRANS_Z_SEND"
+    }
+}
+
+private func receiveKey(_ k: TransferKind) -> String {
+    switch k {
+    case .xmodem: return "MENU_TRANS_X_RCV"
+    case .ymodem: return "MENU_TRANS_Y_RCV"
+    case .zmodem: return "MENU_TRANS_Z_RCV"
     }
 }
 
@@ -147,6 +164,18 @@ struct TerminalCommands: Commands {
                 .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_SERIALPORT", "シリアルポート...")) { controller?.sheet = .serialSettings }
                 .disabled(controller == nil)
+        }
+
+        CommandMenu(TT.text("MENU_TRANS", "転送")) {
+            ForEach(TransferKind.allCases) { kind in
+                Menu(kind.rawValue) {
+                    Button(TT.text(sendKey(kind), "送信...")) { controller?.beginSend(kind) }
+                    Button(TT.text(receiveKey(kind), "受信...") + (kind == .zmodem ? "..." : "")) {
+                        controller?.beginReceive(kind)
+                    }
+                }
+                .disabled(controller?.isConnected != true || controller?.transfer != nil)
+            }
         }
 
         CommandMenu(TT.text("MENU_CONTROL", "コントロール")) {

@@ -27,6 +27,7 @@ Command Line Tools を指しているなら `DEVELOPER_DIR=/Applications/Xcode.a
 | `Sources/MultiTerm/WindowTabs.swift` | ネイティブタブ（新しいタブ・セッションの複製） |
 | `Sources/MultiTerm/BroadcastView.swift` | 「ブロードキャストコマンド」（複数セッションへ一斉送信） |
 | `Sources/MultiTerm/AuthPrompts.swift` | SSH の問い合わせの受け口。コアのスレッドからの問い合わせをシートに出して答えを待つ。パスワードのメモリ記憶 |
+| `Sources/MultiTerm/TransferView.swift` | 「転送」メニューの送信・受信、進み具合のシート、ZMODEM の自動受信 |
 | `Sources/MultiTerm/AuthViews.swift` | TTSSH の「セキュリティ警告」「SSH認証」「SSH 認証チャレンジ」とパスフレーズ入力 |
 | `Sources/MultiTerm/TerminalSettingsView.swift` | 「端末」（改行コード・ローカルエコー。シリアルとそれ以外で別に保存） |
 | `Sources/MultiTerm/SerialSettingsView.swift` | 「シリアルポート」設定。新規オープン / クローズ＆新規オープン / 現在の接続を再設定 |
@@ -51,6 +52,8 @@ Command Line Tools を指しているなら `DEVELOPER_DIR=/Applications/Xcode.a
 - 接続（Telnet の TCP 接続、SSH の認証など）は GCD のスレッドで待ち、その間タイトルに「[接続中]」を出す。SSH の問い合わせはそのスレッドを止めてダイアログの答えを待つ
 - SSH は内蔵（russh）が既定。「新しい接続」で「システムの ssh を使う」を選ぶと外部の ssh を起動し、認証は端末の中で行う
 - シートを出すときにウィンドウが小さければ広げる
+- 相手で `sz` が動いたら（ZMODEM の開始を検出したら）、尋ねずにダウンロードフォルダへ受け取る（Tera Term と同じ）。`rz` が動いたら送るファイルを選ぶ
+- リソース（文言）は `Bundle.module` ではなく、まず .app の Contents/Resources から探す（`Bundle.module` はビルドフォルダを見に行き、フォルダのアクセス確認で起動が止まるため）
 - macOS では mark / space パリティと DSR/DTR フロー制御はまだ使えない（serialport が未対応）
 - 最低対応は macOS 14（`NSView.displayLink` を使うため）。最終決定は未決事項
 - 最初のターゲットは Apple Silicon のみ

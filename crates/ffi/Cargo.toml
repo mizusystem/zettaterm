@@ -24,6 +24,7 @@ mt-core.workspace = true
 mt-serial.workspace = true
 mt-net.workspace = true
 uniffi = "0.32.2"
+mt-xfer.workspace = true
 
 [lints]
 workspace = true

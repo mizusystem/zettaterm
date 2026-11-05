@@ -44,6 +44,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 - `crates/core/src/transport.rs`（Transport と DeviceListener の契約）
 - `crates/core/src/session.rs` の公開シグネチャ（Session、SessionListener）
 - `crates/core/src/auth.rs`（SSH の認証・ホスト鍵確認の問い合わせ AuthPrompter）
+- `crates/core/src/transfer.rs`（ファイル転送中の受信の行き先 ByteDivert）
 - `crates/vt/src/types.rs` と `crates/vt/src/keys.rs` の型（snapshot と入力の形）
 - `crates/ffi` の公開 API
 - `CLAUDE.md`、`docs/design.md`、`.claude/agents/`
@@ -104,5 +105,13 @@ cargo test -p mt-net --test ssh_client                        # 同じプロセ�
 cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234）
 cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
 ```
+
+ファイル転送（XMODEM / YMODEM / ZMODEM）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `mt_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
+
+```bash
+cargo test -p mt-xfer --test lrzsz -- --nocapture
+```
+
+Kermit は未実装（Phase 3 の残り）。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
 
 接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。

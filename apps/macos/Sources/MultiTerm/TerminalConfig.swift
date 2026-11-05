@@ -10,9 +10,53 @@ struct TerminalConfig: Codable, Hashable, Sendable {
     /// 並びは Tera Term の NLList（CR, CR+LF, LF）と同じ
     enum Send: String, Codable, CaseIterable, Sendable { case cr, crLf, lf }
 
+    /// 相手との間の文字コード（Tera Term の「エンコーディング-受信 / 送信」）
+    enum CharsetChoice: String, Codable, CaseIterable, Sendable {
+        case utf8, shiftJis, eucJp, jis
+
+        var label: String {
+            switch self {
+            case .utf8: return "UTF-8"
+            case .shiftJis: return "Shift_JIS"
+            case .eucJp: return "EUC-JP"
+            case .jis: return "JIS"
+            }
+        }
+
+        var core: Charset {
+            switch self {
+            case .utf8: return .utf8
+            case .shiftJis: return .shiftJis
+            case .eucJp: return .eucJp
+            case .jis: return .jis
+            }
+        }
+    }
+
     var receive: Receive = .cr
     var send: Send = .cr
     var localEcho = false
+    var charsetReceive: CharsetChoice = .utf8
+    var charsetSend: CharsetChoice = .utf8
+
+    init(receive: Receive = .cr, send: Send = .cr, localEcho: Bool = false,
+         charsetReceive: CharsetChoice = .utf8, charsetSend: CharsetChoice = .utf8) {
+        self.receive = receive
+        self.send = send
+        self.localEcho = localEcho
+        self.charsetReceive = charsetReceive
+        self.charsetSend = charsetSend
+    }
+
+    /// 前の版で保存した設定（文字コードの項目が無い）も読めるようにする
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        receive = try c.decodeIfPresent(Receive.self, forKey: .receive) ?? .cr
+        send = try c.decodeIfPresent(Send.self, forKey: .send) ?? .cr
+        localEcho = try c.decodeIfPresent(Bool.self, forKey: .localEcho) ?? false
+        charsetReceive = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetReceive) ?? .utf8
+        charsetSend = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetSend) ?? .utf8
+    }
 
     var settings: TerminalSettings {
         TerminalSettings(
@@ -31,7 +75,9 @@ struct TerminalConfig: Codable, Hashable, Sendable {
                 case .lf: return .lf
                 }
             }(),
-            localEcho: localEcho
+            localEcho: localEcho,
+            charsetReceive: charsetReceive.core,
+            charsetSend: charsetSend.core
         )
     }
 

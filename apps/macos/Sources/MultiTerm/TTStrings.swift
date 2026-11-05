@@ -20,8 +20,19 @@ enum TT {
         return all
     }()
 
+    /// リソースの入った SwiftPM のバンドル。`.app` では Contents/Resources に置いてある。
+    /// `Bundle.module` は .app の直下とビルドフォルダしか探さず、ビルドフォルダ（~/Desktop の下など）に
+    /// 触るとフォルダのアクセス確認が出て起動が止まるので、先に自分で探す。
+    private static let resources: Bundle = {
+        if let url = Bundle.main.url(forResource: "MultiTerm_MultiTerm", withExtension: "bundle"),
+           let bundle = Bundle(url: url) {
+            return bundle
+        }
+        return Bundle.module
+    }()
+
     private static func loadJSON(_ name: String) -> Any? {
-        guard let url = Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "spec"),
+        guard let url = resources.url(forResource: name, withExtension: "json", subdirectory: "spec"),
               let data = try? Data(contentsOf: url)
         else { return nil }
         return try? JSONSerialization.jsonObject(with: data)

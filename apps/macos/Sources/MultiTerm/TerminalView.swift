@@ -8,6 +8,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var onTitle: ((String) -> Void)?
     var onState: ((SessionState) -> Void)?
     var onError: ((Error) -> Void)?
+    var onTransferRequest: ((TransferRequest) -> Void)?
 
     private(set) var session: Session?
     /// 次に接続するときの改行コードとローカルエコー
@@ -103,6 +104,12 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             },
             onBell: {
                 MainActor.assumeIsolated { NSSound.beep() }
+            },
+            onTransferRequest: { [weak self] request in
+                MainActor.assumeIsolated {
+                    guard let self, self.sessionToken == token else { return }
+                    self.onTransferRequest?(request)
+                }
             }
         )
         let terminal = terminalSettings

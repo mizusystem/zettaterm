@@ -35,6 +35,27 @@ struct TerminalSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            GroupBox("エンコーディング") {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                    GridRow {
+                        Text(TT.text("DLG_TERM_KANJI", "エンコーディング-受信:")).gridColumnAlignment(.trailing)
+                        Picker("", selection: $config.charsetReceive) {
+                            ForEach(TerminalConfig.CharsetChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
+                    }
+                    GridRow {
+                        Text(TT.text("DLG_TERM_KANJISEND", "エンコーディング-送信:"))
+                        Picker("", selection: $config.charsetSend) {
+                            ForEach(TerminalConfig.CharsetChoice.allCases, id: \.self) { Text($0.label).tag($0) }
+                        }
+                        .labelsHidden().fixedSize()
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
             Toggle(TT.text("DLG_TERM_LOCALECHO", "ローカルエコー:").trimmingCharacters(in: CharacterSet(charactersIn: ":：")),
                    isOn: $config.localEcho)
 

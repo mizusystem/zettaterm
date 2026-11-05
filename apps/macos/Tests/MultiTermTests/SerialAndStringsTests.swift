@@ -62,8 +62,19 @@ final class TerminalConfigTests: XCTestCase {
 
     func testConvertsToCoreSettings() {
         let c = TerminalConfig(receive: .auto, send: .crLf, localEcho: true)
-        XCTAssertEqual(c.settings, TerminalSettings(newlineReceive: .auto, newlineSend: .crLf, localEcho: true))
+        XCTAssertEqual(c.settings, TerminalSettings(newlineReceive: .auto, newlineSend: .crLf, localEcho: true,
+                                                    charsetReceive: .utf8, charsetSend: .utf8))
+        let sjis = TerminalConfig(charsetReceive: .shiftJis, charsetSend: .eucJp)
+        XCTAssertEqual(sjis.settings.charsetReceive, .shiftJis)
+        XCTAssertEqual(sjis.settings.charsetSend, .eucJp)
         XCTAssertEqual(TerminalConfig().settings, defaultTerminalSettings())
+    }
+
+    func testOldSavedSettingsWithoutCharsetStillDecode() throws {
+        let old = #"{"receive":"auto","send":"cr","localEcho":false}"#.data(using: .utf8)!
+        let c = try JSONDecoder().decode(TerminalConfig.self, from: old)
+        XCTAssertEqual(c.receive, .auto)
+        XCTAssertEqual(c.charsetReceive, .utf8)
     }
 
     func testScopeSeparatesSerialFromOthers() {

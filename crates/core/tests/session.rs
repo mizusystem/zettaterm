@@ -328,3 +328,140 @@ fn enter_uses_send_newline_and_local_echo_shows_input() {
     session.paste("a\nb".into());
     assert_eq!(remote.recv(WAIT).unwrap(), b"a\r\nb");
 }
+
+#[test]
+fn shift_jis_is_converted_both_ways() {
+    use mt_core::{Charset, TerminalSettings};
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_terminal_settings(TerminalSettings {
+        charset_receive: Charset::ShiftJis,
+        charset_send: Charset::ShiftJis,
+        ..Default::default()
+    });
+    // 「日本」を Shift_JIS で、1 文字目の途中で割って受信する
+    remote.send(b"\x93");
+    remote.send(b"\xfa\x96\x7b");
+    assert!(wait_until(|| screen_text(&session).starts_with("日本")));
+    session.key(Key::Text("あ".into()), Modifiers::default());
+    assert_eq!(remote.recv(WAIT).unwrap(), b"\x82\xa0");
+}
+
+/// 決まった応答をする転送の代役。受信の行き先が切り替わることを確かめる。
+struct EchoDivert {
+    got: Arc<Mutex<Vec<u8>>>,
+    done_after: usize,
+    ticks: Arc<AtomicUsize>,
+}
+
+impl mt_core::ByteDivert for EchoDivert {
+    fn start(&mut self) -> Vec<u8> {
+        b"START".to_vec()
+    }
+    fn receive(&mut self, data: &[u8]) -> Vec<u8> {
+        self.got.lock().unwrap().extend_from_slice(data);
+        b"ACK".to_vec()
+    }
+    fn tick(&mut self) -> Vec<u8> {
+        self.ticks.fetch_add(1, Ordering::SeqCst);
+        Vec::new()
+    }
+    fn cancel(&mut self) -> Vec<u8> {
+        b"CANCEL".to_vec()
+    }
+    fn finished(&self) -> bool {
+        self.got.lock().unwrap().len() >= self.done_after
+    }
+}
+
+#[test]
+fn transfer_diverts_received_bytes_until_finished() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    let got = Arc::new(Mutex::new(Vec::new()));
+    let ticks = Arc::new(AtomicUsize::new(0));
+    session
+        .start_transfer(Box::new(EchoDivert {
+            got: got.clone(),
+            done_after: 6,
+            ticks: ticks.clone(),
+        }))
+        .unwrap();
+    assert_eq!(remote.recv(WAIT).unwrap(), b"START");
+    assert!(session.is_transferring());
+    // 2 つ目は始められない
+    assert!(
+        session
+            .start_transfer(Box::new(EchoDivert {
+                got: got.clone(),
+                done_after: 1,
+                ticks: ticks.clone()
+            }))
+            .is_err()
+    );
+
+    // 見回り（tick）が回ることも確かめる
+    std::thread::sleep(Duration::from_millis(100));
+    remote.send(b"abc");
+    assert_eq!(remote.recv(WAIT).unwrap(), b"ACK");
+    remote.send(b"def");
+    assert_eq!(remote.recv(WAIT).unwrap(), b"ACK");
+    assert!(wait_until(|| !session.is_transferring()));
+    assert!(ticks.load(Ordering::SeqCst) > 0);
+    // 転送中の受信は画面に出ていない。終わったら端末に戻る
+    assert!(!screen_text(&session).contains("abc"));
+    remote.send(b"back");
+    assert!(wait_until(|| screen_text(&session).contains("back")));
+}
+
+#[test]
+fn cancel_transfer_sends_the_cancel_sequence() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    let got = Arc::new(Mutex::new(Vec::new()));
+    session
+        .start_transfer(Box::new(EchoDivert {
+            got,
+            done_after: 100,
+            ticks: Arc::default(),
+        }))
+        .unwrap();
+    assert_eq!(remote.recv(WAIT).unwrap(), b"START");
+    session.cancel_transfer();
+    assert_eq!(remote.recv(WAIT).unwrap(), b"CANCEL");
+    assert!(!session.is_transferring());
+}
+
+#[test]
+fn zmodem_start_is_detected() {
+    #[derive(Default)]
+    struct Requests(Mutex<Vec<mt_core::TransferRequest>>);
+    impl SessionListener for Requests {
+        fn on_damage(&self) {}
+        fn on_state(&self, _: SessionState) {}
+        fn on_bell(&self) {}
+        fn on_title(&self, _: String) {}
+        fn on_transfer_request(&self, r: mt_core::TransferRequest) {
+            self.0.lock().unwrap().push(r);
+        }
+    }
+    let (transport, remote) = MockTransport::pair();
+    let listener = Arc::new(Requests::default());
+    let options = SessionOptions {
+        size: WindowSize::new(40, 4),
+        ..Default::default()
+    };
+    let session = Session::open(Box::new(transport), options, listener.clone()).unwrap();
+    remote.send(b"$ sz file\r\nrz\r**\x18B00000000000000\r\x8a\x11");
+    assert!(wait_until(|| !listener.0.lock().unwrap().is_empty()));
+    assert_eq!(
+        *listener.0.lock().unwrap(),
+        [mt_core::TransferRequest::ZmodemReceive]
+    );
+    // ヘッダより手前は画面に出て、ヘッダは出ない
+    assert!(wait_until(|| screen_text(&session).contains("$ sz file")));
+    assert!(!screen_text(&session).contains("B0000"));
+}

@@ -18,8 +18,10 @@ use std::time::Duration;
 
 use mt_vt::{GridSnapshot, Key, Modifiers, Row, Terminal, VtEvent};
 
+use crate::charset::{self, Charset, ReceiveDecoder};
 use crate::log::{LogOptions, Logger};
 use crate::newline::{NewlineReceive, NewlineSend, ReceiveConverter};
+use crate::transfer::{ByteDivert, TransferRequest, ZmodemDetector};
 use crate::transport::{SendDelay, SerialSettings, Transport, WindowSize};
 
 /// 既定のスクロールバック行数
@@ -44,6 +46,8 @@ pub trait SessionListener: Send + Sync {
     fn on_state(&self, state: SessionState);
     fn on_bell(&self);
     fn on_title(&self, title: String);
+    /// 相手で ZMODEM の sz / rz が動いた（Tera Term の自動切り替え）。転送中は呼ばない。
+    fn on_transfer_request(&self, _request: TransferRequest) {}
 }
 
 /// Tera Term の「設定 > 端末」のうち、Session が扱う項目。
@@ -53,6 +57,10 @@ pub struct TerminalSettings {
     pub newline_send: NewlineSend,
     /// 送ったキー入力を自分の画面にも出す
     pub local_echo: bool,
+    /// 受信の文字コード（Tera Term の「エンコーディング-受信」）
+    pub charset_receive: Charset,
+    /// 送信の文字コード（Tera Term の「エンコーディング-送信」）
+    pub charset_send: Charset,
 }
 
 pub struct SessionOptions {
@@ -82,6 +90,8 @@ pub struct Session {
 
 enum WriterMsg {
     Data(Vec<u8>),
+    /// 送信遅延をかけずに送る（ファイル転送）
+    Raw(Vec<u8>),
     /// 再接続後の新しい送信先
     Replace(Box<dyn Write + Send>),
     Delay(SendDelay),
@@ -100,6 +110,11 @@ struct Inner {
     log: Mutex<Option<Logger>>,
     newline_receive: Mutex<ReceiveConverter>,
     newline_send: Mutex<NewlineSend>,
+    decoder: Mutex<ReceiveDecoder>,
+    charset_send: Mutex<Charset>,
+    /// ファイル転送中の受信の行き先
+    divert: Mutex<Option<Box<dyn ByteDivert>>>,
+    zmodem: Mutex<ZmodemDetector>,
     local_echo: AtomicBool,
 }
 
@@ -128,6 +143,10 @@ impl Session {
             log: Mutex::new(None),
             newline_receive: Mutex::new(ReceiveConverter::new(options.terminal.newline_receive)),
             newline_send: Mutex::new(options.terminal.newline_send),
+            decoder: Mutex::new(ReceiveDecoder::new(options.terminal.charset_receive)),
+            charset_send: Mutex::new(options.terminal.charset_send),
+            divert: Mutex::new(None),
+            zmodem: Mutex::new(ZmodemDetector::default()),
             local_echo: AtomicBool::new(options.terminal.local_echo),
         });
 
@@ -171,12 +190,17 @@ impl Session {
         self.send_user(bytes);
     }
 
-    /// 利用者の入力を送る。ローカルエコーなら自分の画面にも出す。
+    /// 利用者の入力を送る。ローカルエコーなら自分の画面にも出す。送信の文字コードに変換して送る。
     fn send_user(&self, bytes: Vec<u8>) {
         if self.inner.local_echo.load(Ordering::SeqCst) {
             self.inner.echo(&bytes);
         }
-        self.write(bytes);
+        let cs = *self
+            .inner
+            .charset_send
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        self.write(charset::encode_send(cs, bytes));
     }
 
     pub fn set_terminal_settings(&self, t: TerminalSettings) {
@@ -191,6 +215,17 @@ impl Session {
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = t.newline_send;
         self.inner.local_echo.store(t.local_echo, Ordering::SeqCst);
+        {
+            let mut d = self.inner.decoder.lock().unwrap_or_else(|e| e.into_inner());
+            if d.charset() != t.charset_receive {
+                *d = ReceiveDecoder::new(t.charset_receive);
+            }
+        }
+        *self
+            .inner
+            .charset_send
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = t.charset_send;
     }
 
     pub fn resize(&self, size: WindowSize) {
@@ -249,6 +284,55 @@ impl Session {
         self.inner.log().is_some()
     }
 
+    /// ファイル転送を始める。終わるまで受信は端末ではなく `divert` へ回る。
+    pub fn start_transfer(self: &Arc<Self>, mut divert: Box<dyn ByteDivert>) -> io::Result<()> {
+        {
+            let mut slot = self.inner.divert();
+            if slot.is_some() {
+                return Err(io::Error::other("a transfer is already running"));
+            }
+            let first = divert.start();
+            self.inner.raw(first);
+            *slot = Some(divert);
+        }
+        // 時間切れの再送と、送信の続きのための見回り
+        let inner = Arc::clone(&self.inner);
+        thread::Builder::new()
+            .name("mt-session-transfer".into())
+            .spawn(move || {
+                loop {
+                    thread::sleep(Duration::from_millis(20));
+                    let mut slot = inner.divert();
+                    let Some(d) = slot.as_mut() else { break };
+                    let out = d.tick();
+                    inner.raw(out);
+                    if d.finished() {
+                        *slot = None;
+                        inner
+                            .zmodem
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .reset();
+                        break;
+                    }
+                }
+            })?;
+        Ok(())
+    }
+
+    /// ファイル転送を中止する。
+    pub fn cancel_transfer(&self) {
+        let mut slot = self.inner.divert();
+        if let Some(mut d) = slot.take() {
+            let out = d.cancel();
+            self.inner.raw(out);
+        }
+    }
+
+    pub fn is_transferring(&self) -> bool {
+        self.inner.divert().is_some()
+    }
+
     pub fn state(&self) -> SessionState {
         self.inner
             .state
@@ -274,6 +358,12 @@ fn write_loop(rx: Receiver<WriterMsg>, writer: Box<dyn Write + Send>, mut delay:
                 let Some(w) = writer.as_mut() else { continue };
                 if write_with_delay(w.as_mut(), &bytes, delay).is_err() {
                     // 相手が消えた。再接続で新しい送信先が来るまで、送信データは捨てる
+                    writer = None;
+                }
+            }
+            WriterMsg::Raw(bytes) => {
+                let Some(w) = writer.as_mut() else { continue };
+                if w.write_all(&bytes).and_then(|()| w.flush()).is_err() {
                     writer = None;
                 }
             }
@@ -307,6 +397,16 @@ impl Inner {
     fn vt(&self) -> MutexGuard<'_, Terminal> {
         // VT 更新中に panic しても描画は続けたいので、毒化は無視する
         self.vt.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn divert(&self) -> MutexGuard<'_, Option<Box<dyn ByteDivert>>> {
+        self.divert.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn raw(&self, bytes: Vec<u8>) {
+        if !bytes.is_empty() {
+            let _ = self.tx.send(WriterMsg::Raw(bytes));
+        }
     }
 
     fn newline_send(&self) -> NewlineSend {
@@ -366,6 +466,36 @@ impl Inner {
 
     fn receive(&self, bytes: &[u8]) {
         {
+            let mut slot = self.divert();
+            if let Some(d) = slot.as_mut() {
+                let out = d.receive(bytes);
+                self.raw(out);
+                if d.finished() {
+                    *slot = None;
+                }
+                return;
+            }
+        }
+        // 相手の ZMODEM の開始を探す。見つかったら、その手前までを端末に出して知らせる
+        let detected = self
+            .zmodem
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .find(bytes);
+        let bytes = match detected {
+            Some((at, request)) => {
+                self.display(&bytes[..at]);
+                self.listener.on_transfer_request(request);
+                return;
+            }
+            None => bytes,
+        };
+        self.display(bytes);
+    }
+
+    /// 受信を端末に出す（ログ、文字コード、改行コード、VT）。
+    fn display(&self, bytes: &[u8]) {
+        {
             let mut log = self.log();
             if let Some(logger) = log.as_mut()
                 && logger.write(bytes).is_err()
@@ -374,11 +504,17 @@ impl Inner {
                 *log = None;
             }
         }
+        let decoded = self
+            .decoder
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .decode(bytes)
+            .into_owned();
         let converted = self
             .newline_receive
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .convert(bytes)
+            .convert(&decoded)
             .into_owned();
         let events = self.vt().feed(&converted);
         self.handle_events(events);
