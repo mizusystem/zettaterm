@@ -7,7 +7,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
 
     case localShell
     case serial(port: String, config: SerialConfig)
-    case ssh(host: String, port: UInt16?, user: String?)
+    /// `systemSSH` なら内蔵の SSH ではなくシステムの ssh を使う（認証は端末の中で行う）
+    case ssh(host: String, port: UInt16?, user: String?, systemSSH: Bool = false)
     case telnet(host: String, port: UInt16?, ip: IP)
     case tcp(host: String, port: UInt16, ip: IP)
 
@@ -17,8 +18,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             return .localShell(program: nil, args: [], cwd: nil)
         case let .serial(port, config):
             return .serial(port: port, settings: config.settings)
-        case let .ssh(host, port, user):
-            return .ssh(host: host, port: port, user: user)
+        case let .ssh(host, port, user, system):
+            return .ssh(host: host, port: port, user: user, systemSsh: system)
         case let .telnet(host, port, ip):
             return .telnet(host: host, port: port, ip: ip.core)
         case let .tcp(host, port, ip):
@@ -56,8 +57,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             c.delayPerCharMs = s.delayPerCharMs
             c.delayPerLineMs = s.delayPerLineMs
             self = .serial(port: port, config: c)
-        case let .ssh(host, port, user):
-            self = .ssh(host: host, port: port, user: user)
+        case let .ssh(host, port, user, system):
+            self = .ssh(host: host, port: port, user: user, systemSSH: system)
         case let .telnet(host, port, ip):
             self = .telnet(host: host, port: port, ip: IP(ip))
         case let .tcp(host, port, ip):
@@ -72,7 +73,7 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             return "ローカルシェル"
         case let .serial(port, config):
             return "\(port) - \(config.summary)"
-        case let .ssh(host, port, user):
+        case let .ssh(host, port, user, _):
             var s = user.map { "\($0)@" } ?? ""
             s += host
             if let port { s += ":\(port)" }
@@ -87,7 +88,7 @@ enum ConnectTarget: Codable, Hashable, Sendable {
     /// ホスト名（TCP/IP のときだけ）。
     var host: String? {
         switch self {
-        case let .ssh(host, _, _), let .telnet(host, _, _), let .tcp(host, _, _): return host
+        case let .ssh(host, _, _, _), let .telnet(host, _, _), let .tcp(host, _, _): return host
         default: return nil
         }
     }

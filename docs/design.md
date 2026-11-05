@@ -243,6 +243,6 @@ model: opus
 - [ ] ライセンス：MIT/Apache-2.0 デュアルか BSD-3-Clause
 - [ ] macOS の最低対応バージョン（最新のみに絞るか）
 - [ ] VT エンジン：alacritty\_terminal で確定するか、libghostty-vt の API 安定を待つか
-- [ ] SSH をいつ純 Rust（russh）に切り替えるか。外部 ssh のままだと Windows での挙動差が出る
+- [x] SSH をいつ純 Rust（russh）に切り替えるか → Phase 2 で切り替えた（2026-11-06）。TTSSH と同じく認証はダイアログ。ssh_config の対応外の項目が要る接続のため、システムの ssh も選べるようにしてある
 - [ ] TTL サブセットの範囲。自分の既存マクロで使っているコマンドを洗い出して決める
 - [ ] 設定の保存形式：TOML で確定するか、TERATERM.INI との双方向互換までやるか

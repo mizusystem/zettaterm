@@ -8,12 +8,16 @@ final class TerminalController: ObservableObject {
     enum Status { case disconnected, connecting, connected, reconnecting }
 
     enum Sheet: String, Identifiable {
-        case newConnection, serialSettings, terminalSettings, log, broadcast
+        case newConnection, serialSettings, terminalSettings, log, broadcast, auth
         var id: String { rawValue }
     }
 
     let view = TerminalView()
     let id = UUID()
+    /// SSH の認証・ホスト鍵確認をこのウィンドウのダイアログで尋ねる
+    let prompter = SshPrompterBridge()
+    /// 答え待ちの問い合わせ（sheet == .auth のときに出す）
+    @Published private(set) var authPrompt: AuthPrompt?
 
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false
@@ -32,6 +36,8 @@ final class TerminalController: ObservableObject {
         view.onState = { [weak self] state in self?.handle(state) }
         view.onTitle = { [weak self] title in self?.remoteTitle = title }
         view.onError = { [weak self] error in self?.report(error) }
+        view.prompter = prompter
+        prompter.controller = self
         SessionRegistry.shared.register(self)
     }
 
@@ -122,6 +128,7 @@ final class TerminalController: ObservableObject {
     }
 
     func disconnect() {
+        authSheetDismissed()
         attempt += 1
         view.disconnect()
         status = .disconnected
@@ -149,6 +156,37 @@ final class TerminalController: ObservableObject {
         guard let session = view.session, isConnected else { return }
         if !text.isEmpty { session.write(bytes: Data(text.utf8)) }
         if enter { session.key(key: .enter, mods: Modifiers(shift: false, ctrl: false, alt: false)) }
+    }
+
+    // MARK: SSH の問い合わせ
+
+    /// コアからの問い合わせをシートで出す。別のシートが閉じかけていれば、閉じ終わるのを待つ。
+    func present(_ prompt: AuthPrompt) {
+        if sheet != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                guard let self else { prompt.cancel(); return }
+                self.present(prompt)
+            }
+            return
+        }
+        authPrompt = prompt
+        sheet = .auth
+    }
+
+    /// ダイアログの答え。
+    func answer(_ answer: AuthPrompt.Answer) {
+        let prompt = authPrompt
+        authPrompt = nil
+        sheet = nil
+        prompt?.answer(answer)
+    }
+
+    /// シートが答えずに閉じられたとき（Esc など）。
+    func authSheetDismissed() {
+        if let prompt = authPrompt, !prompt.isAnswered {
+            authPrompt = nil
+            prompt.cancel()
+        }
     }
 
     // MARK: ログ
@@ -200,11 +238,30 @@ final class TerminalController: ObservableObject {
     }
 
     nonisolated static func describe(_ error: Error) -> String {
-        // コアのエラーは MtError.Io(message:)。メッセージだけを取り出す
+        localized(rawMessage(error))
+    }
+
+    /// コアのエラーは MtError.Io(message:)。メッセージだけを取り出す
+    nonisolated private static func rawMessage(_ error: Error) -> String {
         if let child = Mirror(reflecting: error).children.first {
             if let s = child.value as? String { return s }
             if let s = Mirror(reflecting: child.value).children.first?.value as? String { return s }
         }
         return error.localizedDescription
+    }
+
+    /// コアの英語のメッセージのうち、よく出るものを日本語にする。
+    nonisolated static func localized(_ message: String) -> String {
+        let table: [(String, String)] = [
+            ("authentication canceled", "認証を中止しました。"),
+            ("Unknown server key", "サーバーのホスト鍵を受け入れなかったため、接続を中止しました。"),
+            ("connection timed out", "接続がタイムアウトしました。"),
+            ("Connection refused", "接続を拒否されました（ホストまたはポートを確かめてください）。"),
+            ("host is empty", "ホストを入力してください。"),
+        ]
+        for (en, ja) in table where message.contains(en) {
+            return message == en ? ja : "\(ja)\n（\(message)）"
+        }
+        return message
     }
 }

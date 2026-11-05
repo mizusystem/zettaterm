@@ -3,6 +3,7 @@
 //!
 //! このクレートに `cfg(target_os)` を書かない。OS 固有コードは `mt-serial` と `mt-net` に閉じる。
 
+pub mod auth;
 pub mod log;
 pub mod mock;
 pub mod newline;
@@ -10,6 +11,10 @@ pub mod profile;
 pub mod session;
 pub mod transport;
 
+pub use auth::{
+    AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
+    HostKeyStatus, KeyboardPrompt, NoPrompt,
+};
 pub use log::{LogFormat, LogOptions, TimestampKind};
 pub use mt_vt::{Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, Modifiers, Row};
 pub use newline::{NewlineReceive, NewlineSend};

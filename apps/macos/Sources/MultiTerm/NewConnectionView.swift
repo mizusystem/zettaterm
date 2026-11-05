@@ -14,6 +14,7 @@ struct NewConnectionView: View {
 
     @AppStorage("newConnection.kind") private var savedKind = "tcpip"
     @AppStorage("newConnection.addToHistory") private var addToHistory = true
+    @AppStorage("ssh.systemSSH") private var systemSSH = false
     @State private var kind: Kind = .tcpip
     @State private var host = ""
     @State private var service: Service = .ssh
@@ -93,11 +94,16 @@ struct NewConnectionView: View {
             .disabled(kind != .tcpip)
 
             if kind == .tcpip && service == .ssh {
-                Text("SSH はシステムの ssh で接続します。~/.ssh/config の Host 名・User・Port・鍵がそのまま効きます。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.leading, 18)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("システムの ssh を使う（認証は端末の中で行う）", isOn: $systemSSH)
+                    Text(systemSSH
+                         ? "システムの ssh を起動します。~/.ssh/config のすべての項目が効きます。"
+                         : "~/.ssh/config の Host 名・User・Port・鍵・ProxyJump・ProxyCommand が効きます。パスワードなどはダイアログで尋ねます。")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 18)
             }
 
             Divider()
@@ -173,7 +179,7 @@ struct NewConnectionView: View {
             return
         }
         switch last {
-        case let .ssh(_, p, _): service = .ssh; portText = String(p ?? 22)
+        case let .ssh(_, p, _, system): service = .ssh; portText = String(p ?? 22); systemSSH = system
         case let .telnet(_, p, i): service = .telnet; portText = String(p ?? 23); ip = i
         case let .tcp(_, p, i): service = .other; portText = String(p); ip = i
         default: break
@@ -202,7 +208,7 @@ struct NewConnectionView: View {
             savedKind = "tcpip"
             let h = host.trimmingCharacters(in: .whitespaces)
             switch service {
-            case .ssh: target = .ssh(host: h, port: port == 22 ? nil : port, user: nil)
+            case .ssh: target = .ssh(host: h, port: port == 22 ? nil : port, user: nil, systemSSH: systemSSH)
             case .telnet: target = .telnet(host: h, port: port == 23 ? nil : port, ip: ip)
             case .other: target = .tcp(host: h, port: port ?? 23, ip: ip)
             }

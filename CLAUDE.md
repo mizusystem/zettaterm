@@ -43,6 +43,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 - `Cargo.toml`（ワークスペース）
 - `crates/core/src/transport.rs`（Transport と DeviceListener の契約）
 - `crates/core/src/session.rs` の公開シグネチャ（Session、SessionListener）
+- `crates/core/src/auth.rs`（SSH の認証・ホスト鍵確認の問い合わせ AuthPrompter）
 - `crates/vt/src/types.rs` と `crates/vt/src/keys.rs` の型（snapshot と入力の形）
 - `crates/ffi` の公開 API
 - `CLAUDE.md`、`docs/design.md`、`.claude/agents/`
@@ -96,10 +97,12 @@ MT_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p mt-serial -- --ignored --noc
 
 UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）からキーで引く。手で書き写さない。
 
-SSH はシステムの `ssh` を PTY で起動するので、利用者の ssh_config がそのまま効く。結合テストは一時的な sshd を一般ユーザー権限で 127.0.0.1 に立てて行う（sshd が必要なので既定では回さない）：
+SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`mt_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。
 
 ```bash
-cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture
+cargo test -p mt-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
+cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234）
+cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
 ```
 
 接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。

@@ -1,6 +1,6 @@
 [package]
 name = "mt-net"
-description = "SSH（外部 ssh を PTY 起動、後で russh）、Telnet、ローカル PTY"
+description = "SSH（russh、またはシステムの ssh を PTY 起動）、Telnet、生 TCP、ローカル PTY"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,10 +12,13 @@ name = "mt_net"
 [dependencies]
 mt-core.workspace = true
 portable-pty = "0.9.0"
-# 予定: russh
+russh = { version = "0.65.1", default-features = false, features = ["ring", "rsa", "flate2"] }
+ssh2-config = "0.9.0"
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "io-util", "process"] }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
+rand = { version = "0.10", features = ["thread_rng"] }
 tempfile = "3.27.0"

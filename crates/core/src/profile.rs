@@ -26,13 +26,16 @@ pub const MAX_RECENT: usize = 50;
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConnectionProfile {
     LocalShell,
-    /// システムの ssh で接続する。`host` は ssh_config の別名や `user@host` でもよい
+    /// SSH。`host` は ssh_config の別名や `user@host` でもよい。
+    /// `system_ssh` ならシステムの ssh を使う（既定は内蔵の SSH）
     Ssh {
         host: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         port: Option<u16>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         user: Option<String>,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        system_ssh: bool,
     },
     Telnet {
         host: String,
@@ -66,7 +69,9 @@ impl ConnectionProfile {
     pub fn label(&self) -> String {
         match self {
             Self::LocalShell => "local shell".to_owned(),
-            Self::Ssh { host, port, user } => {
+            Self::Ssh {
+                host, port, user, ..
+            } => {
                 let mut s = String::new();
                 if let Some(u) = user {
                     s.push_str(u);
@@ -155,6 +160,7 @@ mod tests {
             host: host.into(),
             port: None,
             user: None,
+            system_ssh: false,
         }
     }
 
@@ -205,6 +211,7 @@ mod tests {
             host: "web".into(),
             port: Some(2222),
             user: Some("kt".into()),
+            system_ssh: true,
         });
         h.push(ConnectionProfile::Serial {
             port: "/dev/cu.usbmodem1101".into(),
@@ -256,7 +263,8 @@ mod tests {
             ConnectionProfile::Ssh {
                 host: "h".into(),
                 port: Some(22),
-                user: Some("u".into())
+                user: Some("u".into()),
+                system_ssh: false,
             }
             .label(),
             "u@h:22"

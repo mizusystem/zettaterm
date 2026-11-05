@@ -13,6 +13,7 @@ final class ConnectTargetTests: XCTestCase {
             .localShell,
             .ssh(host: "web", port: nil, user: nil),
             .ssh(host: "db", port: 2222, user: "kt"),
+            .ssh(host: "legacy", port: nil, user: nil, systemSSH: true),
             .telnet(host: "bbs", port: 2323, ip: .v4),
             .tcp(host: "10.0.0.2", port: 7, ip: .v6),
             .serial(port: "/dev/cu.usbmodem1101", config: serial),

@@ -8,10 +8,15 @@
 use std::sync::Arc;
 
 use mt_core as core;
-use mt_net::{LocalPty, PtyCommand, SshTarget, TcpTransport};
+use mt_net::{LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
 use mt_serial::SerialTransport;
 
+mod auth;
 mod history;
+pub use auth::{
+    AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
+    KeyboardPrompt, SshPrompter,
+};
 mod serial;
 pub use history::{HostHistory, ssh_config_hosts};
 pub use serial::{
@@ -62,12 +67,14 @@ pub enum Profile {
         port: String,
         settings: SerialSettings,
     },
-    /// システムの ssh。`host` は ssh_config の別名や `user@host` でもよく、ssh_config がそのまま効く。
-    /// `port` / `user` が None なら ssh_config か既定に任せる。
+    /// SSH。`host` は ssh_config の別名や `user@host` でもよい。`port` / `user` が None なら
+    /// ssh_config か既定に任せる。認証やホスト鍵の確認は Session::open の `prompter` に尋ねる。
+    /// `system_ssh` なら russh ではなくシステムの ssh を PTY で起動する（認証は端末の中で行う）。
     Ssh {
         host: String,
         port: Option<u16>,
         user: Option<String>,
+        system_ssh: bool,
     },
     /// Telnet。`port` が None なら 23。
     Telnet {
@@ -307,7 +314,8 @@ pub struct Session {
 #[uniffi::export]
 impl Session {
     /// 接続を開く。`cols` / `rows` は最初の端末サイズ。
-    /// Telnet / TCP は接続が終わるまで（最大 10 秒）戻らないので、UI のスレッドから呼ばない。
+    /// Telnet / TCP / SSH は接続（SSH は認証まで）が終わるまで戻らず、SSH はその間に `prompter` を呼ぶ。
+    /// UI のスレッドから呼ばないこと。
     #[uniffi::constructor]
     pub fn open(
         profile: Profile,
@@ -315,6 +323,7 @@ impl Session {
         rows: u16,
         terminal: TerminalSettings,
         listener: Arc<dyn SessionListener>,
+        prompter: Arc<dyn SshPrompter>,
     ) -> Result<Arc<Self>, MtError> {
         let size = core::WindowSize::new(cols, rows);
         let mut send_delay = core::SendDelay::default();
@@ -332,7 +341,12 @@ impl Session {
                 send_delay = settings.delay();
                 Box::new(SerialTransport::open(&port, settings.port())?)
             }
-            Profile::Ssh { host, port, user } => {
+            Profile::Ssh {
+                host,
+                port,
+                user,
+                system_ssh: true,
+            } => {
                 let target = SshTarget {
                     host,
                     port,
@@ -340,6 +354,21 @@ impl Session {
                     extra_args: Vec::new(),
                 };
                 Box::new(target.spawn(size)?)
+            }
+            Profile::Ssh {
+                host,
+                port,
+                user,
+                system_ssh: false,
+            } => {
+                let options = SshOptions {
+                    host,
+                    port,
+                    user,
+                    config_path: None,
+                };
+                let prompter = Arc::new(auth::PrompterAdapter(prompter));
+                Box::new(SshTransport::connect(&options, size, prompter)?)
             }
             Profile::Telnet { host, port, ip } => Box::new(TcpTransport::telnet(
                 &host,

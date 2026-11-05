@@ -12,6 +12,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private(set) var session: Session?
     /// 次に接続するときの改行コードとローカルエコー
     var terminalSettings = defaultTerminalSettings()
+    /// SSH の認証・ホスト鍵確認の問い合わせ先
+    var prompter: SshPrompter?
     private var bridge: SessionBridge?
     /// 今の接続の識別子。前の接続から遅れて届いた通知を捨てるのに使う
     private var sessionToken = UUID()
@@ -104,9 +106,21 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             }
         )
         let terminal = terminalSettings
-        let opened = try await Task.detached {
-            try Session.open(profile: profile, cols: size.cols, rows: size.rows, terminal: terminal, listener: bridge)
-        }.value
+        let prompter: SshPrompter = self.prompter ?? SshPrompterBridge()
+        // SSH はこのスレッドで認証ダイアログの答えを待つことがある。Swift の並行処理のスレッドを
+        // 塞がないよう、GCD のスレッドで開く
+        let opened: Session = try await withCheckedThrowingContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                do {
+                    cont.resume(returning: try Session.open(
+                        profile: profile, cols: size.cols, rows: size.rows,
+                        terminal: terminal, listener: bridge, prompter: prompter
+                    ))
+                } catch {
+                    cont.resume(throwing: error)
+                }
+            }
+        }
         guard sessionToken == token else {
             opened.close()
             throw CancellationError()

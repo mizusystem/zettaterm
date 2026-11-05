@@ -51,6 +51,8 @@ enum TT {
         t = t.replacingOccurrences(of: "&&", with: "\u{1}")
             .replacingOccurrences(of: "&", with: "")
             .replacingOccurrences(of: "\u{1}", with: "&")
+        // lng の改行は \ と n の 2 文字で書かれている
+        t = t.replacingOccurrences(of: "\\n", with: "\n")
         // "Tera Term: 新しい接続" の製品名を外す
         if t.hasPrefix("Tera Term: ") { t.removeFirst("Tera Term: ".count) }
         return t

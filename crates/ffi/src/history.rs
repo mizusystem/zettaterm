@@ -17,10 +17,16 @@ impl Profile {
                 settings: settings.port(),
                 delay: settings.delay(),
             },
-            Profile::Ssh { host, port, user } => core::ConnectionProfile::Ssh {
+            Profile::Ssh {
+                host,
+                port,
+                user,
+                system_ssh,
+            } => core::ConnectionProfile::Ssh {
                 host: host.clone(),
                 port: *port,
                 user: user.clone(),
+                system_ssh: *system_ssh,
             },
             Profile::Telnet { host, port, .. } => core::ConnectionProfile::Telnet {
                 host: host.clone(),
@@ -48,7 +54,17 @@ impl Profile {
                 port,
                 settings: SerialSettings::from_core(settings, delay),
             },
-            core::ConnectionProfile::Ssh { host, port, user } => Profile::Ssh { host, port, user },
+            core::ConnectionProfile::Ssh {
+                host,
+                port,
+                user,
+                system_ssh,
+            } => Profile::Ssh {
+                host,
+                port,
+                user,
+                system_ssh,
+            },
             core::ConnectionProfile::Telnet { host, port } => Profile::Telnet {
                 host,
                 port,

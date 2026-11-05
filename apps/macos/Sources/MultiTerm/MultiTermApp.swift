@@ -50,13 +50,17 @@ struct TerminalWindow: View {
             .onChange(of: controller.sheet) { _, sheet in
                 if let sheet { ensureRoom(for: sheet) }
             }
-            .sheet(item: $controller.sheet, onDismiss: { controller.focusTerminal() }) { sheet in
+            .sheet(item: $controller.sheet, onDismiss: {
+                controller.authSheetDismissed()
+                controller.focusTerminal()
+            }) { sheet in
                 switch sheet {
                 case .newConnection: NewConnectionView(controller: controller)
                 case .serialSettings: SerialSettingsView(controller: controller)
                 case .terminalSettings: TerminalSettingsView(controller: controller)
                 case .log: LogOptionsView(controller: controller)
                 case .broadcast: BroadcastView(controller: controller)
+                case .auth: AuthPromptView(controller: controller)
                 }
             }
             .alert(
@@ -79,6 +83,7 @@ extension TerminalWindow {
         switch sheet {
         case .newConnection: need = CGSize(width: 620, height: 600)
         case .serialSettings: need = CGSize(width: 580, height: 520)
+        case .auth: need = CGSize(width: 600, height: 520)
         default: need = CGSize(width: 580, height: 420)
         }
         var frame = window.frame
