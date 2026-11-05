@@ -8,6 +8,7 @@
 
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -36,6 +37,8 @@ pub const TELNET_PORT: u16 = 23;
 pub const TERM_TYPE: &str = "xterm";
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// 受信の待ち時間。この間隔で close を確かめる（Windows は shutdown で受信待ちが戻らないため）
+const READ_POLL: Duration = Duration::from_millis(200);
 
 /// IP のバージョン（Tera Term の「IPバージョン」）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -254,6 +257,7 @@ pub struct TcpTransport {
     neg: Arc<Mutex<Negotiation>>,
     /// 交渉の返事と利用者の送信が混ざらないよう、書き込みはこの 1 本に集める
     out: Arc<Mutex<TcpStream>>,
+    closed: Arc<AtomicBool>,
 }
 
 impl TcpTransport {
@@ -307,6 +311,7 @@ impl TcpTransport {
                         mode,
                         neg: Arc::new(Mutex::new(Negotiation::new(size))),
                         out: Arc::new(Mutex::new(out)),
+                        closed: Arc::new(AtomicBool::new(false)),
                     });
                 }
                 Err(e) => last = e,
@@ -323,6 +328,11 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 impl Transport for TcpTransport {
     fn reader(&mut self) -> io::Result<Box<dyn Read + Send>> {
         let stream = self.stream.try_clone()?;
+        stream.set_read_timeout(Some(READ_POLL))?;
+        let stream = ClosableStream {
+            stream,
+            closed: Arc::clone(&self.closed),
+        };
         Ok(match self.mode {
             Mode::Raw => Box::new(stream),
             Mode::Telnet => Box::new(TelnetReader {
@@ -356,6 +366,7 @@ impl Transport for TcpTransport {
     }
 
     fn close(&mut self) -> io::Result<()> {
+        self.closed.store(true, Ordering::SeqCst);
         match self.stream.shutdown(Shutdown::Both) {
             Err(e) if e.kind() != io::ErrorKind::NotConnected => Err(e),
             _ => Ok(()),
@@ -363,8 +374,39 @@ impl Transport for TcpTransport {
     }
 }
 
-struct TelnetReader {
+/// close されたら EOF を返す受信側。待ち時間ごとに close を確かめる。
+struct ClosableStream {
     stream: TcpStream,
+    closed: Arc<AtomicBool>,
+}
+
+impl Read for ClosableStream {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            if self.closed.load(Ordering::SeqCst) {
+                return Ok(0);
+            }
+            match self.stream.read(buf) {
+                Err(e)
+                    if matches!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock
+                            | io::ErrorKind::TimedOut
+                            | io::ErrorKind::Interrupted
+                    ) =>
+                {
+                    continue;
+                }
+                // close 後に shutdown で起きたエラーは EOF として扱う
+                Err(_) if self.closed.load(Ordering::SeqCst) => return Ok(0),
+                other => return other,
+            }
+        }
+    }
+}
+
+struct TelnetReader {
+    stream: ClosableStream,
     parser: Parser,
     neg: Arc<Mutex<Negotiation>>,
     out: Arc<Mutex<TcpStream>>,
