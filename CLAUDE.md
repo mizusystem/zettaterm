@@ -95,3 +95,11 @@ MT_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p mt-serial -- --ignored --noc
 ```
 
 UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）からキーで引く。手で書き写さない。
+
+SSH はシステムの `ssh` を PTY で起動するので、利用者の ssh_config がそのまま効く。結合テストは一時的な sshd を一般ユーザー権限で 127.0.0.1 に立てて行う（sshd が必要なので既定では回さない）：
+
+```bash
+cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture
+```
+
+接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。

@@ -37,16 +37,26 @@ struct TerminalWindow: View {
 
     var body: some View {
         TerminalContainer(controller: controller)
+            .background(WindowAccessor { window in
+                WindowTabs.attach(window, asTab: request?.asTab ?? false)
+                if let sheet = controller.sheet {
+                    DispatchQueue.main.async { ensureRoom(for: sheet) }
+                }
+            })
             .navigationTitle(controller.windowTitle)
             .frame(minWidth: 200, minHeight: 100)
             .focusedSceneObject(controller)
             .onAppear { controller.open(request) }
+            .onChange(of: controller.sheet) { _, sheet in
+                if let sheet { ensureRoom(for: sheet) }
+            }
             .sheet(item: $controller.sheet, onDismiss: { controller.focusTerminal() }) { sheet in
                 switch sheet {
                 case .newConnection: NewConnectionView(controller: controller)
                 case .serialSettings: SerialSettingsView(controller: controller)
                 case .terminalSettings: TerminalSettingsView(controller: controller)
                 case .log: LogOptionsView(controller: controller)
+                case .broadcast: BroadcastView(controller: controller)
                 }
             }
             .alert(
@@ -58,6 +68,27 @@ struct TerminalWindow: View {
                 actions: { Button(TT.text("BTN_OK", "OK")) {} },
                 message: { Text(controller.errorMessage ?? "") }
             )
+    }
+}
+
+extension TerminalWindow {
+    /// シートがウィンドウからはみ出さないよう、小さいウィンドウは広げる。
+    fileprivate func ensureRoom(for sheet: TerminalController.Sheet) {
+        guard let window = controller.view.window, !window.styleMask.contains(.fullScreen) else { return }
+        let need: CGSize
+        switch sheet {
+        case .newConnection: need = CGSize(width: 620, height: 600)
+        case .serialSettings: need = CGSize(width: 580, height: 520)
+        default: need = CGSize(width: 580, height: 420)
+        }
+        var frame = window.frame
+        let w = max(frame.width, need.width), h = max(frame.height, need.height)
+        guard w != frame.width || h != frame.height else { return }
+        // 上端をそろえたまま下へ広げる
+        frame.origin.y -= h - frame.height
+        frame.size = CGSize(width: w, height: h)
+        if let screen = window.screen?.visibleFrame { frame = frame.intersection(screen) }
+        window.setFrame(frame, display: true, animate: true)
     }
 }
 
@@ -77,10 +108,25 @@ struct TerminalCommands: Commands {
             }
             .keyboardShortcut("n")
 
+            Button("新しいタブ") {
+                WindowTabs.prepareTab()
+                openWindow(value: ConnectRequest(target: .dialog, asTab: true))
+            }
+            .keyboardShortcut("t")
+
+            Button(TT.text("MENU_FILE_DUPLICATE", "セッションの複製")) {
+                if let request = controller?.duplicateRequest {
+                    WindowTabs.prepareTab()
+                    openWindow(value: request)
+                }
+            }
+            .keyboardShortcut("d")
+            .disabled(controller?.target == nil)
+
             Divider()
 
             Button(TT.text("MENU_FILE_LOG", "ログ...")) { controller?.sheet = .log }
-                .disabled(controller?.status != .connected && controller?.status != .reconnecting)
+                .disabled(controller?.isConnected != true)
             Button(TT.text("MENU_FILE_STOPLOG", "ログを終了")) { controller?.stopLog() }
                 .disabled(controller?.isLogging != true)
 
@@ -102,6 +148,14 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_CONTROL_SENDBREAK", "ブレーク送信")) { controller?.sendBreak() }
                 .keyboardShortcut("b")
                 .disabled(controller?.isSerialConnected != true)
+
+            Divider()
+
+            Button(TT.text("MENU_CONTROL_BROADCAST", "ブロードキャストコマンド") + "...") {
+                controller?.sheet = .broadcast
+            }
+            .keyboardShortcut("b", modifiers: [.command, .shift])
+            .disabled(controller == nil)
         }
     }
 }

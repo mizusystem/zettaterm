@@ -1,7 +1,9 @@
 import Foundation
 import MTCore
 
-/// 「設定 > 端末」のうち、接続に効く項目（改行コード、ローカルエコー）。全ウィンドウ共通で保存する。
+/// 「設定 > 端末」のうち、接続に効く項目（改行コード、ローカルエコー）。
+/// シリアル機器は LF だけで改行するものが多い一方、シェルや SSH で受信 AUTO にすると
+/// 行頭に戻る CR まで改行になってしまうので、シリアルとそれ以外で別々に保存する。
 struct TerminalConfig: Codable, Hashable, Sendable {
     /// 並びは Tera Term の NLListRcv（CR, CR+LF, LF, AUTO）と同じ
     enum Receive: String, Codable, CaseIterable, Sendable { case cr, crLf, lf, auto }
@@ -45,18 +47,31 @@ struct TerminalConfig: Codable, Hashable, Sendable {
         return i < items.count ? items[i] : s.rawValue.uppercased()
     }
 
-    private static let key = "terminalConfig"
+    enum Scope: String { case serial, other }
 
-    static var saved: TerminalConfig {
-        guard let data = UserDefaults.standard.data(forKey: key),
+    static func scope(for target: ConnectTarget?) -> Scope {
+        target?.serialPort != nil ? .serial : .other
+    }
+
+    private static func key(_ scope: Scope) -> String { "terminalConfig.\(scope.rawValue)" }
+
+    static func saved(_ scope: Scope) -> TerminalConfig {
+        let defaults = UserDefaults.standard
+        // 以前は 1 つだけ保存していた。シリアル向けに設定されたものとして引き継ぐ
+        if scope == .serial, defaults.data(forKey: key(.serial)) == nil,
+           let old = defaults.data(forKey: "terminalConfig") {
+            defaults.set(old, forKey: key(.serial))
+            defaults.removeObject(forKey: "terminalConfig")
+        }
+        guard let data = defaults.data(forKey: key(scope)),
               let config = try? JSONDecoder().decode(TerminalConfig.self, from: data)
         else { return TerminalConfig() }
         return config
     }
 
-    func save() {
+    func save(_ scope: Scope) {
         if let data = try? JSONEncoder().encode(self) {
-            UserDefaults.standard.set(data, forKey: Self.key)
+            UserDefaults.standard.set(data, forKey: Self.key(scope))
         }
     }
 }

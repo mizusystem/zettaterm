@@ -8,10 +8,12 @@
 use std::sync::Arc;
 
 use mt_core as core;
-use mt_net::{LocalPty, PtyCommand};
+use mt_net::{LocalPty, PtyCommand, SshTarget, TcpTransport};
 use mt_serial::SerialTransport;
 
+mod history;
 mod serial;
+pub use history::{HostHistory, ssh_config_hosts};
 pub use serial::{
     DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, NewlineReceive,
     NewlineSend, Parity, SerialDevice, SerialSettings, StopBits, TerminalSettings,
@@ -60,6 +62,43 @@ pub enum Profile {
         port: String,
         settings: SerialSettings,
     },
+    /// システムの ssh。`host` は ssh_config の別名や `user@host` でもよく、ssh_config がそのまま効く。
+    /// `port` / `user` が None なら ssh_config か既定に任せる。
+    Ssh {
+        host: String,
+        port: Option<u16>,
+        user: Option<String>,
+    },
+    /// Telnet。`port` が None なら 23。
+    Telnet {
+        host: String,
+        port: Option<u16>,
+        ip: IpVersion,
+    },
+    /// 生の TCP（Tera Term の「その他」）。
+    Tcp {
+        host: String,
+        port: u16,
+        ip: IpVersion,
+    },
+}
+
+/// Tera Term の「IPバージョン」。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum IpVersion {
+    Auto,
+    V4,
+    V6,
+}
+
+impl From<IpVersion> for mt_net::IpVersion {
+    fn from(v: IpVersion) -> Self {
+        match v {
+            IpVersion::Auto => Self::Auto,
+            IpVersion::V4 => Self::V4,
+            IpVersion::V6 => Self::V6,
+        }
+    }
 }
 
 // ---- 通知 ----
@@ -268,6 +307,7 @@ pub struct Session {
 #[uniffi::export]
 impl Session {
     /// 接続を開く。`cols` / `rows` は最初の端末サイズ。
+    /// Telnet / TCP は接続が終わるまで（最大 10 秒）戻らないので、UI のスレッドから呼ばない。
     #[uniffi::constructor]
     pub fn open(
         profile: Profile,
@@ -291,6 +331,24 @@ impl Session {
             Profile::Serial { port, settings } => {
                 send_delay = settings.delay();
                 Box::new(SerialTransport::open(&port, settings.port())?)
+            }
+            Profile::Ssh { host, port, user } => {
+                let target = SshTarget {
+                    host,
+                    port,
+                    user,
+                    extra_args: Vec::new(),
+                };
+                Box::new(target.spawn(size)?)
+            }
+            Profile::Telnet { host, port, ip } => Box::new(TcpTransport::telnet(
+                &host,
+                port.unwrap_or(mt_net::TELNET_PORT),
+                ip.into(),
+                size,
+            )?),
+            Profile::Tcp { host, port, ip } => {
+                Box::new(TcpTransport::raw(&host, port, ip.into(), size)?)
             }
         };
         let options = core::SessionOptions {

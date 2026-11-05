@@ -149,7 +149,7 @@ struct SerialSettingsView: View {
         c.baud = baud
         dismiss()
         switch action {
-        case .open, .closeAndOpen: controller.connectSerial(port: port, config: c)
+        case .open, .closeAndOpen: controller.connect(.serial(port: port, config: c), remember: true)
         case .reset: controller.reconfigureSerial(c)
         }
     }

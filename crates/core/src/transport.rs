@@ -9,6 +9,8 @@
 
 use std::io::{self, Read, Write};
 
+use serde::{Deserialize, Serialize};
+
 /// 端末の大きさ。PTY・SSH の窓サイズ通知、Telnet の NAWS に使う。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WindowSize {
@@ -85,7 +87,8 @@ pub trait Transport: Send + 'static {
 }
 
 /// パリティ。Tera Term の `none / odd / even / mark / space`。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Parity {
     #[default]
     None,
@@ -96,7 +99,8 @@ pub enum Parity {
 }
 
 /// ストップビット。Tera Term と同じく 1 と 2 のみ。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum StopBits {
     #[default]
     One,
@@ -104,7 +108,8 @@ pub enum StopBits {
 }
 
 /// フロー制御。Tera Term の `XON/XOFF / RTS/CTS / DSR/DTR / NONE`。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum FlowControl {
     #[default]
     None,
@@ -114,7 +119,8 @@ pub enum FlowControl {
 }
 
 /// シリアルポートの通信設定。既定値は Tera Term（TERATERM.INI）と同じ 9600 8N1、フロー制御なし。
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SerialSettings {
     /// 任意の値を受け付ける（macOS は IOSSIOSPEED、Linux は termios2 / BOTHER）
     pub baud: u32,
@@ -138,7 +144,8 @@ impl Default for SerialSettings {
 }
 
 /// 送信遅延（Tera Term の「ミリ秒/字」「ミリ秒/行」）。Transport を問わず Session の送信側で効かせる。
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
 pub struct SendDelay {
     pub per_char_ms: u32,
     pub per_line_ms: u32,

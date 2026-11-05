@@ -6,12 +6,14 @@
 pub mod log;
 pub mod mock;
 pub mod newline;
+pub mod profile;
 pub mod session;
 pub mod transport;
 
 pub use log::{LogFormat, LogOptions, TimestampKind};
 pub use mt_vt::{Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, Modifiers, Row};
 pub use newline::{NewlineReceive, NewlineSend};
+pub use profile::{ConnectionProfile, HostHistory};
 pub use session::{Session, SessionListener, SessionOptions, SessionState, TerminalSettings};
 pub use transport::{
     DeviceListener, FlowControl, Parity, SendDelay, SerialDevice, SerialSettings, StopBits,

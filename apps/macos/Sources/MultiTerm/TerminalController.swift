@@ -2,107 +2,102 @@ import AppKit
 import MTCore
 import SwiftUI
 
-/// 新しいウィンドウで何を開くか。`openWindow(value:)` で渡す。
-struct ConnectRequest: Codable, Hashable {
-    enum Target: Codable, Hashable {
-        /// 「新しい接続」ダイアログを出す
-        case dialog
-        case localShell
-        case serial(port: String, config: SerialConfig)
-    }
-
-    var id = UUID()
-    var target: Target
-}
-
-/// 1 ウィンドウ分の接続とダイアログの状態。メニューからは FocusedObject として届く。
+/// 1 ウィンドウ（タブ）分の接続とダイアログの状態。メニューからは FocusedObject として届く。
 @MainActor
 final class TerminalController: ObservableObject {
-    enum Status { case disconnected, connected, reconnecting }
+    enum Status { case disconnected, connecting, connected, reconnecting }
 
     enum Sheet: String, Identifiable {
-        case newConnection, serialSettings, terminalSettings, log
+        case newConnection, serialSettings, terminalSettings, log, broadcast
         var id: String { rawValue }
     }
 
     let view = TerminalView()
+    let id = UUID()
 
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false
     @Published private(set) var remoteTitle = ""
-    @Published private(set) var connectionLabel = ""
+    @Published private(set) var target: ConnectTarget?
     @Published var sheet: Sheet?
     @Published var errorMessage: String?
 
-    /// シリアルで接続中ならそのポート
-    @Published private(set) var serialPort: String?
     @Published private(set) var serialConfig = SerialConfig.saved
-    @Published private(set) var terminalConfig = TerminalConfig.saved
-    private var isLocalShell = false
-    private var closingByUser = false
+    /// 今の接続先（シリアルか、それ以外か）の端末設定
+    var terminalConfig: TerminalConfig { TerminalConfig.saved(TerminalConfig.scope(for: target)) }
+    /// 何回目の接続か。古い接続の完了通知を捨てるのに使う
+    private var attempt = 0
 
     init() {
         view.onState = { [weak self] state in self?.handle(state) }
         view.onTitle = { [weak self] title in self?.remoteTitle = title }
         view.onError = { [weak self] error in self?.report(error) }
+        SessionRegistry.shared.register(self)
     }
+
+    var connectionLabel: String { target?.label ?? "" }
 
     var windowTitle: String {
         var base = remoteTitle.isEmpty ? connectionLabel : remoteTitle
         if base.isEmpty { base = "Multi-Term" }
         switch status {
         case .connected: return base
+        case .connecting: return "\(connectionLabel) [接続中]"
         case .reconnecting: return "\(base) [再接続待ち]"
-        case .disconnected: return connectionLabel.isEmpty ? "Multi-Term" : "\(base) [未接続]"
+        case .disconnected: return target == nil ? "Multi-Term" : "\(base) [未接続]"
         }
     }
 
-    var isSerialConnected: Bool { serialPort != nil && status != .disconnected }
+    /// 接続中（再接続待ちを含む）のシリアルポート
+    var serialPort: String? { status == .disconnected ? nil : target?.serialPort }
+    var isSerialConnected: Bool { serialPort != nil }
+    var isConnected: Bool { status == .connected || status == .reconnecting }
 
     // MARK: 接続
 
     func open(_ request: ConnectRequest?) {
         switch request?.target ?? .dialog {
         case .dialog: sheet = .newConnection
-        case .localShell: connectLocalShell()
-        case let .serial(port, config): connectSerial(port: port, config: config)
+        case let .connect(target): connect(target)
         }
     }
 
-    func connectLocalShell() {
-        connect(.localShell(program: nil, args: [], cwd: nil), label: "ローカルシェル") {
-            self.isLocalShell = true
-            self.serialPort = nil
-        }
-    }
-
-    func connectSerial(port: String, config: SerialConfig) {
-        config.save()
-        SerialConfig.savedPort = port
-        connect(.serial(port: port, settings: config.settings), label: "\(port) - \(config.summary)") {
-            self.isLocalShell = false
-            self.serialPort = port
-            self.serialConfig = config
-        }
-    }
-
-    private func connect(_ profile: Profile, label: String, onSuccess: () -> Void) {
-        closingByUser = true
+    /// 接続する。Telnet / TCP は接続に時間がかかることがあるので、コアの呼び出しは別スレッドで行う。
+    /// `remember` なら成功したときにホスト履歴へ足す。
+    func connect(_ target: ConnectTarget, remember: Bool = false) {
         view.disconnect()
-        closingByUser = false
+        attempt += 1
+        let current = attempt
         isLogging = false
         remoteTitle = ""
-        do {
-            view.terminalSettings = terminalConfig.settings
-            try view.connect(profile)
-            connectionLabel = label
-            status = .connected
-            onSuccess()
-        } catch {
-            status = .disconnected
-            report(error)
+        self.target = target
+        status = .connecting
+        if case let .serial(port, config) = target {
+            config.save()
+            SerialConfig.savedPort = port
+            serialConfig = config
         }
-        focusTerminal()
+        view.terminalSettings = TerminalConfig.saved(TerminalConfig.scope(for: target)).settings
+        Task {
+            do {
+                try await view.connect(target.profile)
+                guard current == attempt else { return }
+                status = .connected
+                if remember { HostStore.shared.add(target) }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard current == attempt else { return }
+                status = .disconnected
+                report(error)
+            }
+            focusTerminal()
+        }
+    }
+
+    /// 今の接続先を、新しいタブでもう 1 つ開く（Tera Term の「セッションの複製」）。
+    var duplicateRequest: ConnectRequest? {
+        target.map { ConnectRequest(target: .connect($0), asTab: true) }
     }
 
     /// 「現在の接続を再設定」。つないだまま通信設定と送信遅延を変える。
@@ -112,24 +107,23 @@ final class TerminalController: ObservableObject {
             try session.setSerialSettings(settings: config.settings)
             serialConfig = config
             config.save()
-            connectionLabel = "\(port) - \(config.summary)"
+            target = .serial(port: port, config: config)
         } catch {
             report(error)
         }
     }
 
-    /// 「設定 > 端末」。保存して、接続中ならその場で効かせる。
+    /// 「設定 > 端末」。今の接続先の種類（シリアル / それ以外）に保存して、接続中ならその場で効かせる。
     func applyTerminal(_ config: TerminalConfig) {
-        terminalConfig = config
-        config.save()
+        config.save(TerminalConfig.scope(for: target))
+        objectWillChange.send()
         view.terminalSettings = config.settings
         view.session?.setTerminalSettings(settings: config.settings)
     }
 
     func disconnect() {
-        closingByUser = true
+        attempt += 1
         view.disconnect()
-        closingByUser = false
         status = .disconnected
         isLogging = false
     }
@@ -148,6 +142,13 @@ final class TerminalController: ObservableObject {
             }.value
             if let message { errorMessage = message }
         }
+    }
+
+    /// ブロードキャストの 1 件分。文字列をそのまま送り、`enter` なら続けて Enter を送る。
+    func broadcast(_ text: String, enter: Bool) {
+        guard let session = view.session, isConnected else { return }
+        if !text.isEmpty { session.write(bytes: Data(text.utf8)) }
+        if enter { session.key(key: .enter, mods: Modifiers(shift: false, ctrl: false, alt: false)) }
     }
 
     // MARK: ログ
@@ -177,15 +178,18 @@ final class TerminalController: ObservableObject {
 
     private func handle(_ state: SessionState) {
         switch state {
-        case .connecting, .connected:
+        case .connecting:
+            status = .connecting
+        case .connected:
             status = .connected
         case .reconnecting:
             status = .reconnecting
         case .closed:
             status = .disconnected
             isLogging = false
-            // シェルが終わったらウィンドウを閉じる（ターミナル.app と同じ）。シリアルは窓を残す
-            if isLocalShell && !closingByUser {
+            // シェルが終わったらウィンドウを閉じる（ターミナル.app と同じ）。
+            // SSH / Telnet / シリアルは、エラーや切断の理由が読めるよう窓を残す
+            if target?.isLocalShell == true {
                 view.window?.performClose(nil)
             }
         }

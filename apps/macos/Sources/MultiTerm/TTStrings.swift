@@ -4,11 +4,11 @@ import Foundation
 ///
 /// 文言は手で書き写さず、キーで引く。`(&N)` や `\tAlt+N` などの Windows 向け表記は取り除く。
 enum TT {
-    private static let table: [String: String] = {
+    /// セクション（"Tera Term"、"TTSSH" など）ごとの文言
+    private static let sections: [String: [String: String]] = {
         let preferJapanese = Locale.preferredLanguages.first?.hasPrefix("ja") ?? true
         let locale = preferJapanese ? "ja_JP" : "en_US"
-        guard let obj = loadJSON(locale) as? [String: [String: String]] else { return [:] }
-        return obj["Tera Term"] ?? [:]
+        return loadJSON(locale) as? [String: [String: String]] ?? [:]
     }()
 
     private static let options: [String: [String]] = {
@@ -27,9 +27,9 @@ enum TT {
         return try? JSONSerialization.jsonObject(with: data)
     }
 
-    /// キーの文言。見つからなければ `fallback`。
-    static func text(_ key: String, _ fallback: String) -> String {
-        clean(table[key] ?? fallback)
+    /// キーの文言。見つからなければ `fallback`。SSH まわりは TTSSH セクションにある。
+    static func text(_ key: String, _ fallback: String, section: String = "Tera Term") -> String {
+        clean(sections[section]?[key] ?? sections["Tera Term"]?[key] ?? fallback)
     }
 
     /// 設定の選択肢（serial_pp.cpp / term_pp.cpp の `*List[]`）。

@@ -12,7 +12,9 @@ name = "mt_core"
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 mt-vt.workspace = true
-# 予定: encoding_rs, serde, toml
+serde = { version = "1", features = ["derive"] }
+toml = "0.9"
+# 予定: encoding_rs
 
 [lints]
 workspace = true

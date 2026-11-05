@@ -65,4 +65,10 @@ final class TerminalConfigTests: XCTestCase {
         XCTAssertEqual(c.settings, TerminalSettings(newlineReceive: .auto, newlineSend: .crLf, localEcho: true))
         XCTAssertEqual(TerminalConfig().settings, defaultTerminalSettings())
     }
+
+    func testScopeSeparatesSerialFromOthers() {
+        XCTAssertEqual(TerminalConfig.scope(for: .serial(port: "/dev/cu.x", config: SerialConfig())), .serial)
+        XCTAssertEqual(TerminalConfig.scope(for: .ssh(host: "h", port: nil, user: nil)), .other)
+        XCTAssertEqual(TerminalConfig.scope(for: nil), .other)
+    }
 }

@@ -15,8 +15,6 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private var bridge: SessionBridge?
     /// 今の接続の識別子。前の接続から遅れて届いた通知を捨てるのに使う
     private var sessionToken = UUID()
-    /// ウィンドウに載る前に頼まれた接続
-    private var pendingProfile: Profile?
     private var screen = ScreenBuffer()
     private var displayLink: CADisplayLink?
     private var gridSize: (cols: UInt16, rows: UInt16) = (0, 0)
@@ -70,25 +68,23 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
-        if let profile = pendingProfile {
-            pendingProfile = nil
-            do { try connect(profile) } catch { onError?(error) }
-        }
     }
 
     /// 接続する。つながっていれば先に閉じる。画面は空にする。
-    func connect(_ profile: Profile) throws {
+    /// コアの接続（Telnet の TCP 接続など）は別スレッドで待つ。待っている間に別の接続や切断が
+    /// 頼まれたら、できあがった接続は閉じて CancellationError を投げる。
+    func connect(_ profile: Profile) async throws {
         disconnect()
         screen = ScreenBuffer()
         needsDisplay = true
-        guard window != nil else {
-            pendingProfile = profile
-            return
+        let token = UUID()
+        sessionToken = token
+        // 端末の大きさを決めるため、ウィンドウに載って大きさが決まるのを待つ（タブとして開いた直後は 0）
+        for _ in 0..<100 where window == nil || bounds.width < CGFloat(geometry.cellWidth * 4) {
+            try await Task.sleep(nanoseconds: 20_000_000)
         }
         let size = geometry.size(width: bounds.width, height: bounds.height)
         gridSize = size
-        let token = UUID()
-        sessionToken = token
         let bridge = SessionBridge(
             onState: { [weak self] state in
                 MainActor.assumeIsolated {
@@ -107,15 +103,26 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
                 MainActor.assumeIsolated { NSSound.beep() }
             }
         )
+        let terminal = terminalSettings
+        let opened = try await Task.detached {
+            try Session.open(profile: profile, cols: size.cols, rows: size.rows, terminal: terminal, listener: bridge)
+        }.value
+        guard sessionToken == token else {
+            opened.close()
+            throw CancellationError()
+        }
         self.bridge = bridge
-        session = try Session.open(
-            profile: profile, cols: size.cols, rows: size.rows, terminal: terminalSettings, listener: bridge
-        )
+        session = opened
+        // 待っている間にウィンドウの大きさが変わっていれば合わせる
+        let now = geometry.size(width: bounds.width, height: bounds.height)
+        if now != size {
+            gridSize = now
+            opened.resize(cols: now.cols, rows: now.rows, pixelWidth: 0, pixelHeight: 0)
+        }
     }
 
     /// 接続を閉じる。画面の内容は残す。
     func disconnect() {
-        pendingProfile = nil
         sessionToken = UUID()
         session?.close()
         session = nil

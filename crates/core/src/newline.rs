@@ -8,10 +8,13 @@
 //!
 //! 送信（`CRSend`）は Enter キーと貼り付けの改行を CR / CR+LF / LF のどれで送るか。
 
+use serde::{Deserialize, Serialize};
+
 const CR: u8 = b'\r';
 const LF: u8 = b'\n';
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NewlineReceive {
     #[default]
     Cr,
@@ -20,7 +23,8 @@ pub enum NewlineReceive {
     Auto,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum NewlineSend {
     #[default]
     Cr,

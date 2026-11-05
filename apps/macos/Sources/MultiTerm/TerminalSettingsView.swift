@@ -38,9 +38,12 @@ struct TerminalSettingsView: View {
             Toggle(TT.text("DLG_TERM_LOCALECHO", "ローカルエコー:").trimmingCharacters(in: CharacterSet(charactersIn: ":：")),
                    isOn: $config.localEcho)
 
-            Text("LF だけで改行する機器（ESP32 など）は受信を LF か AUTO にします。")
+            Text(controller.target?.serialPort != nil
+                 ? "シリアル接続用の設定として保存します。LF だけで改行する機器（ESP32 など）は受信を LF か AUTO にします。"
+                 : "シェル・SSH・Telnet 用の設定として保存します（シリアル用とは別）。通常は受信 CR のままにします。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             HStack {
                 Spacer()
