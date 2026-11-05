@@ -1319,6 +1319,7 @@ dependencies = [
  "mt-net",
  "mt-serial",
  "mt-ttl",
+ "rpassword",
 ]
 
 [[package]]
@@ -1370,7 +1371,11 @@ dependencies = [
 name = "mt-ttl"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "mt-core",
+ "mt-xfer",
+ "regex",
+ "tempfile",
 ]
 
 [[package]]
@@ -1384,6 +1389,7 @@ dependencies = [
 name = "mt-xfer"
 version = "0.0.0"
 dependencies = [
+ "portable-pty",
  "tempfile",
 ]
 
@@ -1822,6 +1828,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "regex-automata"
 version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1863,6 +1881,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpassword"
+version = "7.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2da316a15f47e3d053de9cb2c439650bd8fa4aaeb9365f2e5f27f492ff73c196"
+dependencies = [
+ "libc",
+ "rtoolbox",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "rsa"
 version = "0.10.0-rc.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1879,6 +1908,16 @@ dependencies = [
  "signature",
  "spki",
  "zeroize",
+]
+
+[[package]]
+name = "rtoolbox"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a1efe12a1469752d0e6ff5ebec0b6ef4924cc5c4c71046b0ec730040535819d"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

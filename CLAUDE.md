@@ -22,7 +22,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 パッケージ名の `mt-` は仮。`core` は Rust 組み込みの `core` クレートと衝突するため、ディレクトリ名とは別に接頭辞を付けている。アプリ名が決まったら置き換える。
 
-依存の向き: `vt` ← `core` ← `serial` / `net` / `ttl` ← `ffi` / `cli`。`xfer` は独立。`core` は `serial` / `net` に依存しない（Transport は `ffi` / `cli` 側で注入する）。
+依存の向き: `vt` ← `core` ← `serial` / `net` / `ttl` ← `ffi` / `cli`。`xfer` は何にも依存しない（`ttl` と `ffi` が使う）。`core` は `serial` / `net` に依存しない（Transport は `ffi` / `cli` 側で注入する）。
 
 スレッドモデル: Session ごとに受信スレッドと送信スレッドを 1 本ずつ持つ（tokio は未使用）。Transport はブロッキングの `Read` / `Write` を返す。`on_damage` は UI が `snapshot` を呼ぶまで再通知しない。相手が消えたら Session が `Transport::reconnect` を 0.5 秒ごとに試す（自動再接続）。送信遅延は送信スレッド、ログは受信スレッドで扱う。UI 開発とテストには `mt_core::mock::MockTransport` を使う。
 
@@ -100,18 +100,22 @@ UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）から
 
 SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`mt_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。
 
+SSH SCP（TTSSH の「ファイル > SSH SCP」）は `crates/net/src/scp.rs`。内蔵 SSH の接続に exec チャネルを足して相手の `scp -t` / `scp -f` と話すので、端末は使ったまま転送できる（フォルダは未対応）。テストサーバーは本物の scp を起動して相互転送を確かめる（`tests/support/exec.rs`、test-sshd も同じ）。
+
 ```bash
 cargo test -p mt-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
 cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234）
 cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
 ```
 
-ファイル転送（XMODEM / YMODEM / ZMODEM）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `mt_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
+ファイル転送（XMODEM / YMODEM / ZMODEM / Kermit）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `mt_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
 
 ```bash
 cargo test -p mt-xfer --test lrzsz -- --nocapture
 ```
 
-Kermit は未実装（Phase 3 の残り）。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
+Kermit は C-Kermit（openkermit 11 系。`brew install openkermit`）と相互転送テストする（`cargo test -p mt-xfer --test kermit`）。Homebrew の c-kermit 9.0.302 は macOS でファイルを書けないので使わない。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
+
+TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`。
 
 接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。

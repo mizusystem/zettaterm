@@ -116,6 +116,30 @@ struct Inner {
     divert: Mutex<Option<Box<dyn ByteDivert>>>,
     zmodem: Mutex<ZmodemDetector>,
     local_echo: AtomicBool,
+    /// 受信の写しの送り先（TTL の wait など）
+    taps: Mutex<Vec<Sender<String>>>,
+}
+
+/// 受信した文字の写し（`Session::tap`）。文字コード変換の後、改行コード変換の前の文字列で届く。
+/// 捨てると写しも止まる。ファイル転送中の受信は届かない。
+pub struct ReceiveTap {
+    rx: Receiver<String>,
+}
+
+impl ReceiveTap {
+    /// 次の受信を `timeout` まで待つ。届かないか、セッションが閉じたら None。
+    pub fn recv(&self, timeout: Duration) -> Option<String> {
+        self.rx.recv_timeout(timeout).ok()
+    }
+
+    /// 届いている分をすべて取り出す（待たない）。
+    pub fn drain(&self) -> String {
+        let mut s = String::new();
+        while let Ok(t) = self.rx.try_recv() {
+            s.push_str(&t);
+        }
+        s
+    }
 }
 
 impl Session {
@@ -148,6 +172,7 @@ impl Session {
             divert: Mutex::new(None),
             zmodem: Mutex::new(ZmodemDetector::default()),
             local_echo: AtomicBool::new(options.terminal.local_echo),
+            taps: Mutex::new(Vec::new()),
         });
 
         let delay = options.send_delay;
@@ -188,6 +213,30 @@ impl Session {
         let bytes = self.inner.vt().encode_paste(&text);
         let bytes = self.inner.newline_send().apply(bytes);
         self.send_user(bytes);
+    }
+
+    /// 文字列を送る（TTL の send）。送信の文字コードに変換し、ローカルエコーなら画面にも出す。
+    /// 改行コードの変換はしない。
+    pub fn send_text(&self, text: &str) {
+        self.send_user(text.as_bytes().to_vec());
+    }
+
+    /// 文字列と、「送信」の改行コードで改行を送る（TTL の sendln）。
+    pub fn send_line(&self, text: &str) {
+        let mut bytes = text.as_bytes().to_vec();
+        bytes.extend(self.inner.newline_send().apply(b"\r".to_vec()));
+        self.send_user(bytes);
+    }
+
+    /// 受信した文字の写しを受け取り始める。
+    pub fn tap(&self) -> ReceiveTap {
+        let (tx, rx) = mpsc::channel();
+        self.inner
+            .taps
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(tx);
+        ReceiveTap { rx }
     }
 
     /// 利用者の入力を送る。ローカルエコーなら自分の画面にも出す。送信の文字コードに変換して送る。
@@ -510,6 +559,13 @@ impl Inner {
             .unwrap_or_else(|e| e.into_inner())
             .decode(bytes)
             .into_owned();
+        {
+            let mut taps = self.taps.lock().unwrap_or_else(|e| e.into_inner());
+            if !taps.is_empty() {
+                let text = String::from_utf8_lossy(&decoded).into_owned();
+                taps.retain(|t| t.send(text.clone()).is_ok());
+            }
+        }
         let converted = self
             .newline_receive
             .lock()

@@ -10,7 +10,13 @@ publish.workspace = true
 name = "mt_ttl"
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 mt-core.workspace = true
+mt-xfer.workspace = true
+regex = "1"
+
+[dev-dependencies]
+tempfile = "3"
 
 [lints]
 workspace = true

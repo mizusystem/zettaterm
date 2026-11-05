@@ -2,3 +2,15 @@
 //!
 //! 本家（`teraterm/ttpmacro`）のソースは参照のみ。コードは持ってこない。
 //! 本家と違い DDE は使わず、コア API を直接呼ぶ。このクレートに `cfg(target_os)` を書かない。
+//!
+//! 接続（`connect`）やダイアログは [`Host`] として呼び出し側（cli、各 OS の UI）が実装する。
+//! ファイル転送は mt-xfer をそのまま使う。
+
+mod connect;
+mod format;
+mod interp;
+mod parse;
+
+pub use connect::{ConnectSpec, SshSpec, parse_connect};
+pub use interp::{Host, Interp, MacroError, Outcome, Value};
+pub use parse::{ParseError, parse};

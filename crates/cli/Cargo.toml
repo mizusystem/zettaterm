@@ -15,7 +15,7 @@ mt-core.workspace = true
 mt-serial.workspace = true
 mt-net.workspace = true
 mt-ttl.workspace = true
-# 予定: clap
+rpassword = "7"
 
 [lints]
 workspace = true

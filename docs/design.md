@@ -181,6 +181,18 @@ Phase 1 を終えた時点で、Mac のシリアル端末として日常的に�
 
 各 Phase は完了条件を満たすまで次に進まない。日程は置かず、順序だけを決めている。
 
+### ネットワーク機器向けの追加予定（2026-11-06 追加）
+
+シリアルコンソールから機器のファームウェアを入れ替える用途を重視する。マクロの転送コマンドは Phase 4 の TTL サブセットに含め、それ以外は Phase 4 の後、Phase 5 の前に入れる。
+
+| 項目 | 今の状態 | 追加するもの | 時期 |
+| --- | --- | --- | --- |
+| マクロからファイル転送 | なし | TTL の `xmodemsend` / `xmodemrecv` / `ymodemsend` / `ymodemrecv` / `zmodemsend` / `zmodemrecv` / `kermitsend` / `kermitrecv` / `sendfile`（結果は `result`） | Phase 4 |
+| シリアルから XMODEM でファーム送信 | 動く（128 バイト CRC 固定、実機は未確認） | 128 / 1K とチェックサム / CRC の選択、XON/XOFF のまま転送するときの警告、実機（ROMMON など）での確認 | Phase 4 の後 |
+| 進捗・速度・リトライ数 | ファイル名、転送済み / 全体、経過時間、バー | 速度、残り時間、累計リトライ数（`mt_xfer::Progress` と ffi の `TransferProgress` に足す） | Phase 4 の後 |
+| バイナリを改変せずに送信 | プロトコル転送と SCP は変換・遅延なしで送る | Tera Term の「ファイル送信」（プロトコルなし。バイナリ指定で文字コード・改行変換を通さない。テキストは行ごとの遅延つき） | Phase 4 の後 |
+| ドラッグ＆ドロップ送信 | SCP ダイアログの中だけ | 端末ウィンドウへのドロップで送り方を選ぶダイアログ（`DLG_DANDD_*`：SCP / ファイル送信 / 各プロトコル / ファイル名の貼り付け） | Phase 4 の後 |
+
 ## Claude Code サブエージェント割り振り
 
 メインセッションを設計判断と API 契約の持ち主にし、実装は書き込み範囲を重ねないサブエージェントに切る。サブエージェントは別コンテキストで動き、[さらにサブエージェントを呼べない](https://skills.cat/skills/choru-k/skills-for-ai/cc-dev-agents)ので、構造はメインから一段だけのフラットにする。定義は [`.claude/agents/<name>.md` に YAML フロントマター付きで置き](https://docs.claude.com/en/docs/claude-code/sub-agents)、リポジトリで共有する。
@@ -244,5 +256,5 @@ model: opus
 - [ ] macOS の最低対応バージョン（最新のみに絞るか）
 - [ ] VT エンジン：alacritty\_terminal で確定するか、libghostty-vt の API 安定を待つか
 - [x] SSH をいつ純 Rust（russh）に切り替えるか → Phase 2 で切り替えた（2026-11-06）。TTSSH と同じく認証はダイアログ。ssh_config の対応外の項目が要る接続のため、システムの ssh も選べるようにしてある
-- [ ] TTL サブセットの範囲。自分の既存マクロで使っているコマンドを洗い出して決める
+- [ ] TTL サブセットの範囲。ネットワーク機器の操作で使うものから入れた（[ttl.md](ttl.md)）。既存マクロで足りないコマンドを洗い出して足す
 - [ ] 設定の保存形式：TOML で確定するか、TERATERM.INI との双方向互換までやるか
