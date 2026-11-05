@@ -3,9 +3,9 @@
 
 # macOS app
 apps/macos/build/
+apps/macos/.build/
 apps/macos/**/xcuserdata/
-apps/macos/**/*.xcframework
-apps/macos/Generated/
+apps/macos/Sources/MTCore/Generated/
 
 # Linux app
 apps/linux/target/

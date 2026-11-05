@@ -11,7 +11,7 @@ name = "mt_core"
 
 [dependencies]
 mt-vt.workspace = true
-# 予定: tokio, encoding_rs, serde, toml
+# 予定: encoding_rs, serde, toml
 
 [lints]
 workspace = true

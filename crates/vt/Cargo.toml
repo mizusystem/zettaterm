@@ -10,7 +10,7 @@ publish.workspace = true
 name = "mt_vt"
 
 [dependencies]
-# 予定: alacritty_terminal（libghostty-vt と比較中。docs/design.md の未決事項を参照）
+alacritty_terminal = "0.26.0"
 
 [lints]
 workspace = true

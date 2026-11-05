@@ -8,13 +8,22 @@ publish.workspace = true
 
 [lib]
 name = "mt_ffi"
-# XCFramework を作る段階で crate-type = ["lib", "staticlib"] に変える
+crate-type = ["lib", "staticlib"]
+
+[[bin]]
+# Swift バインディング生成器。apps/macos/scripts/build-core.sh から使う。
+name = "uniffi-bindgen-swift"
+path = "src/bin/uniffi-bindgen-swift.rs"
+required-features = ["bindgen"]
+
+[features]
+bindgen = ["uniffi/cli"]
 
 [dependencies]
 mt-core.workspace = true
 mt-serial.workspace = true
 mt-net.workspace = true
-# 予定: uniffi
+uniffi = "0.32.2"
 
 [lints]
 workspace = true

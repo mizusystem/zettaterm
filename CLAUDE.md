@@ -24,6 +24,8 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 依存の向き: `vt` ← `core` ← `serial` / `net` / `ttl` ← `ffi` / `cli`。`xfer` は独立。`core` は `serial` / `net` に依存しない（Transport は `ffi` / `cli` 側で注入する）。
 
+スレッドモデル（Phase 0 時点）: Session ごとに受信スレッドと送信スレッドを 1 本ずつ持つ（tokio は未使用）。Transport はブロッキングの `Read` / `Write` を返す。`on_damage` は UI が `snapshot` を呼ぶまで再通知しない。UI 開発とテストには `mt_core::mock::MockTransport` を使う。
+
 ## 境界ルール
 
 - UI に依存するコードは `crates/` に入れない
@@ -38,6 +40,8 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 - `Cargo.toml`（ワークスペース）
 - `crates/core/src/transport.rs`（Transport と DeviceListener の契約）
+- `crates/core/src/session.rs` の公開シグネチャ（Session、SessionListener）
+- `crates/vt/src/types.rs` と `crates/vt/src/keys.rs` の型（snapshot と入力の形）
 - `crates/ffi` の公開 API
 - `CLAUDE.md`、`docs/design.md`、`.claude/agents/`
 
@@ -73,6 +77,10 @@ cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
 cargo run -p mt-cli
+
+# macOS アプリ（詳細は apps/macos/README.md）
+apps/macos/scripts/build-core.sh
+apps/macos/scripts/make-app.sh && open apps/macos/build/MultiTerm.app
 ```
 
 シリアルの結合テストには socat が必要（`brew install socat`）。実機が必要なテストは `#[ignore]` にする。

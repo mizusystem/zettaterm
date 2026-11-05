@@ -6,4 +6,4 @@ Tera Term 互換のマルチ OS 端末アプリ。Rust の共通コアと、OS �
 - 開発の約束事: [CLAUDE.md](CLAUDE.md)
 - サードパーティ表示: [THIRD_PARTY.md](THIRD_PARTY.md)
 
-状態: スキャフォールドのみ（Phase 0 前）。
+状態: Phase 0（Mac でローカルシェルを表示。入力・リサイズ・スクロール）。
