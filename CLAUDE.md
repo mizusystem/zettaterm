@@ -24,7 +24,9 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 依存の向き: `vt` ← `core` ← `serial` / `net` / `ttl` ← `ffi` / `cli`。`xfer` は独立。`core` は `serial` / `net` に依存しない（Transport は `ffi` / `cli` 側で注入する）。
 
-スレッドモデル（Phase 0 時点）: Session ごとに受信スレッドと送信スレッドを 1 本ずつ持つ（tokio は未使用）。Transport はブロッキングの `Read` / `Write` を返す。`on_damage` は UI が `snapshot` を呼ぶまで再通知しない。UI 開発とテストには `mt_core::mock::MockTransport` を使う。
+スレッドモデル: Session ごとに受信スレッドと送信スレッドを 1 本ずつ持つ（tokio は未使用）。Transport はブロッキングの `Read` / `Write` を返す。`on_damage` は UI が `snapshot` を呼ぶまで再通知しない。相手が消えたら Session が `Transport::reconnect` を 0.5 秒ごとに試す（自動再接続）。送信遅延は送信スレッド、ログは受信スレッドで扱う。UI 開発とテストには `mt_core::mock::MockTransport` を使う。
+
+シリアルデバイスの抜き差しは 1 秒ごとの列挙と差分比較で検出している（全 OS 共通）。IOKit / udev / SetupAPI の通知への置き換えは TODO。
 
 ## 境界ルール
 
@@ -65,7 +67,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 1. 契約が先、実装が後。メインが trait と型のシグネチャを先にコミットし、各エージェントはその裏側だけを実装する
 2. 書き込み範囲は表の通り。範囲外の変更が必要になったら自分で直さず、要求としてメインに返す
 3. 並列に走らせるのは範囲が重ならない組み合わせだけ。数日かかるレーンは git worktree ごとに別セッションで回す
-4. UI 系はモック Transport（受信データをファイルから流す）に対して開発する。シリアルの結合テストは socat の仮想ポート対を使う
+4. UI 系はモック Transport（受信データをファイルから流す、抜き差しを再現する）に対して開発する。シリアルの結合テストは擬似端末の対を使う
 5. 各エージェントの返答は「変更ファイル / 追加テスト / 未解決事項」を 10 行以内
 6. 実装系エージェントの後は必ず `reviewer` → `test-runner` の順で通す
 
@@ -86,4 +88,10 @@ apps/macos/scripts/build-core.sh
 apps/macos/scripts/make-app.sh && open apps/macos/build/MultiTerm.app
 ```
 
-シリアルの結合テストには socat が必要（`brew install socat`）。実機が必要なテストは `#[ignore]` にする。
+シリアルの結合テストは擬似端末の対で書く（socat は不要）。macOS の擬似端末は IOSSIOSPEED を受け付けないため、この種のテストは Linux（GitHub Actions）だけで回る。macOS では実機テストで確かめる：
+
+```bash
+MT_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p mt-serial -- --ignored --nocapture
+```
+
+UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）からキーで引く。手で書き写さない。

@@ -8,11 +8,11 @@
 - Project: https://github.com/TeraTermProject/teraterm
 - License: BSD-3-Clause
 
-> TODO: 下の著作権表示は upstream の LICENSE ファイルと突き合わせて確定する。
+著作権表示は upstream の `installer/release/license.txt`（コミット `4cfd807`、2026-11-04）から写した。
 
 ```
 Copyright (C) 1994-1998 T. Teranishi
-(C) 2004- TeraTerm Project
+(C) 2004-2026 TeraTerm Project
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

@@ -9,6 +9,13 @@ use std::sync::Arc;
 
 use mt_core as core;
 use mt_net::{LocalPty, PtyCommand};
+use mt_serial::SerialTransport;
+
+mod serial;
+pub use serial::{
+    DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, Parity, SerialDevice,
+    SerialSettings, StopBits, default_serial_settings, list_serial_devices,
+};
 
 uniffi::setup_scaffolding!();
 
@@ -37,7 +44,7 @@ impl From<std::io::Error> for MtError {
 
 // ---- 接続先 ----
 
-/// 接続先の設定。Phase 1 でシリアル、Phase 2 で SSH / Telnet を足す。
+/// 接続先の設定。Phase 2 で SSH / Telnet を足す。
 #[derive(Clone, Debug, uniffi::Enum)]
 pub enum Profile {
     /// ローカルシェル。`program` が None ならユーザーのログインシェル。
@@ -45,6 +52,12 @@ pub enum Profile {
         program: Option<String>,
         args: Vec<String>,
         cwd: Option<String>,
+    },
+    /// シリアルポート。`port` は `/dev/cu.usbserial-XXXX` などのパス。
+    /// USB シリアルを抜くと Reconnecting になり、挿し直すと自動でつなぎ直す。
+    Serial {
+        port: String,
+        settings: SerialSettings,
     },
 }
 
@@ -262,6 +275,7 @@ impl Session {
         listener: Arc<dyn SessionListener>,
     ) -> Result<Arc<Self>, MtError> {
         let size = core::WindowSize::new(cols, rows);
+        let mut send_delay = core::SendDelay::default();
         let transport: Box<dyn core::Transport> = match profile {
             Profile::LocalShell { program, args, cwd } => {
                 let cmd = PtyCommand {
@@ -272,9 +286,14 @@ impl Session {
                 };
                 Box::new(LocalPty::spawn(&cmd, size)?)
             }
+            Profile::Serial { port, settings } => {
+                send_delay = settings.delay();
+                Box::new(SerialTransport::open(&port, settings.port())?)
+            }
         };
         let options = core::SessionOptions {
             size,
+            send_delay,
             ..Default::default()
         };
         let inner = core::Session::open(transport, options, Arc::new(ListenerAdapter(listener)))?;
@@ -327,6 +346,31 @@ impl Session {
 
     pub fn set_lines(&self, dtr: bool, rts: bool) -> Result<(), MtError> {
         Ok(self.inner.set_lines(dtr, rts)?)
+    }
+
+    /// 接続したままシリアル設定と送信遅延を変える（Tera Term の「現在の接続を再設定」）。
+    pub fn set_serial_settings(&self, settings: SerialSettings) -> Result<(), MtError> {
+        self.inner.set_serial_settings(&settings.port())?;
+        self.inner.set_send_delay(settings.delay());
+        Ok(())
+    }
+
+    /// 相手が消えたときに自動でつなぎ直すか（既定は true）。
+    pub fn set_auto_reconnect(&self, enabled: bool) {
+        self.inner.set_auto_reconnect(enabled);
+    }
+
+    /// 受信データのログを始める。記録中なら切り替える。
+    pub fn log_start(&self, options: LogOptions) -> Result<(), MtError> {
+        Ok(self.inner.log_start(&options.to_core())?)
+    }
+
+    pub fn log_stop(&self) {
+        self.inner.log_stop();
+    }
+
+    pub fn is_logging(&self) -> bool {
+        self.inner.is_logging()
     }
 
     pub fn state(&self) -> SessionState {

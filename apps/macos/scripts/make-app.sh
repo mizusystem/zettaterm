@@ -16,6 +16,8 @@ BUNDLE="$APP_DIR/build/MultiTerm.app"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$BIN" "$BUNDLE/Contents/MacOS/MultiTerm"
+# SwiftPM のリソース（Tera Term の文言）
+cp -R "$(dirname "$BIN")/MultiTerm_MultiTerm.bundle" "$BUNDLE/Contents/Resources/"
 cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

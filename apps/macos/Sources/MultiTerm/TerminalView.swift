@@ -6,11 +6,15 @@ import QuartzCore
 /// 端末ビュー。コアの snapshot を Core Text で描き、キー入力・IME・貼り付け・スクロールを扱う。
 final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var onTitle: ((String) -> Void)?
-    var onClosed: (() -> Void)?
+    var onState: ((SessionState) -> Void)?
+    var onError: ((Error) -> Void)?
 
-    private let profile: Profile
-    private var session: Session?
+    private(set) var session: Session?
     private var bridge: SessionBridge?
+    /// 今の接続の識別子。前の接続から遅れて届いた通知を捨てるのに使う
+    private var sessionToken = UUID()
+    /// ウィンドウに載る前に頼まれた接続
+    private var pendingProfile: Profile?
     private var screen = ScreenBuffer()
     private var displayLink: CADisplayLink?
     private var gridSize: (cols: UInt16, rows: UInt16) = (0, 0)
@@ -25,8 +29,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private let ascent: CGFloat
     private var colorCache: [UInt32: CGColor] = [:]
 
-    init(profile: Profile) {
-        self.profile = profile
+    init() {
         let base = NSFont(name: "Menlo", size: 14) ?? .monospacedSystemFont(ofSize: 14, weight: .regular)
         font = base as CTFont
         boldFont = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitBold, .traitBold) ?? font
@@ -59,44 +62,68 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
-        if session == nil { openSession() }
         window?.makeFirstResponder(self)
         if displayLink == nil {
             let link = displayLink(target: self, selector: #selector(tick))
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
+        if let profile = pendingProfile {
+            pendingProfile = nil
+            do { try connect(profile) } catch { onError?(error) }
+        }
     }
 
-    private func openSession() {
+    /// 接続する。つながっていれば先に閉じる。画面は空にする。
+    func connect(_ profile: Profile) throws {
+        disconnect()
+        screen = ScreenBuffer()
+        needsDisplay = true
+        guard window != nil else {
+            pendingProfile = profile
+            return
+        }
         let size = geometry.size(width: bounds.width, height: bounds.height)
         gridSize = size
+        let token = UUID()
+        sessionToken = token
         let bridge = SessionBridge(
             onState: { [weak self] state in
                 MainActor.assumeIsolated {
-                    if state == .closed { self?.onClosed?() }
+                    guard let self, self.sessionToken == token else { return }
+                    if state == .closed { self.needsDisplay = true }
+                    self.onState?(state)
                 }
             },
             onTitle: { [weak self] title in
-                MainActor.assumeIsolated { self?.onTitle?(title) }
+                MainActor.assumeIsolated {
+                    guard let self, self.sessionToken == token else { return }
+                    self.onTitle?(title)
+                }
             },
             onBell: {
                 MainActor.assumeIsolated { NSSound.beep() }
             }
         )
         self.bridge = bridge
-        do {
-            session = try Session.open(profile: profile, cols: size.cols, rows: size.rows, listener: bridge)
-        } catch {
-            NSAlert(error: error).runModal()
-        }
+        session = try Session.open(profile: profile, cols: size.cols, rows: size.rows, listener: bridge)
     }
 
+    /// 接続を閉じる。画面の内容は残す。
+    func disconnect() {
+        pendingProfile = nil
+        sessionToken = UUID()
+        session?.close()
+        session = nil
+        bridge = nil
+        needsDisplay = true
+    }
+
+    /// ウィンドウを閉じるとき。
     func closeSession() {
         displayLink?.invalidate()
         displayLink = nil
-        session?.close()
-        session = nil
+        disconnect()
     }
 
     /// 画面の更新タイミングごとに呼ばれる。変更があったときだけ snapshot を取る。
@@ -164,7 +191,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             for i in first...last { drawRow(rows[i], at: i, in: ctx) }
         }
 
-        if screen.scrollOffset == 0 {
+        if screen.scrollOffset == 0 && session != nil {
             drawCursor(in: ctx, rows: rows)
             drawMarkedText(in: ctx)
         }

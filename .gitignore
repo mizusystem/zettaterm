@@ -6,6 +6,7 @@ apps/macos/build/
 apps/macos/.build/
 apps/macos/**/xcuserdata/
 apps/macos/Sources/MTCore/Generated/
+apps/macos/Sources/MultiTerm/Resources/
 
 # Linux app
 apps/linux/target/

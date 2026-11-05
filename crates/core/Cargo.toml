@@ -10,8 +10,12 @@ publish.workspace = true
 name = "mt_core"
 
 [dependencies]
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 mt-vt.workspace = true
 # 予定: encoding_rs, serde, toml
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

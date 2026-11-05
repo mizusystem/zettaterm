@@ -5,7 +5,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mt_core::mock::MockTransport;
-use mt_core::{Key, Modifiers, Session, SessionListener, SessionOptions, SessionState, WindowSize};
+use mt_core::{
+    Key, LogOptions, Modifiers, SendDelay, SerialSettings, Session, SessionListener,
+    SessionOptions, SessionState, WindowSize,
+};
 
 #[derive(Default)]
 struct Recorder {
@@ -61,6 +64,7 @@ fn open(transport: MockTransport, rec: &Arc<Recorder>) -> Arc<Session> {
     let options = SessionOptions {
         size: WindowSize::new(20, 4),
         scrollback: 100,
+        ..Default::default()
     };
     Session::open(Box::new(transport), options, rec.clone()).unwrap()
 }
@@ -173,4 +177,115 @@ fn replay_transport_feeds_recorded_data() {
     );
     assert!(wait_until(|| screen_text(&session).starts_with("recorded")));
     session.close();
+}
+
+#[test]
+fn unplug_and_plug_in_reconnects() {
+    let (transport, remote) = MockTransport::reconnectable();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+
+    remote.send(b"before ");
+    assert!(wait_until(|| screen_text(&session).contains("before")));
+
+    remote.unplug();
+    assert!(wait_until(|| session.state() == SessionState::Reconnecting));
+    // 抜けている間はつなぎ直せない
+    std::thread::sleep(Duration::from_millis(700));
+    assert_eq!(remote.reconnects(), 0);
+
+    remote.plug_in();
+    assert!(wait_until(|| session.state() == SessionState::Connected));
+    assert_eq!(remote.reconnects(), 1);
+
+    // 再接続後も受信・送信できる
+    remote.send(b"after");
+    assert!(wait_until(|| screen_text(&session).contains("before after")));
+    session.write(b"x".to_vec());
+    assert_eq!(remote.recv(WAIT).unwrap(), b"x");
+
+    assert_eq!(
+        *rec.states.lock().unwrap(),
+        [
+            SessionState::Connected,
+            SessionState::Reconnecting,
+            SessionState::Connected
+        ]
+    );
+}
+
+#[test]
+fn close_while_reconnecting_ends_the_session() {
+    let (transport, remote) = MockTransport::reconnectable();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    remote.unplug();
+    assert!(wait_until(|| session.state() == SessionState::Reconnecting));
+    session.close();
+    assert!(wait_until(|| session.state() == SessionState::Closed));
+}
+
+#[test]
+fn hang_up_without_reconnect_support_closes() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    remote.hang_up();
+    assert!(wait_until(|| session.state() == SessionState::Closed));
+}
+
+#[test]
+fn send_delay_spaces_out_characters() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_send_delay(SendDelay {
+        per_char_ms: 30,
+        per_line_ms: 0,
+    });
+
+    let start = Instant::now();
+    session.write(b"abcd".to_vec());
+    let mut got = Vec::new();
+    while got.len() < 4 {
+        got.extend(remote.recv(WAIT).unwrap());
+    }
+    assert_eq!(got, b"abcd");
+    // 1 文字ずつ送り、各文字の後に 30ms 待つ
+    assert!(start.elapsed() >= Duration::from_millis(90));
+}
+
+#[test]
+fn serial_settings_reach_the_transport() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    let settings = SerialSettings {
+        baud: 115_200,
+        ..Default::default()
+    };
+    session.set_serial_settings(&settings).unwrap();
+    assert_eq!(remote.serial_settings(), [settings]);
+}
+
+#[test]
+fn log_records_received_text() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("session.log");
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+
+    session.log_start(&LogOptions::new(&path)).unwrap();
+    assert!(session.is_logging());
+    remote.send(b"\x1b[32mhello\x1b[0m\r\n");
+    assert!(wait_until(|| std::fs::read_to_string(&path)
+        .unwrap_or_default()
+        == "hello\n"));
+
+    session.log_stop();
+    assert!(!session.is_logging());
+    remote.send(b"ignored\r\n");
+    assert!(wait_until(|| screen_text(&session).contains("ignored")));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello\n");
 }

@@ -1,8 +1,9 @@
 //! Session：1 本の接続と、その端末状態。
 //!
 //! スレッドモデル
-//! - 受信スレッド：Transport から読み、VT を更新し、Listener に「変更あり」だけ通知する
-//! - 送信スレッド：UI から渡されたバイト列と VT の応答を Transport に書く
+//! - 受信スレッド：Transport から読み、ログに書き、VT を更新し、Listener に「変更あり」だけ通知する。
+//!   相手が消えたら（USB シリアルを抜いたなど）、Transport が対応していれば自動でつなぎ直す
+//! - 送信スレッド：UI から渡されたバイト列と VT の応答を Transport に書く。送信遅延もここで効かせる
 //! - UI スレッド：`snapshot` で変更行を取りに来る。ロックは短く握ってコピーを返す
 //!
 //! `on_damage` は UI が次に `snapshot` を呼ぶまで 1 回しか呼ばない。
@@ -10,21 +11,27 @@
 
 use std::io::{self, Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
+use std::time::Duration;
 
 use mt_vt::{GridSnapshot, Key, Modifiers, Row, Terminal, VtEvent};
 
-use crate::transport::{Transport, WindowSize};
+use crate::log::{LogOptions, Logger};
+use crate::transport::{SendDelay, SerialSettings, Transport, WindowSize};
 
 /// 既定のスクロールバック行数
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
+
+/// 再接続を試す間隔
+const RECONNECT_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SessionState {
     Connecting,
     Connected,
+    /// 相手が消えたので、戻ってくるのを待っている
     Reconnecting,
     Closed,
 }
@@ -41,6 +48,9 @@ pub trait SessionListener: Send + Sync {
 pub struct SessionOptions {
     pub size: WindowSize,
     pub scrollback: usize,
+    pub send_delay: SendDelay,
+    /// 相手が消えたときに自動でつなぎ直すか（Transport が対応している場合）
+    pub auto_reconnect: bool,
 }
 
 impl Default for SessionOptions {
@@ -48,6 +58,8 @@ impl Default for SessionOptions {
         Self {
             size: WindowSize::new(80, 24),
             scrollback: DEFAULT_SCROLLBACK,
+            send_delay: SendDelay::default(),
+            auto_reconnect: true,
         }
     }
 }
@@ -56,13 +68,24 @@ pub struct Session {
     inner: Arc<Inner>,
 }
 
+enum WriterMsg {
+    Data(Vec<u8>),
+    /// 再接続後の新しい送信先
+    Replace(Box<dyn Write + Send>),
+    Delay(SendDelay),
+}
+
 struct Inner {
     vt: Mutex<Terminal>,
     transport: Mutex<Box<dyn Transport>>,
-    tx: Sender<Vec<u8>>,
+    tx: Sender<WriterMsg>,
     listener: Arc<dyn SessionListener>,
     damage_pending: AtomicBool,
     state: Mutex<SessionState>,
+    /// `close` が呼ばれた。受信が終わってもつなぎ直さない
+    closing: AtomicBool,
+    auto_reconnect: AtomicBool,
+    log: Mutex<Option<Logger>>,
 }
 
 impl Session {
@@ -77,7 +100,7 @@ impl Session {
         let size = options.size;
         transport.resize(size)?;
 
-        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        let (tx, rx) = mpsc::channel::<WriterMsg>();
         let inner = Arc::new(Inner {
             vt: Mutex::new(Terminal::new(size.cols, size.rows, options.scrollback)),
             transport: Mutex::new(transport),
@@ -85,22 +108,15 @@ impl Session {
             listener,
             damage_pending: AtomicBool::new(false),
             state: Mutex::new(SessionState::Connecting),
+            closing: AtomicBool::new(false),
+            auto_reconnect: AtomicBool::new(options.auto_reconnect),
+            log: Mutex::new(None),
         });
 
+        let delay = options.send_delay;
         thread::Builder::new()
             .name("mt-session-writer".into())
-            .spawn(move || {
-                let mut writer = writer;
-                while let Ok(bytes) = rx.recv() {
-                    if writer
-                        .write_all(&bytes)
-                        .and_then(|()| writer.flush())
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            })?;
+            .spawn(move || write_loop(rx, writer, delay))?;
 
         let reader_inner = Arc::clone(&inner);
         thread::Builder::new()
@@ -115,7 +131,7 @@ impl Session {
     /// 生のバイト列を送る。
     pub fn write(&self, bytes: Vec<u8>) {
         if !bytes.is_empty() {
-            let _ = self.inner.tx.send(bytes);
+            let _ = self.inner.tx.send(WriterMsg::Data(bytes));
         }
     }
 
@@ -126,7 +142,7 @@ impl Session {
     }
 
     /// 貼り付け。改行は CR に揃え、ブラケットペーストモードなら囲む。
-    /// TODO(Phase 1): 複数行の確認と送信遅延
+    /// 送信遅延は送信スレッドで効く。複数行の確認は UI 側で行う。
     pub fn paste(&self, text: String) {
         let bytes = self.inner.vt().encode_paste(&text);
         self.write(bytes);
@@ -160,6 +176,34 @@ impl Session {
         self.inner.transport()?.set_lines(dtr, rts)
     }
 
+    /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。
+    pub fn set_serial_settings(&self, settings: &SerialSettings) -> io::Result<()> {
+        self.inner.transport()?.set_serial_settings(settings)
+    }
+
+    pub fn set_send_delay(&self, delay: SendDelay) {
+        let _ = self.inner.tx.send(WriterMsg::Delay(delay));
+    }
+
+    pub fn set_auto_reconnect(&self, enabled: bool) {
+        self.inner.auto_reconnect.store(enabled, Ordering::SeqCst);
+    }
+
+    /// 受信データのログを始める。記録中なら前のログを閉じて切り替える。
+    pub fn log_start(&self, options: &LogOptions) -> io::Result<()> {
+        let logger = Logger::open(options)?;
+        *self.inner.log() = Some(logger);
+        Ok(())
+    }
+
+    pub fn log_stop(&self) {
+        *self.inner.log() = None;
+    }
+
+    pub fn is_logging(&self) -> bool {
+        self.inner.log().is_some()
+    }
+
     pub fn state(&self) -> SessionState {
         self.inner
             .state
@@ -170,16 +214,58 @@ impl Session {
 
     /// 接続を閉じる。受信スレッドが終わると `on_state(Closed)` が呼ばれる。
     pub fn close(&self) {
+        self.inner.closing.store(true, Ordering::SeqCst);
         if let Ok(mut t) = self.inner.transport.lock() {
             let _ = t.close();
         }
     }
 }
 
+fn write_loop(rx: Receiver<WriterMsg>, writer: Box<dyn Write + Send>, mut delay: SendDelay) {
+    let mut writer = Some(writer);
+    while let Ok(msg) = rx.recv() {
+        match msg {
+            WriterMsg::Data(bytes) => {
+                let Some(w) = writer.as_mut() else { continue };
+                if write_with_delay(w.as_mut(), &bytes, delay).is_err() {
+                    // 相手が消えた。再接続で新しい送信先が来るまで、送信データは捨てる
+                    writer = None;
+                }
+            }
+            WriterMsg::Replace(w) => writer = Some(w),
+            WriterMsg::Delay(d) => delay = d,
+        }
+    }
+}
+
+fn write_with_delay(w: &mut dyn Write, bytes: &[u8], delay: SendDelay) -> io::Result<()> {
+    if delay.per_char_ms == 0 && delay.per_line_ms == 0 {
+        w.write_all(bytes)?;
+        return w.flush();
+    }
+    for &b in bytes {
+        w.write_all(&[b])?;
+        w.flush()?;
+        let ms = if b == b'\r' {
+            delay.per_line_ms
+        } else {
+            delay.per_char_ms
+        };
+        if ms > 0 {
+            thread::sleep(Duration::from_millis(u64::from(ms)));
+        }
+    }
+    Ok(())
+}
+
 impl Inner {
     fn vt(&self) -> MutexGuard<'_, Terminal> {
         // VT 更新中に panic しても描画は続けたいので、毒化は無視する
         self.vt.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn log(&self) -> MutexGuard<'_, Option<Logger>> {
+        self.log.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn transport(&self) -> io::Result<MutexGuard<'_, Box<dyn Transport>>> {
@@ -189,27 +275,79 @@ impl Inner {
     }
 
     fn read_loop(&self, mut reader: Box<dyn Read + Send>) {
+        loop {
+            self.pump(reader.as_mut());
+            match self.wait_for_reconnect() {
+                Some(r) => reader = r,
+                None => break,
+            }
+        }
+        self.set_state(SessionState::Closed);
+    }
+
+    /// 受信が終わるまで読み続ける。
+    fn pump(&self, reader: &mut dyn Read) {
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => {
-                    let events = self.vt().feed(&buf[..n]);
-                    self.handle_events(events);
-                    self.notify_damage();
-                }
+                Ok(n) => self.receive(&buf[..n]),
                 Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                 Err(_) => break,
             }
         }
-        self.set_state(SessionState::Closed);
+    }
+
+    fn receive(&self, bytes: &[u8]) {
+        {
+            let mut log = self.log();
+            if let Some(logger) = log.as_mut()
+                && logger.write(bytes).is_err()
+            {
+                // ディスクがいっぱいなど。ログだけ止めて受信は続ける
+                *log = None;
+            }
+        }
+        let events = self.vt().feed(bytes);
+        self.handle_events(events);
+        self.notify_damage();
+    }
+
+    /// 相手が消えた後、つなぎ直せたら新しい reader を返す。つなぎ直さないなら None。
+    fn wait_for_reconnect(&self) -> Option<Box<dyn Read + Send>> {
+        let can = self.auto_reconnect.load(Ordering::SeqCst)
+            && self.transport().map(|t| t.can_reconnect()).unwrap_or(false);
+        if !can || self.closing.load(Ordering::SeqCst) {
+            return None;
+        }
+        self.set_state(SessionState::Reconnecting);
+        while !self.closing.load(Ordering::SeqCst) {
+            thread::sleep(RECONNECT_INTERVAL);
+            if self.closing.load(Ordering::SeqCst) || !self.auto_reconnect.load(Ordering::SeqCst) {
+                return None;
+            }
+            let Ok(mut t) = self.transport() else {
+                return None;
+            };
+            if t.reconnect().is_err() {
+                continue;
+            }
+            let (Ok(reader), Ok(writer)) = (t.reader(), t.writer()) else {
+                continue;
+            };
+            drop(t);
+            let _ = self.tx.send(WriterMsg::Replace(writer));
+            self.set_state(SessionState::Connected);
+            return Some(reader);
+        }
+        None
     }
 
     fn handle_events(&self, events: Vec<VtEvent>) {
         for event in events {
             match event {
                 VtEvent::Reply(bytes) => {
-                    let _ = self.tx.send(bytes);
+                    let _ = self.tx.send(WriterMsg::Data(bytes));
                 }
                 VtEvent::Bell => self.listener.on_bell(),
                 VtEvent::Title(title) => self.listener.on_title(title),

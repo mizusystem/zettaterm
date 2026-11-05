@@ -161,6 +161,7 @@ mod tests {
         let options = SessionOptions {
             size,
             scrollback: 100,
+            ..Default::default()
         };
         Session::open(Box::new(pty), options, Arc::new(Quiet)).unwrap()
     }

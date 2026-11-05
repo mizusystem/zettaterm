@@ -24,7 +24,8 @@ let package = Package(
         .executableTarget(
             name: "MultiTerm",
             dependencies: ["MTCore"],
-            path: "Sources/MultiTerm"
+            path: "Sources/MultiTerm",
+            resources: [.copy("Resources/spec")]
         ),
         .testTarget(
             name: "MultiTermTests",

@@ -11,7 +11,10 @@ name = "mt_serial"
 
 [dependencies]
 mt-core.workspace = true
-# 予定: serialport、OS 別に IOKit / udev / SetupAPI（cfg 分岐）
+serialport = "4.10.1"
 
 [lints]
 workspace = true
+
+[target."cfg(unix)".dev-dependencies]
+libc = "0.2.191"

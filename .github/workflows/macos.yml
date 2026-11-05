@@ -17,5 +17,4 @@ jobs:
           components: rustfmt, clippy
           targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
-      - run: brew install socat
       - run: scripts/ci-macos.sh

@@ -34,9 +34,9 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Install socat (Linux)
+      - name: Install libudev (Linux, for serialport)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y socat
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 

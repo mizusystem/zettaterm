@@ -7,6 +7,7 @@
 # 出力
 #   apps/macos/build/MTCoreFFI.xcframework      静的ライブラリ + C ヘッダ + modulemap
 #   apps/macos/Sources/MTCore/Generated/        UniFFI が生成した Swift
+#   apps/macos/Sources/MultiTerm/Resources/     spec/ から写した Tera Term の文言
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -74,4 +75,10 @@ PLIST
 
 mkdir -p "$APP/Sources/MTCore/Generated"
 cp "$GEN"/*.swift "$APP/Sources/MTCore/Generated/"
+# Tera Term の文言（spec/ は tools/extract-tt-ui の生成物）
+RES="$APP/Sources/MultiTerm/Resources/spec"
+rm -rf "$APP/Sources/MultiTerm/Resources"
+mkdir -p "$RES"
+cp "$ROOT/spec/lang/ja_JP.json" "$ROOT/spec/lang/en_US.json" "$ROOT/spec/serial-options.json" "$RES/"
+
 echo "built: $XCF"
