@@ -8,8 +8,11 @@
 mod bridge;
 mod connect;
 mod dialogs;
+mod extras;
 mod macros;
+mod progress;
 mod screen;
+mod settings;
 mod strings;
 mod term;
 mod transfer;
@@ -31,6 +34,12 @@ fn menu() -> gio::Menu {
         Some("win.new-connection"),
     );
     file.append(Some("新しいウィンドウ"), Some("app.new-window"));
+    file.append(Some(&tt("MENU_FILE_LOG", "ログ...")), Some("win.log"));
+    file.append(
+        Some(&tt("MENU_FILE_STOPLOG", "ログを終了")),
+        Some("win.log-stop"),
+    );
+    file.append(Some("SSH SCP..."), Some("win.scp"));
     file.append(
         Some(&tt("MENU_FILE_DISCONNECT", "接続断")),
         Some("win.disconnect"),
@@ -43,6 +52,17 @@ fn menu() -> gio::Menu {
     edit.append(Some(&tt("MENU_EDIT_COPY", "コピー")), Some("win.copy"));
     edit.append(Some(&tt("MENU_EDIT_PASTE", "貼り付け")), Some("win.paste"));
     bar.append_submenu(Some(&tt("MENU_EDIT", "編集")), &edit);
+
+    let setup = gio::Menu::new();
+    setup.append(
+        Some(&tt("MENU_SETUP_TERMINAL", "端末...")),
+        Some("win.setup-terminal"),
+    );
+    setup.append(
+        Some(&tt("MENU_SETUP_SERIALPORT", "シリアルポート...")),
+        Some("win.setup-serial"),
+    );
+    bar.append_submenu(Some(&tt("MENU_SETUP", "設定")), &setup);
 
     let trans = gio::Menu::new();
     for kind in Kind::ALL {

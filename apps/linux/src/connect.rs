@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use gtk::prelude::*;
 use mt_core::profile::{ConnectionProfile, HostHistory};
-use mt_core::{AuthPrompter, SendDelay, SerialSettings, Transport, WindowSize};
+use mt_core::{AuthPrompter, SendDelay, Transport, WindowSize};
 use mt_net::{IpVersion, LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
 use mt_serial::SerialTransport;
 
@@ -34,10 +34,12 @@ pub fn remember(profile: &ConnectionProfile) {
 }
 
 /// 接続先から Transport を作る（Telnet / SSH はつながるまで戻らないので、メインスレッドで呼ばない）。
+/// 内蔵 SSH なら `files` に SSH SCP の窓口を入れる。
 pub fn open_transport(
     profile: &ConnectionProfile,
     size: WindowSize,
     prompter: Arc<dyn AuthPrompter>,
+    files: &mut Option<mt_net::SshFiles>,
 ) -> io::Result<(Box<dyn Transport>, SendDelay)> {
     Ok(match profile {
         ConnectionProfile::LocalShell => (
@@ -83,10 +85,9 @@ pub fn open_transport(
                 user: user.clone(),
                 config_path: None,
             };
-            (
-                Box::new(SshTransport::connect(&options, size, prompter)?),
-                SendDelay::default(),
-            )
+            let transport = SshTransport::connect(&options, size, prompter)?;
+            *files = transport.files();
+            (Box::new(transport), SendDelay::default())
         }
         ConnectionProfile::Telnet { host, port } => (
             Box::new(TcpTransport::telnet(
@@ -335,14 +336,16 @@ pub fn show_dialog(
             else {
                 return;
             };
-            let mut settings = SerialSettings::default();
+            // 保存してある通信設定（設定 > シリアルポート）に、ここで選んだスピードを当てる
+            let saved = crate::settings::Settings::load();
+            let mut settings = saved.serial;
             if let Some(b) = baud.active_text().and_then(|s| s.trim().parse().ok()) {
                 settings.baud = b;
             }
             ConnectionProfile::Serial {
                 port: p,
                 settings,
-                delay: SendDelay::default(),
+                delay: saved.delay,
             }
         } else {
             let text = host

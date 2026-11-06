@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use mt_core::profile::ConnectionProfile;
-use mt_core::{SessionOptions, SessionState, TerminalSettings, TransferRequest, WindowSize};
+use mt_core::{SessionOptions, SessionState, TransferRequest, WindowSize};
 use mt_ttl::ConnectSpec;
 use mt_xfer::Direction;
 
@@ -16,6 +16,7 @@ use crate::bridge::{Event, Listener, Prompt, Prompter};
 use crate::connect;
 use crate::dialogs;
 use crate::macros::{self, MacroReq};
+use crate::settings::{self, Settings};
 use crate::strings::tt;
 use crate::term::TermView;
 use crate::transfer::{self, Kind};
@@ -47,6 +48,9 @@ pub struct TermWindow {
     badge_status: gtk::Label,
     badge_transfer: gtk::Label,
     waiters: RefCell<Vec<Waiter>>,
+    /// 内蔵 SSH のときだけ。SSH SCP に使う
+    files: RefCell<Option<mt_net::SshFiles>>,
+    logging: Cell<bool>,
 }
 
 impl TermWindow {
@@ -118,6 +122,8 @@ impl TermWindow {
             badge_status,
             badge_transfer,
             waiters: RefCell::new(Vec::new()),
+            files: RefCell::new(None),
+            logging: Cell::new(false),
         });
         me.install_actions();
         me.listen(events_rx, prompts_rx, macro_rx);
@@ -195,30 +201,34 @@ impl TermWindow {
         });
         let (tx, rx) = async_channel::bounded(1);
         let p = profile.clone();
+        let terminal = Settings::load().terminal_for(Some(&profile)).core();
         std::thread::spawn(move || {
-            let result =
-                connect::open_transport(&p, size, prompter).and_then(|(transport, send_delay)| {
+            let mut files = None;
+            let result = connect::open_transport(&p, size, prompter, &mut files).and_then(
+                |(transport, send_delay)| {
                     let options = SessionOptions {
                         size,
                         send_delay,
-                        terminal: TerminalSettings::default(),
+                        terminal,
                         ..Default::default()
                     };
                     mt_core::Session::open(transport, options, listener)
-                });
-            let _ = tx.send_blocking(result.map_err(|e| e.to_string()));
+                },
+            );
+            let _ = tx.send_blocking(result.map(|s| (s, files)).map_err(|e| e.to_string()));
         });
         let me = Rc::clone(self);
         glib::spawn_future_local(async move {
             let Ok(result) = rx.recv().await else { return };
             if me.attempt.get() != attempt {
-                if let Ok(s) = result {
+                if let Ok((s, _)) = result {
                     s.close();
                 }
                 return;
             }
             match result {
-                Ok(session) => {
+                Ok((session, files)) => {
+                    *me.files.borrow_mut() = files;
                     me.view.attach(Arc::clone(&session));
                     me.status.set(Status::Connected);
                     if keep {
@@ -243,7 +253,87 @@ impl TermWindow {
         }
     }
 
+    /// 「設定 > 端末」。今の接続先の種類（シリアル / それ以外）に保存し、接続中ならその場で効かせる。
+    fn setup_terminal(self: &Rc<Self>) {
+        let profile = self.profile.borrow().clone();
+        let current = Settings::load().terminal_for(profile.as_ref());
+        let me = Rc::clone(self);
+        settings::terminal_dialog(&self.parent(), current, move |conf| {
+            let mut s = Settings::load();
+            s.set_terminal_for(profile.as_ref(), conf);
+            s.save();
+            if let Some(session) = me.view.session() {
+                session.set_terminal_settings(conf.core());
+            }
+        });
+    }
+
+    /// 「設定 > シリアルポート」。シリアルで接続中なら「現在の接続を再設定」、それ以外は新しく開く。
+    fn setup_serial(self: &Rc<Self>) {
+        let connected_port = match (&*self.profile.borrow(), self.connected()) {
+            (Some(ConnectionProfile::Serial { port, .. }), true) => Some(port.clone()),
+            _ => None,
+        };
+        let s = Settings::load();
+        let me = Rc::clone(self);
+        let reset = connected_port.is_some();
+        settings::serial_dialog(
+            &self.parent(),
+            connected_port,
+            (s.serial, s.delay, s.serial_port.clone()),
+            move |choice| {
+                let mut s = Settings::load();
+                s.serial = choice.settings;
+                s.delay = choice.delay;
+                s.serial_port = Some(choice.port.clone());
+                s.save();
+                let profile = ConnectionProfile::Serial {
+                    port: choice.port,
+                    settings: choice.settings,
+                    delay: choice.delay,
+                };
+                if reset && let Some(session) = me.view.session() {
+                    if let Err(e) = session.set_serial_settings(&choice.settings) {
+                        dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {});
+                        return;
+                    }
+                    session.set_send_delay(choice.delay);
+                    *me.profile.borrow_mut() = Some(profile);
+                } else {
+                    me.connect(profile, true);
+                }
+            },
+        );
+    }
+
+    /// 「ファイル > ログ...」。
+    fn start_log(self: &Rc<Self>) {
+        let Some(session) = self.view.session() else {
+            return;
+        };
+        let me = Rc::clone(self);
+        crate::extras::log_dialog(&self.parent(), move |opts| match session.log_start(&opts) {
+            Ok(()) => me.logging.set(true),
+            Err(e) => dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {}),
+        });
+    }
+
+    /// 「ファイル > SSH SCP...」（内蔵 SSH のときだけ）。
+    fn show_scp(self: &Rc<Self>) {
+        let Some(files) = self.files.borrow().clone().filter(|_| self.connected()) else {
+            dialogs::message(
+                &self.parent(),
+                "SSH SCP",
+                "SSH SCP は内蔵の SSH で接続しているときだけ使えます",
+                || {},
+            );
+            return;
+        };
+        crate::extras::scp_dialog(&self.parent(), files);
+    }
+
     pub fn disconnect(&self) {
+        self.files.borrow_mut().take();
         self.attempt.set(self.attempt.get() + 1);
         if let Some(s) = self.view.detach() {
             s.close();
@@ -285,6 +375,19 @@ impl TermWindow {
         );
         add("macro", Box::new(|me| me.choose_macro()));
         add("macro-stop", Box::new(|me| me.confirm_stop_macro()));
+        add("setup-terminal", Box::new(|me| me.setup_terminal()));
+        add("setup-serial", Box::new(|me| me.setup_serial()));
+        add("log", Box::new(|me| me.start_log()));
+        add(
+            "log-stop",
+            Box::new(|me| {
+                if let Some(s) = me.view.session() {
+                    s.log_stop();
+                }
+                me.logging.set(false);
+            }),
+        );
+        add("scp", Box::new(|me| me.show_scp()));
 
         // 転送 > 種類 > 送信 / 受信（引数は種類の id）
         for (name, send) in [("transfer-send", true), ("transfer-receive", false)] {

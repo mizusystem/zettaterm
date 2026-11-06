@@ -22,7 +22,9 @@ mt-net = { path = "../../crates/net" }
 mt-serial = { path = "../../crates/serial" }
 mt-ttl = { path = "../../crates/ttl" }
 mt-xfer = { path = "../../crates/xfer" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+toml = "0.9"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
