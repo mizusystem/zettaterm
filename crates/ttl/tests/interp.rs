@@ -472,3 +472,68 @@ fn wait_ends_when_the_peer_goes_away() {
     assert_eq!(*host.out.lock().unwrap(), ["0"]);
     t.join().unwrap();
 }
+
+#[test]
+fn paths_checksums_logs_and_exit_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let fw = dir.path().join("fw.bin");
+    std::fs::write(&fw, b"123456789").unwrap();
+    let log = dir.path().join("m.log");
+    let src = format!(
+        r#"
+basename b '/var/log/messages'
+dirname d '/var/log/messages'
+makepath p 'conf' 'r1.txt'
+messagebox b
+messagebox d
+messagebox p
+crc32 c '123456789'
+sprintf2 h '%08X' c
+messagebox h
+crc32file c '{fw}'
+sprintf2 h '%08X %d' c result
+messagebox h
+crc32file c 'missing.bin'
+int2str r result
+messagebox r
+loginfo f
+int2str r result
+messagebox r
+logopen '{log}' 0 0
+logwrite 'first'
+logpause
+loginfo f
+int2str r result
+messagebox r
+logstart
+logwrite 'second'
+logclose
+setexitcode 3
+"#,
+        fw = fw.display(),
+        log = log.display(),
+    );
+    let (session, _remote) = open_mock();
+    let mut host = TestHost::default();
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut it = Interp::new(&mut host, Some(session), stop);
+    it.run_source(&src, dir.path()).unwrap();
+    assert_eq!(it.exit_code(), 3);
+    drop(it);
+    let out = host.out.lock().unwrap().clone();
+    assert_eq!(
+        out,
+        [
+            "messages",
+            "/var/log",
+            &format!("conf{}r1.txt", std::path::MAIN_SEPARATOR),
+            "CBF43926",
+            "CBF43926 0",
+            "-1",
+            "-1",
+            "1",
+        ]
+    );
+    // logpause の間も logwrite は書く（コメントは中断中でも残す）
+    assert_eq!(std::fs::read_to_string(&log).unwrap(), "first\nsecond\n");
+}

@@ -161,6 +161,8 @@ pub struct Interp<'h> {
     rts: bool,
     title: String,
     rng: u64,
+    /// `setexitcode` の値（cli の終了コード）
+    exit_code: i32,
 }
 
 impl<'h> Interp<'h> {
@@ -192,6 +194,7 @@ impl<'h> Interp<'h> {
             rts: true,
             title: String::new(),
             rng: seed,
+            exit_code: 0,
         };
         for (k, v) in [
             ("result", Value::Int(0)),
@@ -207,6 +210,11 @@ impl<'h> Interp<'h> {
                 .insert(format!("groupmatchstr{i}"), Value::Str(String::new()));
         }
         me
+    }
+
+    /// `setexitcode` で決めた終了コード（既定は 0）。
+    pub fn exit_code(&self) -> i32 {
+        self.exit_code
     }
 
     /// 接続（マクロが `connect` で開いたものを含む）。
@@ -909,6 +917,30 @@ impl<'h> Interp<'h> {
                     s.log_stop();
                 }
             }
+            "logpause" | "logstart" => {
+                argc(0, 0)?;
+                if let Some(s) = &self.session {
+                    s.log_pause(name == "logpause");
+                }
+            }
+            "logwrite" => {
+                argc(1, 1)?;
+                let text = self.str(&args[0])?;
+                if let Some(s) = &self.session {
+                    s.log_write(&text).map_err(|e| format!("logwrite: {e}"))?;
+                }
+            }
+            "loginfo" => {
+                // 記録中のファイル名を入れる。result は記録していなければ -1、中断中なら 1、記録中は 0
+                argc(1, 1)?;
+                let status = self.session.as_ref().and_then(|s| s.log_status());
+                let (path, code) = match status {
+                    Some(st) => (st.path.to_string_lossy().into_owned(), i32::from(st.paused)),
+                    None => (String::new(), -1),
+                };
+                self.set_out(&args[0], Value::Str(path))?;
+                self.set_result(code);
+            }
             "sendfile" => {
                 argc(1, 2)?;
                 let file = self.str(&args[0])?;
@@ -966,6 +998,51 @@ impl<'h> Interp<'h> {
                 };
                 let dir = self.host.download_dir();
                 self.transfer(p, Direction::Receive(dir))?;
+            }
+
+            // ---- パス
+            "basename" | "dirname" => {
+                argc(2, 2)?;
+                let p = self.str(&args[1])?;
+                let trimmed = p.trim_end_matches(['/', '\\']);
+                let cut = trimmed.rfind(['/', '\\']);
+                let out = match (name, cut) {
+                    ("basename", Some(i)) => trimmed[i + 1..].to_owned(),
+                    ("basename", None) => trimmed.to_owned(),
+                    (_, Some(0)) => p[..1].to_owned(),
+                    (_, Some(i)) => trimmed[..i].to_owned(),
+                    (_, None) => ".".to_owned(),
+                };
+                self.set_out(&args[0], Value::Str(out))?;
+            }
+            "makepath" => {
+                argc(3, 3)?;
+                let dir = self.str(&args[1])?;
+                let file = self.str(&args[2])?;
+                let joined = Path::new(&dir).join(&file).to_string_lossy().into_owned();
+                self.set_out(&args[0], Value::Str(joined))?;
+            }
+
+            // ---- チェックサム（ファームウェアの転送前後の確かめに）
+            "crc32" => {
+                argc(2, 2)?;
+                let s = self.str(&args[1])?;
+                self.set_out(&args[0], Value::Int(crc32(s.as_bytes()) as i32))?;
+            }
+            "crc32file" => {
+                argc(2, 2)?;
+                let file = self.str(&args[1])?;
+                match crc32_file(&self.path(&file)) {
+                    Ok(c) => {
+                        self.set_out(&args[0], Value::Int(c as i32))?;
+                        self.set_result(0);
+                    }
+                    Err(_) => self.set_result(-1),
+                }
+            }
+            "setexitcode" => {
+                argc(1, 1)?;
+                self.exit_code = self.int(&args[0])?;
             }
 
             // ---- 文字列
@@ -1529,5 +1606,48 @@ impl ByteDivert for Divert {
     }
     fn finished(&self) -> bool {
         self.lock().status().is_finished()
+    }
+}
+
+/// CRC-32（IEEE 802.3。zip や Tera Term の crc32 と同じ）。
+fn crc32_update(mut crc: u32, data: &[u8]) -> u32 {
+    static TABLE: std::sync::OnceLock<[u32; 256]> = std::sync::OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut t = [0u32; 256];
+        for (i, slot) in t.iter_mut().enumerate() {
+            let mut c = i as u32;
+            for _ in 0..8 {
+                c = if c & 1 != 0 {
+                    0xEDB8_8320 ^ (c >> 1)
+                } else {
+                    c >> 1
+                };
+            }
+            *slot = c;
+        }
+        t
+    });
+    for &b in data {
+        crc = table[((crc ^ u32::from(b)) & 0xFF) as usize] ^ (crc >> 8);
+    }
+    crc
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    !crc32_update(!0, data)
+}
+
+/// ファイルの CRC-32。大きなファームウェアでもメモリに読み込まず少しずつ計算する。
+fn crc32_file(path: &Path) -> std::io::Result<u32> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path)?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut crc = !0u32;
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 {
+            return Ok(!crc);
+        }
+        crc = crc32_update(crc, &buf[..n]);
     }
 }

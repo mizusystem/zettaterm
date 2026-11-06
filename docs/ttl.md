@@ -16,12 +16,12 @@
 
 | 分類 | コマンド |
 | --- | --- |
-| 通信 | `connect` `disconnect` `closett` `testlink` `send` `sendln` `sendbreak` `setdtr` `setrts` `flushrecv` `wait` `waitln` `recvln` `waitregex` `logopen` `logclose` `sendfile` |
+| 通信 | `connect` `disconnect` `closett` `testlink` `send` `sendln` `sendbreak` `setdtr` `setrts` `flushrecv` `wait` `waitln` `recvln` `waitregex` `logopen` `logclose` `logpause` `logstart` `logwrite` `loginfo` `sendfile` |
 | ファイル転送 | `xmodemsend` `xmodemrecv` `ymodemsend` `ymodemrecv` `zmodemsend` `zmodemrecv` `kermitsend` `kermitrecv` |
 | 文字列 | `strlen` `strconcat` `strcompare` `strcopy` `strscan` `strinsert` `strremove` `strtrim` `strreplace` `strsplit` `strmatch` `str2int` `int2str` `sprintf` `sprintf2` `tolower` `toupper` `code2str` `str2code` |
-| ファイル | `fileopen` `filecreate` `fileclose` `filereadln` `filewrite` `filewriteln` `filesearch` `filedelete` `getdir` `setdir` |
+| ファイル | `fileopen` `filecreate` `fileclose` `filereadln` `filewrite` `filewriteln` `filesearch` `filedelete` `getdir` `setdir` `basename` `dirname` `makepath` `crc32` `crc32file` |
 | ダイアログ・画面 | `messagebox` `inputbox` `passwordbox` `yesnobox` `statusbox` `closesbox` `dispstr` `settitle` `gettitle` `beep` `show` `showtt` |
-| その他 | `pause` `mpause` `getdate` `gettime` `getenv` `random` `intdim` `strdim` |
+| その他 | `setexitcode` `pause` `mpause` `getdate` `gettime` `getenv` `random` `intdim` `strdim` |
 
 ## 本家との違い
 
@@ -34,6 +34,8 @@
 - `timeout` が 0（無期限）でも、相手が切れたら `wait` 系は `result = 0` で次へ進む
 - `filereadln` の 1 行は 64 KiB まで（続きは次の `filereadln`）
 - `wait` は、前回の一致より後に届いた受信のすべてから探す（`flushrecv` で捨てられる）
+- `loginfo` の `result` は、記録していなければ -1、記録中は 0、`logpause` 中は 1（本家はログの種類のビット）
+- `setexitcode` は `mt run` の終了コードになる（0〜255 に収める）
 
 ## 実行
 

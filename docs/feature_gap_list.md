@@ -19,7 +19,7 @@
 | --- | --- |
 | Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
 | Step 2（ログ・設定・シリアル） | 完了（2026-11-06）。Linux 版は画面での確認が未了、信号線は実機での確認が未了 |
-| Step 3（TTL） | 未着手 |
+| Step 3（TTL） | 着手（ログ制御、パス、`crc32`、`setexitcode` まで） |
 | Step 4（TTSSH・設定互換） | 未着手 |
 
 ## 目次
@@ -216,9 +216,9 @@
 - [ ] `sendbroadcast` / `sendlnbroadcast` / `sendmulticast` / `setmulticastname`: マクロからの一斉送信
 
 ### 5-2. ログ制御（優先度：高）
-- [ ] `logwrite`: 記録中のログファイルに任意の文字列を書き込む
-- [ ] `logpause` / `logstart`: ログ記録の一時停止と再開
-- [ ] `loginfo`: 現在のログ記録状態とファイルパスを取得する
+- [x] `logwrite`: 記録中のログファイルに任意の文字列を書き込む
+- [x] `logpause` / `logstart`: ログ記録の一時停止と再開
+- [x] `loginfo`: 現在のログ記録状態とファイルパスを取得する
 - [ ] `logrotate`: ログのローテーションを実行・設定する
 - [ ] `logautoclosemode`: 自動クローズモードの設定
 
@@ -236,18 +236,18 @@
 - [ ] `filecopy` / `filerename` / `fileconcat`: ファイルのコピー・リネーム・結合
 - [ ] `fileread`: 指定バイト数を読み込む（現在は `filereadln` のみ）
 - [ ] `fileseek` / `fileseekback` / `filemarkptr` / `filestat` / `filetruncate` / `filelock` / `fileunlock`: ファイルポインタ制御・メタ情報取得
-- [ ] `makepath` / `basename` / `dirname`: パス文字列の組み立てと分解
+- [x] `makepath` / `basename` / `dirname`: パス文字列の組み立てと分解
 
 ### 5-5. パスワード管理・クリップボード・外部プロセス・ユーティリティ（優先度：中）
 - [ ] `getpassword` / `setpassword` / `ispassword` / `delpassword`: パスワードファイルへの暗号化保存と取得（マクロ内に平文パスワードを書かないための定番機能）
 - [ ] `clipb2var` / `var2clipb`: クリップボードと変数の相互コピー
 - [ ] `exec`: 外部コマンド（ローカルの `ping` やスクリプト等）を起動する
-- [ ] `setexitcode`: マクロ終了時のプロセスの終了コードを設定する（CLI `mt run` で特に有用）
+- [x] `setexitcode`: マクロ終了時のプロセスの終了コードを設定する（CLI `mt run` で特に有用）
 - [ ] `getver`: Tera Term バージョン文字列の取得とバージョン比較
 - [ ] `gethostname` / `getipv4addr` / `getipv6addr`: 接続先ホスト名やローカル IP アドレス一覧の取得
 - [ ] `getttdir` / `getspecialfolder`: インストールフォルダや OS 特殊フォルダ（Desktop, Documents 等）のパス取得
 - [ ] `uptime`: OS またはアプリの稼働時間取得
-- [ ] `crc16` / `crc16file` / `crc32` / `crc32file` / `checksum8` / `checksum16` / `checksum32`: チェックサム・CRC 計算（ファームウェア転送前後の検証用）
+- [ ] `crc16` / `crc16file` / `crc32` / `crc32file` / `checksum8` / `checksum16` / `checksum32`: チェックサム・CRC 計算（ファームウェア転送前後の検証用）（※`crc32` と `crc32file` は実装済み）
 - [ ] `restoresetup` / `savesetup`: 設定ファイルの読み込み・保存
 
 ---

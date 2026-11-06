@@ -76,7 +76,8 @@ fn run(args: &[String]) -> ExitCode {
         s.close();
     }
     match result {
-        Ok(Outcome::Finished) => ExitCode::SUCCESS,
+        // setexitcode の値（0..255 に収める）
+        Ok(Outcome::Finished) => ExitCode::from(interp.exit_code().clamp(0, 255) as u8),
         Ok(Outcome::Stopped) => ExitCode::from(130),
         Err(e) => {
             eprintln!("\nmt: {e}");
