@@ -21,9 +21,9 @@ mod window;
 use gtk::prelude::*;
 use gtk::{gio, glib};
 
-use crate::strings::tt;
+use crate::strings::{l, tt};
 use crate::transfer::Kind;
-use crate::window::TermWindow;
+use crate::window::Tabs;
 
 fn menu() -> gio::Menu {
     let bar = gio::Menu::new();
@@ -33,7 +33,8 @@ fn menu() -> gio::Menu {
         Some(&tt("MENU_FILE_NEW", "新しい接続...")),
         Some("win.new-connection"),
     );
-    file.append(Some("新しいウィンドウ"), Some("app.new-window"));
+    file.append(Some(&l("新しいウィンドウ")), Some("app.new-window"));
+    file.append(Some(&l("新しいタブ")), Some("win.new-tab"));
     file.append(Some(&tt("MENU_FILE_LOG", "ログ...")), Some("win.log"));
     file.append(
         Some(&tt("MENU_FILE_STOPLOG", "ログを終了")),
@@ -48,7 +49,7 @@ fn menu() -> gio::Menu {
         Some(&tt("MENU_FILE_DISCONNECT", "接続断")),
         Some("win.disconnect"),
     );
-    file.append(Some("閉じる"), Some("win.close"));
+    file.append(Some(&l("閉じる")), Some("win.close"));
     file.append(Some(&tt("MENU_FILE_EXIT", "終了")), Some("app.quit"));
     bar.append_submenu(Some(&tt("MENU_FILE", "ファイル")), &file);
 
@@ -102,10 +103,17 @@ fn menu() -> gio::Menu {
         Some("win.send-break"),
     );
     control.append(
+        Some(&format!(
+            "{}...",
+            tt("MENU_CONTROL_BROADCAST", "ブロードキャストコマンド")
+        )),
+        Some("win.broadcast"),
+    );
+    control.append(
         Some(&format!("{}...", tt("MENU_CONTROL_MACRO", "マクロ"))),
         Some("win.macro"),
     );
-    control.append(Some("マクロの停止"), Some("win.macro-stop"));
+    control.append(Some(&l("マクロの停止")), Some("win.macro-stop"));
     bar.append_submenu(Some(&tt("MENU_CONTROL", "コントロール")), &control);
     bar
 }
@@ -136,22 +144,25 @@ fn main() -> glib::ExitCode {
         let new_window = gio::SimpleAction::new("new-window", None);
         let a = app.clone();
         new_window.connect_activate(move |_, _| {
-            let w = TermWindow::new(&a);
-            w.win.present();
-            w.show_connect_dialog();
+            let tabs = Tabs::new(&a);
+            let pane = tabs.add();
+            tabs.win.present();
+            pane.show_connect_dialog();
         });
         app.add_action(&new_window);
         // 端末のキー（Ctrl+文字）と重ならないよう、Ctrl+Shift にする
         app.set_accels_for_action("win.new-connection", &["<Control><Shift>n"]);
         app.set_accels_for_action("win.close", &["<Control><Shift>w"]);
+        app.set_accels_for_action("win.new-tab", &["<Control><Shift>t"]);
         app.set_accels_for_action("app.quit", &["<Control><Shift>q"]);
     });
     app.connect_activate(move |app| {
-        let w = TermWindow::new(app);
-        w.win.present();
+        let tabs = Tabs::new(app);
+        let pane = tabs.add();
+        tabs.win.present();
         match &macro_path {
-            Some(p) => w.run_macro(p.clone()),
-            None => w.show_connect_dialog(),
+            Some(p) => pane.run_macro(p.clone()),
+            None => pane.show_connect_dialog(),
         }
     });
     app.run_with_args(&args)

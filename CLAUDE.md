@@ -103,7 +103,7 @@ UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）から
 
 SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`mt_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。
 
-SSH SCP（TTSSH の「ファイル > SSH SCP」）は `crates/net/src/scp.rs`。内蔵 SSH の接続に exec チャネルを足して相手の `scp -t` / `scp -f` と話すので、端末は使ったまま転送できる（フォルダは未対応）。テストサーバーは本物の scp を起動して相互転送を確かめる（`tests/support/exec.rs`、test-sshd も同じ）。
+SSH SCP（TTSSH の「ファイル > SSH SCP」）は `crates/net/src/scp.rs`。内蔵 SSH の接続に exec チャネルを足して相手の `scp -t` / `scp -f` と話すので、端末は使ったまま転送できる（フォルダは `-r` で中身ごと）。テストサーバーは本物の scp を起動して相互転送を確かめる（`tests/support/exec.rs`、test-sshd も同じ）。
 
 ```bash
 cargo test -p mt-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
@@ -118,6 +118,8 @@ cargo test -p mt-xfer --test lrzsz -- --nocapture
 ```
 
 Kermit は C-Kermit（openkermit 11 系。`brew install openkermit`）と相互転送テストする（`cargo test -p mt-xfer --test kermit`）。Homebrew の c-kermit 9.0.302 は macOS でファイルを書けないので使わない。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
+
+`mt` コマンドの配布は `.github/workflows/release-cli.yml`（`v*` のタグで Linux / Windows / macOS 向けをビルドし、GitHub Releases に下書きで置く。手動実行はビルドだけ）。
 
 TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`、macOS は「コントロール > マクロ」（ffi の `run_macro` と `MacroHost`）。`connect` 直後のプロンプトを取りこぼさないよう、マクロは `Session::tap_with_history` で直前の受信から見る。
 

@@ -9,7 +9,7 @@ use mt_net::{ScpStatus, SshFiles};
 
 use crate::dialogs::modal;
 use crate::progress::{self, Snapshot, State};
-use crate::strings::{ssh, tt};
+use crate::strings::{l, lf, ssh, tt};
 use crate::transfer::downloads_dir;
 
 fn heading(text: &str) -> gtk::Label {
@@ -205,6 +205,23 @@ pub fn scp_dialog(parent: &gtk::Window, files: SshFiles) {
                 });
         });
     }
+    // フォルダは中身ごと送る
+    let pick_dir_send = gtk::Button::with_label(&l("フォルダ..."));
+    {
+        let (chosen, send_from, win) = (chosen.clone(), send_from.clone(), win.clone());
+        pick_dir_send.connect_clicked(move |_| {
+            let (chosen, send_from) = (chosen.clone(), send_from.clone());
+            gtk::FileDialog::builder()
+                .title(ssh("DLG_SCP_SELECT_FILE_TITLE", "送信ファイル選択"))
+                .build()
+                .select_folder(Some(&win), None::<&gio::Cancellable>, move |r| {
+                    if let Some(p) = r.ok().and_then(|f| f.path()) {
+                        send_from.set_text(&p.to_string_lossy());
+                        *chosen.borrow_mut() = vec![p];
+                    }
+                });
+        });
+    }
     let send_to = gtk::Entry::new();
     send_to.set_placeholder_text(Some(&tt(
         "DLG_DANDD_SCP_DEST_NOTE",
@@ -234,7 +251,10 @@ pub fn scp_dialog(parent: &gtk::Window, files: SshFiles) {
 
     grid.attach(&label(ssh("DLG_SCP_SENDFILE_FROM", "From:")), 0, 0, 1, 1);
     grid.attach(&send_from, 1, 0, 1, 1);
-    grid.attach(&pick, 2, 0, 1, 1);
+    let picks = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    picks.append(&pick);
+    picks.append(&pick_dir_send);
+    grid.attach(&picks, 2, 0, 1, 1);
     grid.attach(&label(ssh("DLG_SCP_SENDFILE_TO", "To:")), 0, 1, 1, 1);
     grid.attach(&send_to, 1, 1, 1, 1);
     grid.attach(&send, 2, 1, 1, 1);
@@ -289,9 +309,9 @@ pub fn scp_dialog(parent: &gtk::Window, files: SshFiles) {
 pub fn send_file_options(parent: &gtk::Window, done: impl FnOnce(bool) + 'static) {
     let (win, content, row) = modal(parent, &tt("MENU_FILE_SENDFILE", "ファイル送信"));
     let binary = gtk::CheckButton::with_label(&tt("DLG_SENDFILE_BINARY", "バイナリ"));
-    let note = gtk::Label::new(Some(
+    let note = gtk::Label::new(Some(&l(
         "バイナリ：中身を一切変えずに送る（ファームウェアなど）\nテキスト：改行コードと文字コードを「設定 > 端末」の送信に合わせる",
-    ));
+    )));
     note.set_xalign(0.0);
     note.add_css_class("dim-label");
     content.append(&binary);
@@ -371,13 +391,13 @@ pub fn drop_dialog(
         && files[0]
             .extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("ttl"));
-    let r_macro = gtk::CheckButton::with_label("マクロとして実行");
+    let r_macro = gtk::CheckButton::with_label(&l("マクロとして実行"));
     let r_scp = gtk::CheckButton::with_label(&tt("DLG_DANDD_SCP_RADIO", "SCP"));
     let r_send = gtk::CheckButton::with_label(&tt(
         "DLG_DANDD_SENDFILE_RADIO",
         "ファイル送信（ファイルの内容を貼り付け）",
     ));
-    let r_proto = gtk::CheckButton::with_label("プロトコルで送る");
+    let r_proto = gtk::CheckButton::with_label(&l("プロトコルで送る"));
     let r_paste =
         gtk::CheckButton::with_label(&tt("DLG_DANDD_PASTE_RADIO", "ファイル名を貼り付け"));
     for r in [&r_scp, &r_send, &r_proto, &r_paste] {
@@ -454,5 +474,75 @@ pub fn drop_dialog(
         }
     });
     win.set_default_widget(Some(&ok));
+    win.present();
+}
+
+/// 「コントロール > ブロードキャストコマンド」。つながっているタブ（ウィンドウをまたぐ）へ同じ文字列を送る。
+pub fn broadcast_dialog(parent: &gtk::Window) {
+    let (win, content, row) = modal(
+        parent,
+        &tt("DLG_BROADCAST_TITLE", "コマンドのブロードキャスト"),
+    );
+    let entry = gtk::Entry::new();
+    entry.set_hexpand(true);
+    let enter = gtk::CheckButton::with_label(&tt("DLG_BROADCAST_ENTER", "Enterキー"));
+    enter.set_active(true);
+    let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    line.append(&entry);
+    line.append(&enter);
+    content.append(&line);
+    let heading = gtk::Label::new(Some(&l("送り先")));
+    heading.set_xalign(0.0);
+    heading.add_css_class("dim-label");
+    content.append(&heading);
+    let panes = crate::window::connected_panes();
+    let checks: Vec<(gtk::CheckButton, std::rc::Rc<crate::window::TermWindow>)> = panes
+        .into_iter()
+        .map(|p| {
+            let c = gtk::CheckButton::with_label(&p.title());
+            c.set_active(true);
+            content.append(&c);
+            (c, p)
+        })
+        .collect();
+    if checks.is_empty() {
+        content.append(&gtk::Label::new(Some(&l(
+            "接続中のセッションがありません。",
+        ))));
+    }
+    let sent = gtk::Label::new(None);
+    sent.set_xalign(0.0);
+    sent.add_css_class("dim-label");
+    content.append(&sent);
+
+    let close = gtk::Button::with_label(&tt("DLG_BROADCAST_CLOSE", "閉じる"));
+    let send = gtk::Button::with_label(&tt("DLG_BROADCAST_SUBMIT", "送信"));
+    send.add_css_class("suggested-action");
+    row.append(&close);
+    row.append(&send);
+    let w = win.clone();
+    close.connect_clicked(move |_| w.close());
+    let do_send = std::rc::Rc::new({
+        let entry = entry.clone();
+        move || {
+            let text = entry.text().to_string();
+            let mut n = 0;
+            for (c, p) in &checks {
+                if c.is_active() {
+                    if enter.is_active() {
+                        p.send_line(&text);
+                    } else {
+                        p.send_text(&text);
+                    }
+                    n += 1;
+                }
+            }
+            sent.set_text(&lf("{} 件に送信しました", &[&n]));
+            entry.set_text("");
+        }
+    });
+    let d = do_send.clone();
+    send.connect_clicked(move |_| d());
+    entry.connect_activate(move |_| do_send());
     win.present();
 }

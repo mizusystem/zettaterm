@@ -381,6 +381,10 @@ impl TermView {
                     self.paste();
                     return glib::Propagation::Stop;
                 }
+                // それ以外の Ctrl+Shift+文字はメニューのショートカット（新しいタブ・閉じるなど）に回す
+                k if k.to_unicode().is_some_and(|c| c.is_ascii_alphabetic()) => {
+                    return glib::Propagation::Proceed;
+                }
                 _ => {}
             }
         }

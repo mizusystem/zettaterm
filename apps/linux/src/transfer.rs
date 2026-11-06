@@ -9,7 +9,7 @@ use mt_core::{ByteDivert, Session};
 use mt_xfer::{Direction, Protocol, Status, Transfer};
 
 use crate::progress::{Snapshot, State};
-use crate::strings::tt;
+use crate::strings::{l, tt};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -151,7 +151,7 @@ pub fn start_with(
         if send {
             tt("DLG_FILETRANS_TITLE", "ファイル送信")
         } else {
-            "ファイル受信".into()
+            l("ファイル受信")
         },
         kind.name()
     );

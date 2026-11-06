@@ -321,7 +321,7 @@ impl server::Handler for Server {
                 },
             );
             session.data(channel, vec![0u8])?;
-        } else if cmd.starts_with("scp -f ") {
+        } else if cmd.starts_with("scp ") && cmd.contains(" -f ") {
             if self.remote_files.lock().unwrap().contains_key(&arg) {
                 self.scp.lock().unwrap().insert(
                     channel,
@@ -1075,6 +1075,50 @@ fn scp_interoperates_with_openssh_scp() {
         "{:?}",
         job.progress()
     );
+
+    // フォルダを中身ごと送る（下のフォルダも）
+    let tree = env.path().join("cfg");
+    std::fs::create_dir_all(tree.join("sub/deeper")).unwrap();
+    std::fs::write(tree.join("a.txt"), b"A").unwrap();
+    std::fs::write(tree.join("sub/b.bin"), &big).unwrap();
+    std::fs::write(tree.join("sub/deeper/c.txt"), b"C").unwrap();
+    let job = files.upload(vec![tree], "in");
+    wait_job(&job);
+    assert_eq!(
+        job.progress().status,
+        mt_net::ScpStatus::Done,
+        "{:?}",
+        job.progress()
+    );
+    assert_eq!(job.progress().files_done, 3);
+    assert_eq!(
+        std::fs::read(remote.path().join("in/cfg/a.txt")).unwrap(),
+        b"A"
+    );
+    assert_eq!(
+        std::fs::read(remote.path().join("in/cfg/sub/b.bin")).unwrap(),
+        big
+    );
+    assert_eq!(
+        std::fs::read(remote.path().join("in/cfg/sub/deeper/c.txt")).unwrap(),
+        b"C"
+    );
+
+    // フォルダを中身ごと受け取る。同じ名前があれば別の名前にする
+    std::fs::create_dir(out.join("cfg")).unwrap();
+    let job = files.download("in/cfg", out.clone());
+    wait_job(&job);
+    assert_eq!(
+        job.progress().status,
+        mt_net::ScpStatus::Done,
+        "{:?}",
+        job.progress()
+    );
+    let got = out.join("cfg.1");
+    assert_eq!(job.progress().saved, std::slice::from_ref(&got));
+    assert_eq!(std::fs::read(got.join("a.txt")).unwrap(), b"A");
+    assert_eq!(std::fs::read(got.join("sub/b.bin")).unwrap(), big);
+    assert_eq!(std::fs::read(got.join("sub/deeper/c.txt")).unwrap(), b"C");
     session.close();
 }
 

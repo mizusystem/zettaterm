@@ -9,7 +9,7 @@ use mt_core::{
     KeyboardPrompt,
 };
 
-use crate::strings::{ssh, tt};
+use crate::strings::{lf, ssh, tt};
 
 /// 答えを 1 回だけ返す入れ物。閉じられたら `fallback` を返す。
 type Answer<T> = Option<Box<dyn FnOnce(T)>>;
@@ -395,9 +395,12 @@ pub fn passphrase(
 ) {
     let (win, content, buttons) = modal(parent, &ssh("DLG_AUTH_TITLE", "SSH認証"));
     let msg = if failed {
-        format!("パスフレーズが違います。もう一度入力してください。\n{key_path}")
+        lf(
+            "パスフレーズが違います。もう一度入力してください。\n{}",
+            &[&key_path],
+        )
     } else {
-        format!("鍵のパスフレーズを入力してください。\n{key_path}")
+        lf("鍵のパスフレーズを入力してください。\n{}", &[&key_path])
     };
     content.append(&wrap_label(&msg));
     let e = gtk::PasswordEntry::new();

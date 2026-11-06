@@ -7,7 +7,7 @@ use gtk::glib;
 use gtk::prelude::*;
 
 use crate::dialogs::modal;
-use crate::strings::tt;
+use crate::strings::{l, lf, tt};
 
 pub enum State {
     Running,
@@ -40,7 +40,11 @@ pub fn show(
     let elapsed = gtk::Label::new(None);
     let rate = gtk::Label::new(None);
     let retries = gtk::Label::new(None);
-    let status = gtk::Label::new(Some(if send { "送信中…" } else { "受信中…" }));
+    let status = gtk::Label::new(Some(&if send {
+        l("送信中…")
+    } else {
+        l("受信中…")
+    }));
     for l in [&file, &bytes, &elapsed, &rate, &retries, &status] {
         l.set_xalign(0.0);
         l.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
@@ -113,18 +117,21 @@ pub fn show(
         let finished_now = !matches!(p.state, State::Running);
         if p.bytes > 0 && secs_f > 0.0 && (secs_f >= 1.0 || finished_now) {
             let per_sec = p.bytes as f64 / secs_f;
-            let mut t = format!("速度: {}/s", fmt(per_sec as u64));
+            let mut t = lf("速度: {}/s", &[&fmt(per_sec as u64)]);
             if matches!(p.state, State::Running)
                 && let Some(total) = p.total.filter(|&t| t > p.bytes)
             {
                 let left = ((total - p.bytes) as f64 / per_sec) as u64;
-                t.push_str(&format!("（残り {}:{:02}）", left / 60, left % 60));
+                t.push_str(&lf(
+                    "（残り {}）",
+                    &[&format!("{}:{:02}", left / 60, left % 60)],
+                ));
             }
             rate.set_text(&t);
         }
         retries.set_visible(p.retries.is_some());
         if let Some(n) = p.retries {
-            retries.set_text(&format!("リトライ: {n} 回"));
+            retries.set_text(&lf("リトライ: {} 回", &[&n]));
         }
         match p.total {
             Some(t) if t > 0 => bar.set_fraction((p.bytes as f64 / t as f64).min(1.0)),
@@ -135,12 +142,12 @@ pub fn show(
             State::Done(saved) => {
                 bar.set_fraction(1.0);
                 match saved {
-                    Some(f) => format!("完了しました（{}）", f.display()),
-                    None => "完了しました".into(),
+                    Some(f) => lf("完了しました（{}）", &[&f.display()]),
+                    None => l("完了しました"),
                 }
             }
-            State::Canceled => "中止しました".into(),
-            State::Failed(m) => format!("失敗しました：{m}"),
+            State::Canceled => l("中止しました"),
+            State::Failed(m) => lf("失敗しました：{}", &[&m]),
         };
         status.set_text(&text);
         finished.set(true);

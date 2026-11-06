@@ -1,6 +1,8 @@
 //! SCP（Tera Term / TTSSH の「SSH SCP」）。ログイン済みの SSH 接続の上に別のチャネルを開き、
 //! 相手の `scp -t`（受け取り）/ `scp -f`（送り出し）と話す。端末はそのまま使える。
 //!
+//! フォルダは -r で中身ごと（`D0755 0 名前` … `E`）。
+//!
 //! 手順（古典的な rcp の手順）
 //! - 送る：`scp -t 先` → 0 を待つ → `C0644 大きさ 名前\n` → 0 → 中身 → `\0` → 0 → … → EOF
 //! - 受け取る：`scp -f パス` → `\0` を送る → `C…\n` を読む → `\0` → 中身と `\0` を読む → `\0` → … → EOF
@@ -221,8 +223,16 @@ async fn upload(
     dest: &str,
     job: &ScpJob,
 ) -> io::Result<()> {
-    let dir_flag = if files.len() > 1 { "-d " } else { "" };
-    let channel = open_exec(handle, format!("scp {dir_flag}-t -- {}", shell_quote(dest))).await?;
+    // フォルダがあれば -r（中身ごと）。複数なら宛先はフォルダ（-d）
+    let recursive = files.iter().any(|p| p.is_dir());
+    let mut flags = String::new();
+    if recursive {
+        flags.push_str("-r ");
+    }
+    if files.len() > 1 {
+        flags.push_str("-d ");
+    }
+    let channel = open_exec(handle, format!("scp {flags}-t -- {}", shell_quote(dest))).await?;
     let mut input = ChannelIn {
         channel,
         buf: Vec::new(),
@@ -230,17 +240,49 @@ async fn upload(
     };
     input.ack().await?;
     for path in files {
+        send_entry(&mut input, path, job).await?;
+    }
+    let _ = input.channel.eof().await;
+    let _ = input.channel.close().await;
+    Ok(())
+}
+
+fn entry_name(path: &Path) -> String {
+    path.file_name()
+        .map(|n| n.to_string_lossy().replace('\n', " "))
+        .unwrap_or_default()
+}
+
+/// ファイルか、フォルダを中身ごと送る（D … / 中身 / E）。
+fn send_entry<'a>(
+    input: &'a mut ChannelIn,
+    path: &'a Path,
+    job: &'a ScpJob,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + 'a>> {
+    Box::pin(async move {
+        if path.is_dir() {
+            let header = format!("D0755 0 {}\n", entry_name(path));
+            input.channel.data(header.as_bytes()).await.map_err(other)?;
+            input.ack().await?;
+            let mut entries: Vec<PathBuf> = std::fs::read_dir(path)
+                .map_err(|e| with_path(e, path))?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .collect();
+            entries.sort();
+            for entry in entries {
+                send_entry(input, &entry, job).await?;
+            }
+            input.channel.data(&b"E\n"[..]).await.map_err(other)?;
+            return input.ack().await;
+        }
         let data = std::fs::read(path).map_err(|e| with_path(e, path))?;
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
+        let name = entry_name(path);
         job.update(|p| {
             p.file = Some(name.clone());
             p.bytes = 0;
             p.total = Some(data.len() as u64);
         });
-        let header = format!("C0644 {} {}\n", data.len(), name.replace('\n', " "));
+        let header = format!("C0644 {} {}\n", data.len(), name);
         input.channel.data(header.as_bytes()).await.map_err(other)?;
         input.ack().await?;
         for chunk in data.chunks(CHUNK) {
@@ -254,10 +296,16 @@ async fn upload(
         input.channel.data(&[0u8][..]).await.map_err(other)?;
         input.ack().await?;
         job.update(|p| p.files_done += 1);
-    }
-    let _ = input.channel.eof().await;
-    let _ = input.channel.close().await;
-    Ok(())
+        Ok(())
+    })
+}
+
+/// 相手から来た名前のうち、フォルダの中に置ける部分（`a/../b` などは使わない）。
+fn safe_name(name: &str) -> Option<String> {
+    Path::new(name)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .filter(|n| !n.is_empty() && n != "." && n != "..")
 }
 
 async fn download(
@@ -272,12 +320,15 @@ async fn download(
             "remote path is empty",
         ));
     }
-    let channel = open_exec(handle, format!("scp -f -- {}", shell_quote(remote))).await?;
+    // -r ならファイルでもフォルダでも受け取れる
+    let channel = open_exec(handle, format!("scp -r -f -- {}", shell_quote(remote))).await?;
     let mut input = ChannelIn {
         channel,
         buf: Vec::new(),
         eof: false,
     };
+    // 今いるフォルダ（先頭は受け取り先）
+    let mut dirs: Vec<PathBuf> = vec![local_dir.to_owned()];
     input.channel.data(&[0u8][..]).await.map_err(other)?;
     loop {
         if input.at_end().await {
@@ -285,18 +336,25 @@ async fn download(
         }
         let first = input.byte().await?;
         match first {
-            b'C' => {}
+            b'C' | b'D' => {}
             // 時刻（-p）。使わないが、受け取ったら応答する
             b'T' => {
                 input.line().await?;
                 input.channel.data(&[0u8][..]).await.map_err(other)?;
                 continue;
             }
+            b'E' => {
+                input.line().await?;
+                if dirs.len() > 1 {
+                    dirs.pop();
+                }
+                input.channel.data(&[0u8][..]).await.map_err(other)?;
+                continue;
+            }
             1 | 2 => return Err(other(format!("scp: {}", input.line().await?))),
-            b'D' | b'E' => return Err(other("scp: folders are not supported")),
             _ => return Err(other("scp: unexpected data")),
         }
-        // Cmmmm size name
+        // Cmmmm size name / Dmmmm 0 name
         let line = input.line().await?;
         let mut parts = line.splitn(3, ' ');
         let _mode = parts.next();
@@ -304,8 +362,29 @@ async fn download(
             .next()
             .and_then(|s| s.parse().ok())
             .ok_or_else(|| other("scp: bad header"))?;
-        let name = parts.next().unwrap_or("received").to_owned();
-        let path = unique_path(local_dir, &name);
+        let name = safe_name(parts.next().unwrap_or("")).unwrap_or_else(|| "received".to_owned());
+        let here = dirs.last().cloned().unwrap_or_else(|| local_dir.to_owned());
+        let top = dirs.len() == 1;
+        if first == b'D' {
+            // いちばん上のフォルダは既存と重ならない名前にし、中は相手の名前のまま
+            let dir = if top {
+                unique_path(&here, &name)
+            } else {
+                here.join(&name)
+            };
+            std::fs::create_dir_all(&dir).map_err(|e| with_path(e, &dir))?;
+            if top {
+                job.update(|p| p.saved.push(dir.clone()));
+            }
+            dirs.push(dir);
+            input.channel.data(&[0u8][..]).await.map_err(other)?;
+            continue;
+        }
+        let path = if top {
+            unique_path(&here, &name)
+        } else {
+            here.join(&name)
+        };
         let mut file = std::fs::File::create(&path).map_err(|e| with_path(e, &path))?;
         job.update(|p| {
             p.file = Some(name.clone());
@@ -335,7 +414,9 @@ async fn download(
         input.channel.data(&[0u8][..]).await.map_err(other)?;
         job.update(|p| {
             p.files_done += 1;
-            p.saved.push(path.clone());
+            if top {
+                p.saved.push(path.clone());
+            }
         });
     }
     let _ = input.channel.close().await;

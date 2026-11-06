@@ -185,7 +185,7 @@ Phase 1 を終えた時点で、Mac のシリアル端末として日常的に�
 
 Windows には Tera Term 本体があるので、ネイティブの Windows 版（`apps/windows`）は必要になるまで作らない。
 - `crates/` の Windows 対応は続ける（GitHub Actions で `cargo test` を回す）
-- `mt` コマンド（TTL のヘッドレス実行）は Windows でも配る
+- `mt` コマンド（TTL のヘッドレス実行）は Windows でも配る（`.github/workflows/release-cli.yml`）
 - 画面が要るときは、まず GTK 版（`apps/linux`）を Windows でビルドして試す
 
 ### ネットワーク機器向けの追加予定（2026-11-06 追加）

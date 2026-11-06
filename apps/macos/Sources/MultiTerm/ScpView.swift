@@ -123,7 +123,8 @@ struct ScpView: View {
     private func chooseFiles() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        // フォルダは中身ごと送る
+        panel.canChooseDirectories = true
         panel.message = ssh("DLG_SCP_SELECT_FILE_TITLE", "送信ファイル選択")
         if panel.runModal() == .OK { sendFiles = panel.urls.map(\.path) }
     }
@@ -141,7 +142,7 @@ struct ScpView: View {
     private func drop(_ providers: [NSItemProvider]) {
         for provider in providers {
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url, url.isFileURL, !url.hasDirectoryPath else { return }
+                guard let url, url.isFileURL else { return }
                 DispatchQueue.main.async {
                     if !sendFiles.contains(url.path) { sendFiles.append(url.path) }
                 }

@@ -12,7 +12,7 @@ use mt_core::{AuthPrompter, SendDelay, Transport, WindowSize};
 use mt_net::{IpVersion, LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
 use mt_serial::SerialTransport;
 
-use crate::strings::tt;
+use crate::strings::{l, tt};
 
 /// 接続先の履歴（`~/.config/multiterm/hosts.toml`）。
 pub fn history_path() -> PathBuf {
@@ -128,7 +128,7 @@ pub fn show_dialog(
 
     let tcp = gtk::CheckButton::with_label(&tt("DLG_HOST_TCPIP", "TCP/IP"));
     let serial = gtk::CheckButton::with_label(&tt("DLG_HOST_SERIAL", "シリアル"));
-    let local = gtk::CheckButton::with_label("ローカルシェル");
+    let local = gtk::CheckButton::with_label(&l("ローカルシェル"));
     serial.set_group(Some(&tcp));
     local.set_group(Some(&tcp));
 
@@ -161,7 +161,8 @@ pub fn show_dialog(
     svc_ssh.set_active(true);
     let port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
     port.set_value(22.0);
-    let system_ssh = gtk::CheckButton::with_label("システムの ssh を使う（認証は端末の中で行う）");
+    let system_ssh =
+        gtk::CheckButton::with_label(&l("システムの ssh を使う（認証は端末の中で行う）"));
 
     // サービスを変えたら既定のポートにする
     for (b, p) in [(&svc_ssh, 22.0), (&svc_telnet, 23.0)] {

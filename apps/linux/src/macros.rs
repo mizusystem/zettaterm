@@ -6,6 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
+use crate::strings::l;
 use mt_core::Session;
 use mt_ttl::{ConnectSpec, Host, Interp, Outcome};
 
@@ -130,7 +131,7 @@ impl Host for GtkHost {
             .unwrap_or_default();
         self.tell(MacroReq::Transfer(Some(format!(
             "{}: {file}",
-            if send { "送信中" } else { "受信中" }
+            if send { l("送信中") } else { l("受信中") }
         ))));
     }
 

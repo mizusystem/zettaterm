@@ -17,7 +17,7 @@ use crate::connect;
 use crate::dialogs;
 use crate::macros::{self, MacroReq};
 use crate::settings::{self, Settings};
-use crate::strings::tt;
+use crate::strings::{l, lf, tt};
 use crate::term::TermView;
 use crate::transfer::{self, Kind};
 
@@ -31,8 +31,214 @@ enum Status {
 
 type Waiter = Box<dyn FnOnce(Option<Arc<mt_core::Session>>)>;
 
+/// 1 ウィンドウ。タブ（TermWindow）を束ね、メニューの操作を今のタブに渡す。
+pub struct Tabs {
+    pub win: gtk::ApplicationWindow,
+    notebook: gtk::Notebook,
+    panes: RefCell<Vec<Rc<TermWindow>>>,
+}
+
+thread_local! {
+    /// 開いているすべてのタブ（一斉送信の送り先）
+    static ALL: RefCell<Vec<std::rc::Weak<TermWindow>>> = const { RefCell::new(Vec::new()) };
+    /// 開いているウィンドウ。メニューの操作は弱い参照しか持たないので、ここで生かしておく
+    static WINDOWS: RefCell<Vec<Rc<Tabs>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// 開いているタブのうち、つながっているもの。
+pub fn connected_panes() -> Vec<Rc<TermWindow>> {
+    ALL.with(|all| {
+        all.borrow_mut().retain(|w| w.strong_count() > 0);
+        all.borrow()
+            .iter()
+            .filter_map(|w| w.upgrade())
+            .filter(|p| p.connected())
+            .collect()
+    })
+}
+
+impl Tabs {
+    pub fn new(app: &gtk::Application) -> Rc<Self> {
+        let win = gtk::ApplicationWindow::builder()
+            .application(app)
+            .title("Multi-Term")
+            .show_menubar(true)
+            .build();
+        let notebook = gtk::Notebook::new();
+        notebook.set_show_border(false);
+        notebook.set_scrollable(true);
+        win.set_child(Some(&notebook));
+        let tabs = Rc::new(Self {
+            win,
+            notebook,
+            panes: RefCell::new(Vec::new()),
+        });
+        tabs.install_actions();
+        {
+            let t = Rc::downgrade(&tabs);
+            tabs.notebook.connect_switch_page(move |_, page, _| {
+                let Some(t) = t.upgrade() else { return };
+                let pane = t
+                    .panes
+                    .borrow()
+                    .iter()
+                    .find(|p| p.root.upcast_ref::<gtk::Widget>() == page)
+                    .cloned();
+                if let Some(p) = pane {
+                    t.win.set_title(Some(&p.tab_label.text()));
+                    p.view.area.grab_focus();
+                }
+            });
+        }
+        {
+            let t = Rc::downgrade(&tabs);
+            tabs.win.connect_close_request(move |_| {
+                if let Some(t) = t.upgrade() {
+                    for p in t.panes.borrow().iter() {
+                        p.shutdown();
+                    }
+                    WINDOWS.with(|w| w.borrow_mut().retain(|x| !Rc::ptr_eq(x, &t)));
+                }
+                glib::Propagation::Proceed
+            });
+        }
+        WINDOWS.with(|w| w.borrow_mut().push(Rc::clone(&tabs)));
+        tabs
+    }
+
+    /// タブを足して、そのタブに切り替える。
+    pub fn add(self: &Rc<Self>) -> Rc<TermWindow> {
+        let first = self.panes.borrow().is_empty();
+        let pane = TermWindow::new(self, first);
+        let label_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        label_box.append(&pane.tab_label);
+        let close = gtk::Button::from_icon_name("window-close-symbolic");
+        close.add_css_class("flat");
+        {
+            let (t, p) = (Rc::downgrade(self), Rc::downgrade(&pane));
+            close.connect_clicked(move |_| {
+                if let (Some(t), Some(p)) = (t.upgrade(), p.upgrade()) {
+                    t.remove(&p);
+                }
+            });
+        }
+        label_box.append(&close);
+        let n = self.notebook.append_page(&pane.root, Some(&label_box));
+        self.notebook.set_tab_reorderable(&pane.root, true);
+        self.panes.borrow_mut().push(Rc::clone(&pane));
+        ALL.with(|all| all.borrow_mut().push(Rc::downgrade(&pane)));
+        self.notebook.set_show_tabs(self.panes.borrow().len() > 1);
+        self.notebook.set_current_page(Some(n));
+        pane
+    }
+
+    pub fn current(&self) -> Option<Rc<TermWindow>> {
+        let page = self.notebook.nth_page(self.notebook.current_page())?;
+        self.panes
+            .borrow()
+            .iter()
+            .find(|p| p.root.upcast_ref::<gtk::Widget>() == &page)
+            .cloned()
+    }
+
+    /// タブを閉じる。最後のタブならウィンドウを閉じる。
+    pub fn remove(&self, pane: &Rc<TermWindow>) {
+        pane.shutdown();
+        if let Some(n) = self.notebook.page_num(&pane.root) {
+            self.notebook.remove_page(Some(n));
+        }
+        self.panes.borrow_mut().retain(|p| !Rc::ptr_eq(p, pane));
+        let left = self.panes.borrow().len();
+        self.notebook.set_show_tabs(left > 1);
+        if left == 0 {
+            self.win.close();
+        }
+    }
+
+    fn install_actions(self: &Rc<Self>) {
+        type Handler = Box<dyn Fn(&Rc<Tabs>, &Rc<TermWindow>)>;
+        let add = |name: &str, f: Handler| {
+            let a = gio::SimpleAction::new(name, None);
+            let t = Rc::downgrade(self);
+            a.connect_activate(move |_, _| {
+                if let Some(t) = t.upgrade()
+                    && let Some(p) = t.current()
+                {
+                    f(&t, &p);
+                }
+            });
+            self.win.add_action(&a);
+        };
+        add("new-connection", Box::new(|_, me| me.show_connect_dialog()));
+        add(
+            "new-tab",
+            Box::new(|t, _| {
+                let p = t.add();
+                p.show_connect_dialog();
+            }),
+        );
+        add("disconnect", Box::new(|_, me| me.disconnect()));
+        add("close", Box::new(|t, me| t.remove(me)));
+        add("copy", Box::new(|_, me| me.view.copy()));
+        add("paste", Box::new(|_, me| me.view.paste()));
+        add(
+            "send-break",
+            Box::new(|_, me| {
+                if let Some(s) = me.view.session() {
+                    let _ = s.send_break(300);
+                }
+            }),
+        );
+        add("macro", Box::new(|_, me| me.choose_macro()));
+        add("macro-stop", Box::new(|_, me| me.confirm_stop_macro()));
+        add("setup-terminal", Box::new(|_, me| me.setup_terminal()));
+        add("setup-serial", Box::new(|_, me| me.setup_serial()));
+        add("log", Box::new(|_, me| me.start_log()));
+        add(
+            "log-stop",
+            Box::new(|_, me| {
+                if let Some(s) = me.view.session() {
+                    s.log_stop();
+                }
+                me.logging.set(false);
+            }),
+        );
+        add("scp", Box::new(|_, me| me.show_scp()));
+        add("send-file", Box::new(|_, me| me.begin_send_file()));
+        add(
+            "broadcast",
+            Box::new(|t, _| crate::extras::broadcast_dialog(&t.win.clone().upcast())),
+        );
+
+        // 転送 > 種類 > 送信 / 受信（引数は種類の id）
+        for (name, send) in [("transfer-send", true), ("transfer-receive", false)] {
+            let a = gio::SimpleAction::new(name, Some(glib::VariantTy::STRING));
+            let t = Rc::downgrade(self);
+            a.connect_activate(move |_, v| {
+                let (Some(me), Some(kind)) = (
+                    t.upgrade().and_then(|t| t.current()),
+                    v.and_then(|v| v.str()).and_then(Kind::from_id),
+                ) else {
+                    return;
+                };
+                if send {
+                    me.begin_send(kind);
+                } else {
+                    me.begin_receive(kind);
+                }
+            });
+            self.win.add_action(&a);
+        }
+    }
+}
+
+/// タブ 1 枚 = 1 接続。端末、接続、コアからの通知、転送、マクロをまとめる。
 pub struct TermWindow {
     pub win: gtk::ApplicationWindow,
+    tabs: std::rc::Weak<Tabs>,
+    /// タブの中身
+    root: gtk::Overlay,
+    tab_label: gtk::Label,
     view: TermView,
     profile: RefCell<Option<ConnectionProfile>>,
     remote_title: RefCell<String>,
@@ -54,17 +260,13 @@ pub struct TermWindow {
 }
 
 impl TermWindow {
-    pub fn new(app: &gtk::Application) -> Rc<Self> {
-        let win = gtk::ApplicationWindow::builder()
-            .application(app)
-            .title("Multi-Term")
-            .show_menubar(true)
-            .build();
+    fn new(tabs: &Rc<Tabs>, first: bool) -> Rc<Self> {
+        let win = tabs.win.clone();
         let view = TermView::new();
-        let (w, h) = view.pixel_size(80, 24);
-        win.set_default_size(w, h);
-        // 表示後のフォントの寸法で、80 桁 24 行に合わせ直す
-        {
+        if first {
+            let (w, h) = view.pixel_size(80, 24);
+            win.set_default_size(w, h);
+            // 表示後のフォントの寸法で、80 桁 24 行に合わせ直す（最初のタブだけ）
             let win = win.clone();
             view.on_measured(move |v| {
                 let (w, h) = v.pixel_size(80, 24);
@@ -85,7 +287,7 @@ impl TermWindow {
         spinner.start();
         let badge_name = gtk::Label::new(None);
         let stop = gtk::Button::from_icon_name("media-playback-stop-symbolic");
-        stop.set_tooltip_text(Some("マクロの停止"));
+        stop.set_tooltip_text(Some(&l("マクロの停止")));
         stop.set_action_name(Some("win.macro-stop"));
         top.append(&spinner);
         top.append(&badge_name);
@@ -100,13 +302,20 @@ impl TermWindow {
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&view.area));
         overlay.add_overlay(&badge);
-        win.set_child(Some(&overlay));
+        let tab_label = gtk::Label::new(Some("Multi-Term"));
+        // 省略表示にすると幅が縮みきるので、最低の幅を決めておく
+        tab_label.set_width_chars(12);
+        tab_label.set_max_width_chars(24);
+        tab_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
 
         let (events, events_rx) = async_channel::unbounded();
         let (prompts, prompts_rx) = async_channel::unbounded();
         let (macro_tx, macro_rx) = async_channel::unbounded();
         let me = Rc::new(Self {
             win,
+            tabs: Rc::downgrade(tabs),
+            root: overlay,
+            tab_label,
             view,
             profile: RefCell::new(None),
             remote_title: RefCell::new(String::new()),
@@ -125,21 +334,42 @@ impl TermWindow {
             files: RefCell::new(None),
             logging: Cell::new(false),
         });
-        me.install_actions();
         me.install_drop();
         me.listen(events_rx, prompts_rx, macro_rx);
-        {
-            let me = Rc::clone(&me);
-            me.win.clone().connect_close_request(move |_| {
-                me.stop_macro_now();
-                if let Some(s) = me.view.detach() {
-                    s.close();
-                }
-                glib::Propagation::Proceed
-            });
-        }
         me.update_title();
         me
+    }
+
+    /// タブやウィンドウを閉じるとき。マクロを止め、接続を切る。
+    fn shutdown(&self) {
+        self.stop_macro_now();
+        if let Some(s) = self.view.detach() {
+            s.close();
+        }
+    }
+
+    /// タブの見出し（一斉送信の一覧にも出す）
+    pub fn title(&self) -> String {
+        self.tab_label.text().to_string()
+    }
+
+    pub fn send_text(&self, text: &str) {
+        if let Some(s) = self.view.session() {
+            s.send_text(text);
+        }
+    }
+
+    pub fn send_line(&self, text: &str) {
+        if let Some(s) = self.view.session() {
+            s.send_line(text);
+        }
+    }
+
+    fn is_current(&self) -> bool {
+        self.tabs
+            .upgrade()
+            .and_then(|t| t.current())
+            .is_some_and(|p| std::ptr::eq(Rc::as_ptr(&p), self))
     }
 
     fn update_title(&self) {
@@ -162,12 +392,15 @@ impl TermWindow {
         }
         let title = match self.status.get() {
             Status::Connected => base,
-            Status::Connecting => format!("{label} [接続中]"),
-            Status::Reconnecting => format!("{base} [再接続待ち]"),
-            Status::Disconnected if self.profile.borrow().is_some() => format!("{base} [未接続]"),
+            Status::Connecting => lf("{} [接続中]", &[&label]),
+            Status::Reconnecting => lf("{} [再接続待ち]", &[&base]),
+            Status::Disconnected if self.profile.borrow().is_some() => lf("{} [未接続]", &[&base]),
             Status::Disconnected => "Multi-Term".into(),
         };
-        self.win.set_title(Some(&title));
+        self.tab_label.set_text(&title);
+        if self.is_current() {
+            self.win.set_title(Some(&title));
+        }
     }
 
     fn connected(&self) -> bool {
@@ -448,7 +681,7 @@ impl TermWindow {
             dialogs::message(
                 &self.parent(),
                 "SSH SCP",
-                "SSH SCP は内蔵の SSH で接続しているときだけ使えます",
+                &l("SSH SCP は内蔵の SSH で接続しているときだけ使えます"),
                 || {},
             );
             return;
@@ -470,71 +703,6 @@ impl TermWindow {
         self.win.clone().upcast()
     }
 
-    // ------------------------------------------------------------ メニュー
-
-    fn install_actions(self: &Rc<Self>) {
-        type Handler = Box<dyn Fn(&Rc<TermWindow>)>;
-        let add = |name: &str, f: Handler| {
-            let a = gio::SimpleAction::new(name, None);
-            let me = Rc::downgrade(self);
-            a.connect_activate(move |_, _| {
-                if let Some(me) = me.upgrade() {
-                    f(&me);
-                }
-            });
-            self.win.add_action(&a);
-        };
-        add("new-connection", Box::new(|me| me.show_connect_dialog()));
-        add("disconnect", Box::new(|me| me.disconnect()));
-        add("close", Box::new(|me| me.win.close()));
-        add("copy", Box::new(|me| me.view.copy()));
-        add("paste", Box::new(|me| me.view.paste()));
-        add(
-            "send-break",
-            Box::new(|me| {
-                if let Some(s) = me.view.session() {
-                    let _ = s.send_break(300);
-                }
-            }),
-        );
-        add("macro", Box::new(|me| me.choose_macro()));
-        add("macro-stop", Box::new(|me| me.confirm_stop_macro()));
-        add("setup-terminal", Box::new(|me| me.setup_terminal()));
-        add("setup-serial", Box::new(|me| me.setup_serial()));
-        add("log", Box::new(|me| me.start_log()));
-        add(
-            "log-stop",
-            Box::new(|me| {
-                if let Some(s) = me.view.session() {
-                    s.log_stop();
-                }
-                me.logging.set(false);
-            }),
-        );
-        add("scp", Box::new(|me| me.show_scp()));
-        add("send-file", Box::new(|me| me.begin_send_file()));
-
-        // 転送 > 種類 > 送信 / 受信（引数は種類の id）
-        for (name, send) in [("transfer-send", true), ("transfer-receive", false)] {
-            let a = gio::SimpleAction::new(name, Some(glib::VariantTy::STRING));
-            let me = Rc::downgrade(self);
-            a.connect_activate(move |_, v| {
-                let (Some(me), Some(kind)) = (
-                    me.upgrade(),
-                    v.and_then(|v| v.str()).and_then(Kind::from_id),
-                ) else {
-                    return;
-                };
-                if send {
-                    me.begin_send(kind);
-                } else {
-                    me.begin_receive(kind);
-                }
-            });
-            self.win.add_action(&a);
-        }
-    }
-
     // ------------------------------------------------------------ 転送
 
     fn begin_send(self: &Rc<Self>, kind: Kind) {
@@ -543,7 +711,7 @@ impl TermWindow {
         };
         let me = Rc::clone(self);
         let dialog = gtk::FileDialog::builder()
-            .title(format!("{} で送るファイル", kind.name()))
+            .title(lf("{} で送るファイル", &[&kind.name()]))
             .build();
         let done = move |files: Vec<std::path::PathBuf>| {
             if !files.is_empty() {
@@ -574,7 +742,7 @@ impl TermWindow {
         };
         let me = Rc::clone(self);
         let dialog = gtk::FileDialog::builder()
-            .title(format!("{} で受け取る保存先", kind.name()))
+            .title(lf("{} で受け取る保存先", &[&kind.name()]))
             .initial_folder(&gio::File::for_path(transfer::downloads_dir()))
             .build();
         if kind == Kind::XModem {
@@ -621,10 +789,10 @@ impl TermWindow {
             // 0x11 / 0x13 が OS にフロー制御として消され、転送が壊れる（ZMODEM と Kermit は制御文字を逃がす）
             dialogs::yes_no(
                 &self.parent(),
-                "フロー制御が XON/XOFF になっています",
-                &format!(
+                &l("フロー制御が XON/XOFF になっています"),
+                &lf(
                     "{} はデータをそのまま送るので、ファイルの中の 0x11 / 0x13 がフロー制御として扱われ、転送が失敗します。\n「設定 > シリアルポート」でフロー制御を「NONE」か「RTS/CTS」にしてから転送してください。\n\nこのまま転送しますか？",
-                    kind.name()
+                    &[&kind.name()],
                 ),
                 move |yes| {
                     if yes {
@@ -682,11 +850,12 @@ impl TermWindow {
     pub fn run_macro(self: &Rc<Self>, path: std::path::PathBuf) {
         let stop = Arc::new(AtomicBool::new(false));
         *self.macro_stop.borrow_mut() = Some(Arc::clone(&stop));
-        self.badge_name.set_text(&format!(
+        self.badge_name.set_text(&lf(
             "マクロ: {}",
-            path.file_name()
+            &[&path
+                .file_name()
                 .map(|f| f.to_string_lossy())
-                .unwrap_or_default()
+                .unwrap_or_default()],
         ));
         self.badge_status.set_visible(false);
         self.badge_transfer.set_visible(false);
@@ -828,7 +997,7 @@ impl TermWindow {
                     dialogs::message(
                         &parent,
                         "MACRO",
-                        &format!("マクロを中止しました。\n{e}"),
+                        &lf("マクロを中止しました。\n{}", &[&e]),
                         || {},
                     );
                 }
@@ -868,8 +1037,9 @@ impl TermWindow {
                         // シェルが終わったらウィンドウを閉じる（他はエラーが読めるよう残す）
                         if s == SessionState::Closed
                             && matches!(*me.profile.borrow(), Some(ConnectionProfile::LocalShell))
+                            && let Some(t) = me.tabs.upgrade()
                         {
-                            me.win.close();
+                            t.remove(&me);
                         }
                     }
                     Event::Title(t) => {
