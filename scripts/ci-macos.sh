@@ -46,6 +46,13 @@ if [[ $RUN_APP == 1 ]]; then
   step "swift test" bash -c 'cd apps/macos && swift test'
 fi
 
+# Linux 版（GTK4）は GTK4 が入っているときだけ（brew install gtk4）。本番の確認は GitHub Actions
+if [[ $RUN_RUST == 1 ]] && pkg-config --exists gtk4 2>/dev/null; then
+  step "linux app fmt" cargo fmt --manifest-path apps/linux/Cargo.toml --check
+  step "linux app clippy" cargo clippy --manifest-path apps/linux/Cargo.toml --all-targets -- -D warnings
+  step "linux app test" cargo test --manifest-path apps/linux/Cargo.toml
+fi
+
 echo
 if [[ ${#failed[@]} -eq 0 ]]; then
   echo "macOS CI: all passed"

@@ -88,6 +88,9 @@ scripts/ci-macos.sh
 # macOS アプリ（詳細は apps/macos/README.md）
 apps/macos/scripts/build-core.sh
 apps/macos/scripts/make-app.sh && open apps/macos/build/MultiTerm.app
+
+# Linux 版（GTK4。ワークスペースの外。macOS でも brew install gtk4 で動く）
+cargo run --manifest-path apps/linux/Cargo.toml
 ```
 
 シリアルの結合テストは擬似端末の対で書く（socat は不要）。macOS の擬似端末は IOSSIOSPEED を受け付けないため、この種のテストは Linux（GitHub Actions）だけで回る。macOS では実機テストで確かめる：

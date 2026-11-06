@@ -1,0 +1,668 @@
+//! 1 ウィンドウ = 1 接続。メニューの操作、接続、コアからの通知、マクロをまとめる。
+
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use gtk::prelude::*;
+use gtk::{gio, glib};
+use mt_core::profile::ConnectionProfile;
+use mt_core::{SessionOptions, SessionState, TerminalSettings, TransferRequest, WindowSize};
+use mt_ttl::ConnectSpec;
+use mt_xfer::Direction;
+
+use crate::bridge::{Event, Listener, Prompt, Prompter};
+use crate::connect;
+use crate::dialogs;
+use crate::macros::{self, MacroReq};
+use crate::strings::tt;
+use crate::term::TermView;
+use crate::transfer::{self, Kind};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Status {
+    Disconnected,
+    Connecting,
+    Connected,
+    Reconnecting,
+}
+
+type Waiter = Box<dyn FnOnce(Option<Arc<mt_core::Session>>)>;
+
+pub struct TermWindow {
+    pub win: gtk::ApplicationWindow,
+    view: TermView,
+    profile: RefCell<Option<ConnectionProfile>>,
+    remote_title: RefCell<String>,
+    macro_title: RefCell<Option<String>>,
+    status: Cell<Status>,
+    attempt: Cell<u64>,
+    events: async_channel::Sender<Event>,
+    prompts: async_channel::Sender<Prompt>,
+    macro_tx: async_channel::Sender<MacroReq>,
+    macro_stop: RefCell<Option<Arc<AtomicBool>>>,
+    badge: gtk::Box,
+    badge_name: gtk::Label,
+    badge_status: gtk::Label,
+    badge_transfer: gtk::Label,
+    waiters: RefCell<Vec<Waiter>>,
+}
+
+impl TermWindow {
+    pub fn new(app: &gtk::Application) -> Rc<Self> {
+        let win = gtk::ApplicationWindow::builder()
+            .application(app)
+            .title("Multi-Term")
+            .show_menubar(true)
+            .build();
+        let view = TermView::new();
+        let (w, h) = view.pixel_size(80, 24);
+        win.set_default_size(w, h);
+        // 表示後のフォントの寸法で、80 桁 24 行に合わせ直す
+        {
+            let win = win.clone();
+            view.on_measured(move |v| {
+                let (w, h) = v.pixel_size(80, 24);
+                win.set_default_size(w, h);
+            });
+        }
+
+        // マクロ実行中の表示（右上）
+        let badge = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        badge.set_halign(gtk::Align::End);
+        badge.set_valign(gtk::Align::Start);
+        badge.set_margin_top(6);
+        badge.set_margin_end(6);
+        badge.add_css_class("osd");
+        badge.add_css_class("toolbar");
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let spinner = gtk::Spinner::new();
+        spinner.start();
+        let badge_name = gtk::Label::new(None);
+        let stop = gtk::Button::from_icon_name("media-playback-stop-symbolic");
+        stop.set_tooltip_text(Some("マクロの停止"));
+        stop.set_action_name(Some("win.macro-stop"));
+        top.append(&spinner);
+        top.append(&badge_name);
+        top.append(&stop);
+        let badge_status = gtk::Label::new(None);
+        let badge_transfer = gtk::Label::new(None);
+        badge.append(&top);
+        badge.append(&badge_transfer);
+        badge.append(&badge_status);
+        badge.set_visible(false);
+
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&view.area));
+        overlay.add_overlay(&badge);
+        win.set_child(Some(&overlay));
+
+        let (events, events_rx) = async_channel::unbounded();
+        let (prompts, prompts_rx) = async_channel::unbounded();
+        let (macro_tx, macro_rx) = async_channel::unbounded();
+        let me = Rc::new(Self {
+            win,
+            view,
+            profile: RefCell::new(None),
+            remote_title: RefCell::new(String::new()),
+            macro_title: RefCell::new(None),
+            status: Cell::new(Status::Disconnected),
+            attempt: Cell::new(0),
+            events,
+            prompts,
+            macro_tx,
+            macro_stop: RefCell::new(None),
+            badge,
+            badge_name,
+            badge_status,
+            badge_transfer,
+            waiters: RefCell::new(Vec::new()),
+        });
+        me.install_actions();
+        me.listen(events_rx, prompts_rx, macro_rx);
+        {
+            let me = Rc::clone(&me);
+            me.win.clone().connect_close_request(move |_| {
+                me.stop_macro_now();
+                if let Some(s) = me.view.detach() {
+                    s.close();
+                }
+                glib::Propagation::Proceed
+            });
+        }
+        me.update_title();
+        me
+    }
+
+    fn update_title(&self) {
+        let label = self
+            .profile
+            .borrow()
+            .as_ref()
+            .map(|p| p.label())
+            .unwrap_or_default();
+        let remote = self.remote_title.borrow().clone();
+        let mut base = self.macro_title.borrow().clone().unwrap_or_else(|| {
+            if remote.is_empty() {
+                label.clone()
+            } else {
+                remote
+            }
+        });
+        if base.is_empty() {
+            base = "Multi-Term".into();
+        }
+        let title = match self.status.get() {
+            Status::Connected => base,
+            Status::Connecting => format!("{label} [接続中]"),
+            Status::Reconnecting => format!("{base} [再接続待ち]"),
+            Status::Disconnected if self.profile.borrow().is_some() => format!("{base} [未接続]"),
+            Status::Disconnected => "Multi-Term".into(),
+        };
+        self.win.set_title(Some(&title));
+    }
+
+    fn connected(&self) -> bool {
+        matches!(self.status.get(), Status::Connected | Status::Reconnecting)
+    }
+
+    pub fn show_connect_dialog(self: &Rc<Self>) {
+        let me = Rc::clone(self);
+        connect::show_dialog(&self.win, move |profile, keep| me.connect(profile, keep));
+    }
+
+    /// 接続する。Telnet / SSH はつながるまで時間がかかるので別スレッドで開く。
+    pub fn connect(self: &Rc<Self>, profile: ConnectionProfile, keep: bool) {
+        if let Some(s) = self.view.detach() {
+            s.close();
+        }
+        let attempt = self.attempt.get() + 1;
+        self.attempt.set(attempt);
+        *self.profile.borrow_mut() = Some(profile.clone());
+        self.remote_title.borrow_mut().clear();
+        self.status.set(Status::Connecting);
+        self.update_title();
+
+        let (cols, rows) = self.view.grid_size();
+        let size = WindowSize::new(cols, rows);
+        let listener = Arc::new(Listener {
+            dirty: self.view.dirty_flag(),
+            tx: self.events.clone(),
+        });
+        let prompter = Arc::new(Prompter {
+            tx: self.prompts.clone(),
+        });
+        let (tx, rx) = async_channel::bounded(1);
+        let p = profile.clone();
+        std::thread::spawn(move || {
+            let result =
+                connect::open_transport(&p, size, prompter).and_then(|(transport, send_delay)| {
+                    let options = SessionOptions {
+                        size,
+                        send_delay,
+                        terminal: TerminalSettings::default(),
+                        ..Default::default()
+                    };
+                    mt_core::Session::open(transport, options, listener)
+                });
+            let _ = tx.send_blocking(result.map_err(|e| e.to_string()));
+        });
+        let me = Rc::clone(self);
+        glib::spawn_future_local(async move {
+            let Ok(result) = rx.recv().await else { return };
+            if me.attempt.get() != attempt {
+                if let Ok(s) = result {
+                    s.close();
+                }
+                return;
+            }
+            match result {
+                Ok(session) => {
+                    me.view.attach(Arc::clone(&session));
+                    me.status.set(Status::Connected);
+                    if keep {
+                        connect::remember(&profile);
+                    }
+                    me.view.area.grab_focus();
+                    me.notify_waiters(Some(session));
+                }
+                Err(e) => {
+                    me.status.set(Status::Disconnected);
+                    me.notify_waiters(None);
+                    dialogs::message(&me.win.clone().upcast(), "Multi-Term", &e, || {});
+                }
+            }
+            me.update_title();
+        });
+    }
+
+    fn notify_waiters(&self, s: Option<Arc<mt_core::Session>>) {
+        for w in self.waiters.borrow_mut().drain(..) {
+            w(s.clone());
+        }
+    }
+
+    pub fn disconnect(&self) {
+        self.attempt.set(self.attempt.get() + 1);
+        if let Some(s) = self.view.detach() {
+            s.close();
+        }
+        self.status.set(Status::Disconnected);
+        self.update_title();
+    }
+
+    fn parent(&self) -> gtk::Window {
+        self.win.clone().upcast()
+    }
+
+    // ------------------------------------------------------------ メニュー
+
+    fn install_actions(self: &Rc<Self>) {
+        type Handler = Box<dyn Fn(&Rc<TermWindow>)>;
+        let add = |name: &str, f: Handler| {
+            let a = gio::SimpleAction::new(name, None);
+            let me = Rc::downgrade(self);
+            a.connect_activate(move |_, _| {
+                if let Some(me) = me.upgrade() {
+                    f(&me);
+                }
+            });
+            self.win.add_action(&a);
+        };
+        add("new-connection", Box::new(|me| me.show_connect_dialog()));
+        add("disconnect", Box::new(|me| me.disconnect()));
+        add("close", Box::new(|me| me.win.close()));
+        add("copy", Box::new(|me| me.view.copy()));
+        add("paste", Box::new(|me| me.view.paste()));
+        add(
+            "send-break",
+            Box::new(|me| {
+                if let Some(s) = me.view.session() {
+                    let _ = s.send_break(300);
+                }
+            }),
+        );
+        add("macro", Box::new(|me| me.choose_macro()));
+        add("macro-stop", Box::new(|me| me.confirm_stop_macro()));
+
+        // 転送 > 種類 > 送信 / 受信（引数は種類の id）
+        for (name, send) in [("transfer-send", true), ("transfer-receive", false)] {
+            let a = gio::SimpleAction::new(name, Some(glib::VariantTy::STRING));
+            let me = Rc::downgrade(self);
+            a.connect_activate(move |_, v| {
+                let (Some(me), Some(kind)) = (
+                    me.upgrade(),
+                    v.and_then(|v| v.str()).and_then(Kind::from_id),
+                ) else {
+                    return;
+                };
+                if send {
+                    me.begin_send(kind);
+                } else {
+                    me.begin_receive(kind);
+                }
+            });
+            self.win.add_action(&a);
+        }
+    }
+
+    // ------------------------------------------------------------ 転送
+
+    fn begin_send(self: &Rc<Self>, kind: Kind) {
+        let Some(session) = self.view.session().filter(|s| !s.is_transferring()) else {
+            return;
+        };
+        let me = Rc::clone(self);
+        let dialog = gtk::FileDialog::builder()
+            .title(format!("{} で送るファイル", kind.name()))
+            .build();
+        let done = move |files: Vec<std::path::PathBuf>| {
+            if !files.is_empty() {
+                transfer::start(&me.parent(), &session, kind, Direction::Send(files));
+            }
+        };
+        if kind.batch() {
+            dialog.open_multiple(Some(&self.win), None::<&gio::Cancellable>, move |r| {
+                let files = r
+                    .map(|list| {
+                        (0..list.n_items())
+                            .filter_map(|i| list.item(i).and_downcast::<gio::File>()?.path())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                done(files);
+            });
+        } else {
+            dialog.open(Some(&self.win), None::<&gio::Cancellable>, move |r| {
+                done(r.ok().and_then(|f| f.path()).into_iter().collect());
+            });
+        }
+    }
+
+    fn begin_receive(self: &Rc<Self>, kind: Kind) {
+        let Some(session) = self.view.session().filter(|s| !s.is_transferring()) else {
+            return;
+        };
+        let me = Rc::clone(self);
+        let dialog = gtk::FileDialog::builder()
+            .title(format!("{} で受け取る保存先", kind.name()))
+            .initial_folder(&gio::File::for_path(transfer::downloads_dir()))
+            .build();
+        if kind == Kind::XModem {
+            // XMODEM はファイル名が送られてこないので、保存するファイルを選ぶ
+            dialog.save(Some(&self.win), None::<&gio::Cancellable>, move |r| {
+                if let Some(p) = r.ok().and_then(|f| f.path()) {
+                    transfer::start(&me.parent(), &session, kind, Direction::Receive(p));
+                }
+            });
+        } else {
+            dialog.select_folder(Some(&self.win), None::<&gio::Cancellable>, move |r| {
+                if let Some(p) = r.ok().and_then(|f| f.path()) {
+                    transfer::start(&me.parent(), &session, kind, Direction::Receive(p));
+                }
+            });
+        }
+    }
+
+    /// 相手で sz / rz が動いたとき（Tera Term の ZMODEM 自動切り替え）。
+    fn transfer_request(self: &Rc<Self>, request: TransferRequest) {
+        if self.macro_stop.borrow().is_some() {
+            return; // マクロが自分で zmodemrecv などを呼ぶ
+        }
+        let Some(session) = self.view.session().filter(|s| !s.is_transferring()) else {
+            return;
+        };
+        match request {
+            TransferRequest::ZmodemReceive => transfer::start(
+                &self.parent(),
+                &session,
+                Kind::ZModem,
+                Direction::Receive(transfer::downloads_dir()),
+            ),
+            TransferRequest::ZmodemSend => self.begin_send(Kind::ZModem),
+        }
+    }
+
+    // ------------------------------------------------------------ マクロ
+
+    fn choose_macro(self: &Rc<Self>) {
+        if self.macro_stop.borrow().is_some() {
+            return;
+        }
+        let filter = gtk::FileFilter::new();
+        filter.add_pattern("*.ttl");
+        filter.set_name(Some("TTL"));
+        let filters = gio::ListStore::new::<gtk::FileFilter>();
+        filters.append(&filter);
+        let dialog = gtk::FileDialog::builder()
+            .title(tt("FILEDLG_OPEN_MACRO_TITLE", "マクロを開く"))
+            .filters(&filters)
+            .build();
+        let me = Rc::clone(self);
+        dialog.open(Some(&self.win), None::<&gio::Cancellable>, move |r| {
+            if let Some(p) = r.ok().and_then(|f| f.path()) {
+                me.run_macro(p);
+            }
+        });
+    }
+
+    pub fn run_macro(self: &Rc<Self>, path: std::path::PathBuf) {
+        let stop = Arc::new(AtomicBool::new(false));
+        *self.macro_stop.borrow_mut() = Some(Arc::clone(&stop));
+        self.badge_name.set_text(&format!(
+            "マクロ: {}",
+            path.file_name()
+                .map(|f| f.to_string_lossy())
+                .unwrap_or_default()
+        ));
+        self.badge_status.set_visible(false);
+        self.badge_transfer.set_visible(false);
+        self.badge.set_visible(true);
+        let session = if self.connected() {
+            self.view.session()
+        } else {
+            None
+        };
+        macros::spawn(
+            path,
+            session,
+            stop,
+            self.macro_tx.clone(),
+            transfer::downloads_dir(),
+        );
+    }
+
+    fn confirm_stop_macro(self: &Rc<Self>) {
+        let Some(stop) = self.macro_stop.borrow().clone() else {
+            return;
+        };
+        dialogs::yes_no(
+            &self.parent(),
+            &tt("MSG_MACRO_CONF", "確認"),
+            &tt(
+                "MSG_MACRO_HALT_SCRIPT",
+                "本当にこのマクロスクリプトを停止しますか？",
+            ),
+            move |yes| {
+                if yes {
+                    stop.store(true, Ordering::SeqCst);
+                }
+            },
+        );
+    }
+
+    fn stop_macro_now(&self) {
+        if let Some(stop) = self.macro_stop.borrow().as_ref() {
+            stop.store(true, Ordering::SeqCst);
+        }
+    }
+
+    fn macro_connect_profile(spec: ConnectSpec) -> ConnectionProfile {
+        match spec {
+            ConnectSpec::Serial { port, baud } => {
+                let mut settings = mt_core::SerialSettings::default();
+                if let Some(b) = baud {
+                    settings.baud = b;
+                }
+                ConnectionProfile::Serial {
+                    port,
+                    settings,
+                    delay: Default::default(),
+                }
+            }
+            ConnectSpec::Telnet { host, port } => ConnectionProfile::Telnet {
+                host,
+                port: Some(port),
+            },
+            ConnectSpec::Tcp { host, port } => ConnectionProfile::Tcp { host, port },
+            ConnectSpec::Ssh(s) => ConnectionProfile::Ssh {
+                host: s.host,
+                port: s.port,
+                user: s.user,
+                system_ssh: false,
+            },
+        }
+    }
+
+    fn handle_macro(self: &Rc<Self>, req: MacroReq) {
+        let parent = self.parent();
+        match req {
+            MacroReq::Connect(spec, reply) => {
+                // /passwd= は最初の認証ダイアログの代わりに使う
+                if let ConnectSpec::Ssh(s) = &spec {
+                    *PENDING_PASSWORD.lock().unwrap_or_else(|e| e.into_inner()) =
+                        s.password.clone();
+                }
+                self.waiters.borrow_mut().push(Box::new(move |s| {
+                    let _ = reply.send(s);
+                }));
+                self.connect(Self::macro_connect_profile(spec), false);
+            }
+            MacroReq::Disconnect => self.disconnect(),
+            MacroReq::Message(title, text, reply) => {
+                let title = if title.is_empty() {
+                    "MACRO".into()
+                } else {
+                    title
+                };
+                dialogs::message(&parent, &title, &text, move || {
+                    let _ = reply.send(());
+                });
+            }
+            MacroReq::Input {
+                title,
+                text,
+                default,
+                password,
+                reply,
+            } => {
+                let title = if title.is_empty() {
+                    "MACRO".into()
+                } else {
+                    title
+                };
+                dialogs::input(&parent, &title, &text, &default, password, move |a| {
+                    let _ = reply.send(a);
+                });
+            }
+            MacroReq::YesNo(title, text, reply) => {
+                let title = if title.is_empty() {
+                    "MACRO".into()
+                } else {
+                    title
+                };
+                dialogs::yes_no(&parent, &title, &text, move |a| {
+                    let _ = reply.send(a);
+                });
+            }
+            MacroReq::Status(t) => {
+                self.badge_status.set_visible(t.is_some());
+                self.badge_status.set_text(t.as_deref().unwrap_or(""));
+            }
+            MacroReq::Title(t) => {
+                *self.macro_title.borrow_mut() = Some(t);
+                self.update_title();
+            }
+            MacroReq::Beep => WidgetExt::display(&self.win).beep(),
+            MacroReq::Transfer(t) => {
+                self.badge_transfer.set_visible(t.is_some());
+                self.badge_transfer.set_text(t.as_deref().unwrap_or(""));
+            }
+            MacroReq::Finished(result) => {
+                *self.macro_stop.borrow_mut() = None;
+                self.badge.set_visible(false);
+                if let Err(e) = result {
+                    dialogs::message(
+                        &parent,
+                        "MACRO",
+                        &format!("マクロを中止しました。\n{e}"),
+                        || {},
+                    );
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ コアからの通知
+
+    fn listen(
+        self: &Rc<Self>,
+        events: async_channel::Receiver<Event>,
+        prompts: async_channel::Receiver<Prompt>,
+        macros: async_channel::Receiver<MacroReq>,
+    ) {
+        let me = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            while let Ok(ev) = events.recv().await {
+                let Some(me) = me.upgrade() else { break };
+                match ev {
+                    Event::State(s) => {
+                        // 古い接続の通知は無視する
+                        if me.view.session().is_none() && s != SessionState::Closed {
+                            continue;
+                        }
+                        let status = match s {
+                            SessionState::Connecting => Status::Connecting,
+                            SessionState::Connected => Status::Connected,
+                            SessionState::Reconnecting => Status::Reconnecting,
+                            SessionState::Closed => Status::Disconnected,
+                        };
+                        if me.status.get() == Status::Connecting && status == Status::Disconnected {
+                            continue;
+                        }
+                        me.status.set(status);
+                        me.update_title();
+                        // シェルが終わったらウィンドウを閉じる（他はエラーが読めるよう残す）
+                        if s == SessionState::Closed
+                            && matches!(*me.profile.borrow(), Some(ConnectionProfile::LocalShell))
+                        {
+                            me.win.close();
+                        }
+                    }
+                    Event::Title(t) => {
+                        *me.remote_title.borrow_mut() = t;
+                        me.update_title();
+                    }
+                    Event::Bell => WidgetExt::display(&me.win).beep(),
+                    Event::Transfer(r) => me.transfer_request(r),
+                }
+            }
+        });
+        let me = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            while let Ok(p) = prompts.recv().await {
+                let Some(me) = me.upgrade() else { break };
+                let parent = me.parent();
+                match p {
+                    Prompt::HostKey(info, reply) => dialogs::host_key(&parent, info, move |d| {
+                        let _ = reply.send(d);
+                    }),
+                    Prompt::Credentials(req, reply) => {
+                        if !req.failed
+                            && req.methods.contains(&mt_core::AuthMethod::Password)
+                            && let Some(pw) = PENDING_PASSWORD
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .take()
+                        {
+                            let _ = reply.send(mt_core::AuthResponse::Password {
+                                user: req.user,
+                                password: pw,
+                            });
+                            continue;
+                        }
+                        dialogs::credentials(&parent, req, move |a| {
+                            let _ = reply.send(a);
+                        })
+                    }
+                    Prompt::Keyboard {
+                        name,
+                        instructions,
+                        prompts,
+                        reply,
+                    } => dialogs::keyboard(&parent, name, instructions, prompts, move |a| {
+                        let _ = reply.send(a);
+                    }),
+                    Prompt::Passphrase {
+                        key_path,
+                        failed,
+                        reply,
+                    } => dialogs::passphrase(&parent, key_path, failed, move |a| {
+                        let _ = reply.send(a);
+                    }),
+                }
+            }
+        });
+        let me = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            while let Ok(req) = macros.recv().await {
+                let Some(me) = me.upgrade() else { break };
+                me.handle_macro(req);
+            }
+        });
+    }
+}
+
+/// マクロの `connect ... /passwd=` で渡されたパスワード（次の認証で 1 回だけ使う）
+static PENDING_PASSWORD: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);

@@ -1,0 +1,28 @@
+[package]
+name = "multiterm-gtk"
+description = "Multi-Term の Linux 版（GTK4）"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+
+# GTK4 の開発ライブラリが要るので、ルートのワークスペースには入れない
+[workspace]
+
+[[bin]]
+name = "multiterm"
+path = "src/main.rs"
+
+[dependencies]
+async-channel = "2"
+gtk = { package = "gtk4", version = "0.10", features = ["v4_12"] }
+pangocairo = "0.21"
+mt-core = { path = "../../crates/core" }
+mt-net = { path = "../../crates/net" }
+mt-serial = { path = "../../crates/serial" }
+mt-ttl = { path = "../../crates/ttl" }
+mt-xfer = { path = "../../crates/xfer" }
+serde_json = "1"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -42,3 +42,20 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+
+  # Linux 版（GTK4）。ワークスペースの外なので別に回す
+  linux-app:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/linux
+      - name: Install GTK4
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libudev-dev pkg-config
+      - run: cargo fmt --manifest-path apps/linux/Cargo.toml --check
+      - run: cargo clippy --manifest-path apps/linux/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path apps/linux/Cargo.toml
