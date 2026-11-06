@@ -99,6 +99,8 @@ cargo run --manifest-path apps/linux/Cargo.toml
 MT_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p mt-serial -- --ignored --nocapture
 ```
 
+選択（単語・行・矩形）、検索、URL の検出、「テーブルをコピー」の変換は `mt_vt::select`、貼り付け前の確認（改行・危険な語）は `mt_core::paste` に置く。UI は選択の両端（`Point`：0 が画面の最上行、負はスクロールバック）だけを持ち、出力で行が押し出されたらずらす。本家との機能差分と実装の進み具合は [docs/feature_gap_list.md](docs/feature_gap_list.md)。
+
 UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）からキーで引く。手で書き写さない。Mac 版のアプリ独自の文言は `L("日本語の文")` で、訳は `apps/macos/Sources/MultiTerm/Localization/<言語>.json`（詳しくは apps/macos/README.md の「表示言語」）。
 
 SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`mt_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。

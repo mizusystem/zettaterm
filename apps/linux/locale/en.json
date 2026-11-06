@@ -38,5 +38,19 @@
   "フォルダ...": "Folder...",
   "ZMODEM の自動受信": "Receive ZMODEM Automatically",
   "相手が ZMODEM でファイルを送ろうとしています": "The remote side wants to send files with ZMODEM",
-  "ダウンロードフォルダに受け取りますか？": "Receive them into the Downloads folder?"
+  "ダウンロードフォルダに受け取りますか？": "Receive them into the Downloads folder?",
+  "{} 行を貼り付けます。改行の位置でそれぞれ実行されます。": "Pasting {} lines. Each line runs when its newline is sent.",
+  "危険な語が含まれています: {}": "Contains dangerous words: {}",
+  "中クリックで貼り付ける": "Paste with the middle button",
+  "前を検索": "Find Previous",
+  "右クリックで貼り付ける（オフならメニューを出す）": "Paste with right-click (off shows a menu)",
+  "大文字と小文字を区別する": "Match case",
+  "改行を含むときと、次の語を含むときに、貼り付ける前に内容を確かめます（1 行に 1 つ）。": "Confirm before pasting text that contains a newline or one of these words (one per line).",
+  "既定に戻す": "Restore Defaults",
+  "検索": "Find",
+  "検索...": "Find...",
+  "次を検索": "Find Next",
+  "正規表現": "Regular expression",
+  "見つかりません": "Not found",
+  "貼り付け": "Paste"
 }

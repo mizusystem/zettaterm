@@ -12,7 +12,44 @@ use mt_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::dialogs::modal;
-use crate::strings::tt;
+use crate::strings::{l, tt};
+
+/// Tera Term の「その他の設定 > コピーと貼り付け」と、クリッカブル URL。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CopyPaste {
+    /// マウスで選んだらすぐクリップボードへコピーする（AutoTextCopy）
+    pub auto_copy: bool,
+    /// 右クリックで貼り付ける（オフならメニュー）
+    pub right_click_paste: bool,
+    /// 中クリックで PRIMARY を貼り付ける
+    pub middle_click_paste: bool,
+    /// 改行や危険な語を含む貼り付けを確認する（ConfirmChangePaste）
+    pub confirm_paste: bool,
+    /// 危険な語
+    pub dangerous_words: Vec<String>,
+    /// 貼り付け時に末尾の改行を削除する（TrimTrailingNLonPaste）
+    pub trim_trailing_newline: bool,
+    /// ダブルクリックで単語を区切る文字（DelimList）
+    pub delimiters: String,
+    /// URL に下線を引き、Ctrl + クリックで開く（EnableClickableUrl）
+    pub clickable_url: bool,
+}
+
+impl Default for CopyPaste {
+    fn default() -> Self {
+        Self {
+            auto_copy: true,
+            right_click_paste: false,
+            middle_click_paste: true,
+            confirm_paste: true,
+            dangerous_words: mt_core::default_dangerous_words(),
+            trim_trailing_newline: false,
+            delimiters: mt_core::DEFAULT_DELIMITERS.to_owned(),
+            clickable_url: true,
+        }
+    }
+}
 
 /// 端末の設定（Tera Term の「設定 > 端末」のうち、この実装が持つもの）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,6 +86,7 @@ pub struct Settings {
     pub serial_port: Option<String>,
     /// 相手の sz で尋ねずに受け取るか（既定は Tera Term と同じくオン）
     pub zmodem_auto_receive: bool,
+    pub copy_paste: CopyPaste,
 }
 
 impl Default for Settings {
@@ -60,6 +98,7 @@ impl Default for Settings {
             delay: SendDelay::default(),
             serial_port: None,
             zmodem_auto_receive: true,
+            copy_paste: CopyPaste::default(),
         }
     }
 }
@@ -399,6 +438,110 @@ pub fn serial_dialog(
                 per_line_ms: dline.value() as u32,
             },
         })
+    });
+    win.present();
+}
+
+/// 「設定 > コピーと貼り付け」。OK で保存して `applied()` を呼ぶ。
+pub fn copy_paste_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
+    let current = Settings::load().copy_paste;
+    let (win, content, row) = modal(
+        parent,
+        &tt("DLG_TABSHEET_TITLE_COPYPASTE", "コピーと貼り付け"),
+    );
+    let check = |text: String, on: bool| {
+        let c = gtk::CheckButton::with_label(&text);
+        c.set_active(on);
+        content.append(&c);
+        c
+    };
+    let auto = check(
+        tt(
+            "DLG_TAB_COPYPASTE_AUTO_TEXT_COPY",
+            "マウスで文字選択時、自動でクリップボードへのコピーを行う",
+        ),
+        current.auto_copy,
+    );
+    let right = check(
+        l("右クリックで貼り付ける（オフならメニューを出す）"),
+        current.right_click_paste,
+    );
+    let middle = check(l("中クリックで貼り付ける"), current.middle_click_paste);
+    let trim = check(
+        tt(
+            "DLG_TAB_COPYPASTE_TRIM_TRAILING_NL",
+            "貼り付け時に末尾の改行を削除する",
+        ),
+        current.trim_trailing_newline,
+    );
+    let url = check(
+        tt("DLG_TAB_GENERAL_CLICKURL", "クリッカブルURLを有効にする"),
+        current.clickable_url,
+    );
+
+    let delim_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    delim_row.append(&gtk::Label::new(Some(&tt(
+        "DLG_TAB_COPYPASTE_DELIMITER",
+        "区切り文字",
+    ))));
+    let delims = gtk::Entry::new();
+    delims.set_text(&current.delimiters);
+    delims.set_hexpand(true);
+    delim_row.append(&delims);
+    content.append(&delim_row);
+
+    let confirm = check(
+        tt(
+            "DLG_TAB_COPYPASTE_CONFIRM_CHANGE_PASTE",
+            "危険なクリップボードの貼り付けを確認する",
+        ),
+        current.confirm_paste,
+    );
+    let note = gtk::Label::new(Some(&l(
+        "改行を含むときと、次の語を含むときに、貼り付ける前に内容を確かめます（1 行に 1 つ）。",
+    )));
+    note.set_wrap(true);
+    note.set_xalign(0.0);
+    note.add_css_class("dim-label");
+    content.append(&note);
+    let words = gtk::TextView::new();
+    words.set_monospace(true);
+    words.buffer().set_text(&current.dangerous_words.join("\n"));
+    let scroll = gtk::ScrolledWindow::builder()
+        .min_content_height(120)
+        .child(&words)
+        .build();
+    content.append(&scroll);
+    let reset = gtk::Button::with_label(&l("既定に戻す"));
+    reset.set_halign(gtk::Align::Start);
+    let w = words.clone();
+    reset.connect_clicked(move |_| {
+        w.buffer()
+            .set_text(&mt_core::default_dangerous_words().join("\n"))
+    });
+    content.append(&reset);
+
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let buf = words.buffer();
+        let text = buf.text(&buf.start_iter(), &buf.end_iter(), false);
+        let mut s = Settings::load();
+        s.copy_paste = CopyPaste {
+            auto_copy: auto.is_active(),
+            right_click_paste: right.is_active(),
+            middle_click_paste: middle.is_active(),
+            confirm_paste: confirm.is_active(),
+            dangerous_words: text
+                .lines()
+                .map(str::trim)
+                .filter(|w| !w.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            trim_trailing_newline: trim.is_active(),
+            delimiters: delims.text().to_string(),
+            clickable_url: url.is_active(),
+        };
+        s.save();
+        applied();
     });
     win.present();
 }

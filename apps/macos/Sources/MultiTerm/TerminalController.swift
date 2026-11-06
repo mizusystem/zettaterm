@@ -9,10 +9,17 @@ final class TerminalController: ObservableObject {
 
     enum Sheet: String, Identifiable {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
+        case copyPasteSettings, pasteConfirm
         var id: String { rawValue }
     }
 
     let view = TerminalView()
+    /// 端末内の検索（Cmd+F）
+    let search = SearchState()
+    /// 確認を待っている貼り付け（sheet == .pasteConfirm のときに使う）
+    @Published var pendingPaste: String?
+    /// 確認を待っている貼り付けの末尾に改行を足すか（「貼り付け<CR>」）
+    private var pendingPasteCR = false
     let id = UUID()
     /// SSH の認証・ホスト鍵確認をこのウィンドウのダイアログで尋ねる
     let prompter = SshPrompterBridge()
@@ -46,6 +53,8 @@ final class TerminalController: ObservableObject {
         view.onError = { [weak self] error in self?.report(error) }
         view.onTransferRequest = { [weak self] request in self?.handleTransferRequest(request) }
         view.onDropFiles = { [weak self] urls in self?.handleDrop(urls) }
+        view.onPaste = { [weak self] text, cr in self?.handlePaste(text, appendCR: cr) }
+        view.onHistoryShift = { [weak self] delta in self?.search.shift(by: delta) }
         view.prompter = prompter
         prompter.controller = self
         SessionRegistry.shared.register(self)
@@ -169,6 +178,49 @@ final class TerminalController: ObservableObject {
         guard let session = view.session, isConnected else { return }
         if !text.isEmpty { session.write(bytes: Data(text.utf8)) }
         if enter { session.key(key: .enter, mods: Modifiers(shift: false, ctrl: false, alt: false)) }
+    }
+
+    // MARK: 貼り付け・検索・画面
+
+    /// 改行や危険な語を含む貼り付けは、送る前に確かめる（Tera Term の ConfirmChangePaste）。
+    func handlePaste(_ text: String, appendCR: Bool) {
+        let config = CopyPasteConfig.saved
+        if config.confirmPaste {
+            let check = checkPaste(text: text, words: config.dangerousWords)
+            if check.multiline || !check.dangerous.isEmpty {
+                pendingPaste = text
+                pendingPasteCR = appendCR
+                sheet = .pasteConfirm
+                return
+            }
+        }
+        view.sendPaste(appendCR ? text + "\r" : text)
+    }
+
+    /// 確認ダイアログで OK を押したとき。
+    func sendPaste(_ text: String) {
+        view.sendPaste(pendingPasteCR ? text + "\r" : text)
+        pendingPasteCR = false
+    }
+
+    func showSearch() {
+        // 端末ビューがキー入力を持ったままだと検索欄に入らないので、先に手放す
+        view.window?.makeFirstResponder(nil)
+        search.visible = true
+        search.focusToken += 1
+    }
+
+    func findNext(_ forward: Bool) {
+        if !search.visible {
+            showSearch()
+            return
+        }
+        search.step(forward, in: view)
+    }
+
+    /// 「コントロール > 端末リセット」
+    func resetTerminal() {
+        view.textSession?.resetTerminal()
     }
 
     // MARK: SSH の問い合わせ

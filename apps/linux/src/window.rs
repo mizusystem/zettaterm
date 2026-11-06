@@ -180,7 +180,29 @@ impl Tabs {
         add("disconnect", Box::new(|_, me| me.disconnect()));
         add("close", Box::new(|t, me| t.remove(me)));
         add("copy", Box::new(|_, me| me.view.copy()));
+        add("copy-table", Box::new(|_, me| me.view.copy_table()));
         add("paste", Box::new(|_, me| me.view.paste()));
+        add("paste-cr", Box::new(|_, me| me.view.paste_clipboard(true)));
+        add("clear-screen", Box::new(|_, me| me.view.clear_screen()));
+        add("clear-buffer", Box::new(|_, me| me.view.clear_buffer()));
+        add(
+            "cancel-select",
+            Box::new(|_, me| me.view.cancel_selection()),
+        );
+        add("select-screen", Box::new(|_, me| me.view.select_screen()));
+        add("select-all", Box::new(|_, me| me.view.select_all()));
+        add("find", Box::new(|_, me| me.view.show_search()));
+        add("find-next", Box::new(|_, me| me.view.find_step(true)));
+        add("find-prev", Box::new(|_, me| me.view.find_step(false)));
+        add("reset-terminal", Box::new(|_, me| me.view.reset_terminal()));
+        add(
+            "setup-copypaste",
+            Box::new(|t, _| {
+                crate::settings::copy_paste_dialog(&t.win.clone().upcast(), || {
+                    crate::term::reload_conf()
+                })
+            }),
+        );
         add(
             "send-break",
             Box::new(|_, me| {
@@ -320,7 +342,7 @@ impl TermWindow {
         badge.set_visible(false);
 
         let overlay = gtk::Overlay::new();
-        overlay.set_child(Some(&view.area));
+        overlay.set_child(Some(&view.widget));
         overlay.add_overlay(&badge);
         let tab_label = gtk::Label::new(Some("Multi-Term"));
         // 省略表示にすると幅が縮みきるので、最低の幅を決めておく
@@ -367,6 +389,7 @@ impl TermWindow {
         if let Some(s) = self.view.detach() {
             s.close();
         }
+        self.view.dispose();
     }
 
     /// タブの見出し（一斉送信の一覧にも出す）

@@ -54,8 +54,45 @@ fn menu() -> gio::Menu {
     bar.append_submenu(Some(&tt("MENU_FILE", "ファイル")), &file);
 
     let edit = gio::Menu::new();
-    edit.append(Some(&tt("MENU_EDIT_COPY", "コピー")), Some("win.copy"));
-    edit.append(Some(&tt("MENU_EDIT_PASTE", "貼り付け")), Some("win.paste"));
+    let section = |items: &[(String, &str)]| {
+        let m = gio::Menu::new();
+        for (label, action) in items {
+            m.append(Some(label), Some(action));
+        }
+        edit.append_section(None, &m);
+    };
+    section(&[
+        (tt("MENU_EDIT_COPY", "コピー"), "win.copy"),
+        (
+            tt("MENU_EDIT_COPYTABLE", "テーブルをコピー"),
+            "win.copy-table",
+        ),
+        (tt("MENU_EDIT_PASTE", "貼り付け"), "win.paste"),
+        (tt("MENU_EDIT_PASTECR", "貼り付け<CR>"), "win.paste-cr"),
+    ]);
+    section(&[
+        (tt("MENU_EDIT_CLSCREEN", "画面クリア"), "win.clear-screen"),
+        (
+            tt("MENU_EDIT_CLBUFFER", "バッファのクリア"),
+            "win.clear-buffer",
+        ),
+    ]);
+    section(&[
+        (
+            tt("MENU_EDIT_CANCELSELECT", "選択を解除"),
+            "win.cancel-select",
+        ),
+        (
+            tt("MENU_EDIT_SELECTSCREEN", "表示画面を選択"),
+            "win.select-screen",
+        ),
+        (tt("MENU_EDIT_SELECTALL", "全て選択"), "win.select-all"),
+    ]);
+    section(&[
+        (l("検索..."), "win.find"),
+        (l("次を検索"), "win.find-next"),
+        (l("前を検索"), "win.find-prev"),
+    ]);
     bar.append_submenu(Some(&tt("MENU_EDIT", "編集")), &edit);
 
     let setup = gio::Menu::new();
@@ -66,6 +103,13 @@ fn menu() -> gio::Menu {
     setup.append(
         Some(&tt("MENU_SETUP_SERIALPORT", "シリアルポート...")),
         Some("win.setup-serial"),
+    );
+    setup.append(
+        Some(&format!(
+            "{}...",
+            tt("DLG_TABSHEET_TITLE_COPYPASTE", "コピーと貼り付け")
+        )),
+        Some("win.setup-copypaste"),
     );
     bar.append_submenu(Some(&tt("MENU_SETUP", "設定")), &setup);
 
@@ -99,6 +143,10 @@ fn menu() -> gio::Menu {
     bar.append_submenu(Some(&tt("MENU_TRANS", "転送")), &trans);
 
     let control = gio::Menu::new();
+    control.append(
+        Some(&tt("MENU_CONTROL_RESET", "端末リセット")),
+        Some("win.reset-terminal"),
+    );
     control.append(
         Some(&tt("MENU_CONTROL_SENDBREAK", "ブレーク送信")),
         Some("win.send-break"),
@@ -156,6 +204,11 @@ fn main() -> glib::ExitCode {
         app.set_accels_for_action("win.close", &["<Control><Shift>w"]);
         app.set_accels_for_action("win.new-tab", &["<Control><Shift>t"]);
         app.set_accels_for_action("app.quit", &["<Control><Shift>q"]);
+        app.set_accels_for_action("win.find", &["<Control><Shift>f"]);
+        app.set_accels_for_action("win.find-next", &["<Control><Shift>g"]);
+        app.set_accels_for_action("win.find-prev", &["<Control><Shift>h"]);
+        app.set_accels_for_action("win.paste-cr", &["<Control><Shift>r"]);
+        app.set_accels_for_action("win.select-all", &["<Control><Shift>a"]);
     });
     app.connect_activate(move |app| {
         let tabs = Tabs::new(app);

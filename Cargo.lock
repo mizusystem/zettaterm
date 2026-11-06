@@ -1384,6 +1384,7 @@ name = "mt-vt"
 version = "0.0.0"
 dependencies = [
  "alacritty_terminal",
+ "regex",
 ]
 
 [[package]]

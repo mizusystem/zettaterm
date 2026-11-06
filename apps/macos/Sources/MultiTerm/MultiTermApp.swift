@@ -38,9 +38,14 @@ struct TerminalWindow: View {
     var body: some View {
         TerminalContainer(controller: controller)
             .overlay(alignment: .topTrailing) {
-                if let m = controller.macro {
-                    MacroBadge(macro: m) { controller.stopMacro() }
+                VStack(alignment: .trailing, spacing: 0) {
+                    SearchOverlay(search: controller.search, view: controller.view)
+                    if let m = controller.macro {
+                        MacroBadge(macro: m) { controller.stopMacro() }
+                    }
                 }
+                // スクロールバーにかからないように
+                .padding(.trailing, NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
             }
             .background(WindowAccessor { window in
                 WindowTabs.attach(window, asTab: request?.asTab ?? false)
@@ -69,6 +74,8 @@ struct TerminalWindow: View {
                 case .transfer: TransferView(controller: controller)
                 case .scp: ScpView(controller: controller)
                 case .drop: DropView(controller: controller)
+                case .copyPasteSettings: CopyPasteSettingsView()
+                case .pasteConfirm: PasteConfirmView(controller: controller)
                 }
             }
             .alert(
@@ -176,11 +183,52 @@ struct TerminalCommands: Commands {
                 .disabled(controller == nil || controller?.status == .disconnected)
         }
 
+        // 「編集」。コピー・貼り付け・全て選択は応答チェーンに送るので、ダイアログの入力欄でも効く
+        CommandGroup(replacing: .undoRedo) {}
+        CommandGroup(replacing: .pasteboard) {
+            Button(TT.text("MENU_EDIT_COPY", "コピー")) { NSApp.sendAction(#selector(TerminalView.copy(_:)), to: nil, from: nil) }
+                .keyboardShortcut("c")
+            Button(TT.text("MENU_EDIT_COPYTABLE", "テーブルをコピー")) { controller?.view.copyTable(nil) }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_EDIT_PASTE", "貼り付け")) { NSApp.sendAction(#selector(TerminalView.paste(_:)), to: nil, from: nil) }
+                .keyboardShortcut("v")
+            Button(TT.text("MENU_EDIT_PASTECR", "貼り付け<CR>")) { controller?.view.pasteClipboard(appendCR: true) }
+                .keyboardShortcut("r")
+                .disabled(controller?.isConnected != true)
+            Divider()
+            Button(TT.text("MENU_EDIT_CLSCREEN", "画面クリア")) { controller?.view.clearScreen(nil) }
+                .disabled(controller?.view.textSession == nil)
+            Button(TT.text("MENU_EDIT_CLBUFFER", "バッファのクリア")) { controller?.view.clearBuffer(nil) }
+                .disabled(controller?.view.textSession == nil)
+            Divider()
+            Button(TT.text("MENU_EDIT_CANCELSELECT", "選択を解除")) { controller?.view.cancelSelection(nil) }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_EDIT_SELECTSCREEN", "表示画面を選択")) { controller?.view.selectScreen(nil) }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_EDIT_SELECTALL", "全て選択")) { NSApp.sendAction(#selector(NSResponder.selectAll(_:)), to: nil, from: nil) }
+                .keyboardShortcut("a")
+        }
+        CommandGroup(replacing: .textEditing) {
+            Button(L("検索...")) { controller?.showSearch() }
+                .keyboardShortcut("f")
+                .disabled(controller == nil)
+            Button(L("次を検索")) { controller?.findNext(true) }
+                .keyboardShortcut("g")
+                .disabled(controller == nil)
+            Button(L("前を検索")) { controller?.findNext(false) }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                .disabled(controller == nil)
+        }
+
         CommandMenu(TT.text("MENU_SETUP", "設定")) {
             Button(TT.text("MENU_SETUP_TERMINAL", "端末...")) { controller?.sheet = .terminalSettings }
                 .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_SERIALPORT", "シリアルポート...")) { controller?.sheet = .serialSettings }
                 .disabled(controller == nil)
+            Button(TT.text("DLG_TABSHEET_TITLE_COPYPASTE", "コピーと貼り付け") + "...") {
+                controller?.sheet = .copyPasteSettings
+            }
+            .disabled(controller == nil)
         }
 
         CommandMenu(TT.text("MENU_TRANS", "転送")) {
@@ -200,6 +248,11 @@ struct TerminalCommands: Commands {
         }
 
         CommandMenu(TT.text("MENU_CONTROL", "コントロール")) {
+            Button(TT.text("MENU_CONTROL_RESET", "端末リセット")) { controller?.resetTerminal() }
+                .disabled(controller?.view.textSession == nil)
+
+            Divider()
+
             Button(TT.text("MENU_CONTROL_SENDBREAK", "ブレーク送信")) { controller?.sendBreak() }
                 .keyboardShortcut("b")
                 .disabled(controller?.isSerialConnected != true)
@@ -218,6 +271,18 @@ struct TerminalCommands: Commands {
             }
             .keyboardShortcut("b", modifiers: [.command, .shift])
             .disabled(controller == nil)
+        }
+    }
+}
+
+/// 検索欄（開いているときだけ出す）。
+private struct SearchOverlay: View {
+    @ObservedObject var search: SearchState
+    let view: TerminalView
+
+    var body: some View {
+        if search.visible {
+            SearchBar(search: search, view: view)
         }
     }
 }

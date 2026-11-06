@@ -12,6 +12,7 @@ use alacritty_terminal::vte::ansi::{self, Color, Processor, Rgb};
 
 use crate::keys::{self, Key, KeyMode, Modifiers};
 use crate::palette;
+use crate::select::{self, Point, Selection, UrlMatch};
 use crate::types::{Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row};
 
 /// VT 解釈の結果、Session が処理すべき出来事。
@@ -158,6 +159,95 @@ impl Terminal {
         let start = from.max(top);
         let end = (from + i64::from(count)).min(bottom);
         (start..end).map(|l| self.row(l as i32)).collect()
+    }
+
+    /// 行 `first..=last`（範囲外は詰める）。
+    fn lines(&self, first: i32, last: i32) -> Vec<Row> {
+        let top = -(self.term.grid().history_size() as i32);
+        let bottom = i32::from(self.rows()) - 1;
+        (first.max(top)..=last.min(bottom))
+            .map(|l| self.row(l))
+            .collect()
+    }
+
+    /// 論理行を探すのに見る前後の行数（これより長く折り返した行は途中で切れる）
+    const AROUND: i32 = 64;
+
+    /// 選択範囲の文字列。
+    pub fn selection_text(&self, sel: &Selection) -> String {
+        let (a, b) = sel.ordered();
+        select::selection_text(&self.lines(a.line, b.line), sel)
+    }
+
+    /// `p` の位置の単語（ダブルクリック）。
+    pub fn word_at(&self, p: Point, delims: &str) -> Selection {
+        let rows = self.lines(p.line - Self::AROUND, p.line + Self::AROUND);
+        select::word_at(&rows, p, delims)
+    }
+
+    /// `line` を含む論理行（トリプルクリック）。
+    pub fn line_at(&self, line: i32) -> Selection {
+        let rows = self.lines(line - Self::AROUND, line + Self::AROUND);
+        select::line_at(&rows, line)
+    }
+
+    /// 画面とスクロールバックの全体（行番号の昇順）。
+    fn all_lines(&self) -> Vec<Row> {
+        let top = -(self.term.grid().history_size() as i32);
+        self.lines(top, i32::from(self.rows()) - 1)
+    }
+
+    /// スクロールバックを含む全体から探す。
+    pub fn search(&self, re: &regex::Regex) -> Vec<Selection> {
+        select::search(&self.all_lines(), re)
+    }
+
+    /// 選択範囲を、表示中の内容全体に広げたもの（全て選択）。
+    pub fn select_all(&self) -> Selection {
+        let top = -(self.term.grid().history_size() as i32);
+        Selection {
+            start: Point::new(top, 0),
+            end: Point::new(i32::from(self.rows()) - 1, self.cols()),
+            block: false,
+        }
+    }
+
+    /// 行 `first..=last` にある URL。
+    pub fn urls(&self, first: i32, last: i32) -> Vec<UrlMatch> {
+        // 範囲の端で折り返している URL も拾うよう、前後を少し広く見る
+        let rows = self.lines(first - 4, last + 4);
+        select::find_urls(&rows)
+            .into_iter()
+            .filter(|u| {
+                let (a, b) = u.range.ordered();
+                b.line >= first && a.line <= last
+            })
+            .collect()
+    }
+
+    /// `p` の位置の URL。
+    pub fn url_at(&self, p: Point) -> Option<String> {
+        let rows = self.lines(p.line - 4, p.line + 4);
+        select::url_at(&rows, p)
+    }
+
+    /// 画面を消してカーソルを左上へ（「編集 > 画面クリア」）。スクロールバックは残す。
+    pub fn clear_screen(&mut self) {
+        self.feed(b"\x1b[2J\x1b[H");
+    }
+
+    /// スクロールバックも含めて消す（「編集 > バッファのクリア」）。
+    pub fn clear_buffer(&mut self) {
+        self.feed(b"\x1b[2J\x1b[3J\x1b[H");
+        self.generation += 1;
+        self.resize_gen = self.generation;
+    }
+
+    /// 端末の状態を初期化する（「コントロール > 端末リセット」、RIS）。
+    pub fn reset(&mut self) {
+        self.feed(b"\x1bc");
+        self.generation += 1;
+        self.resize_gen = self.generation;
     }
 
     pub fn encode_key(&self, key: &Key, mods: Modifiers) -> Vec<u8> {
@@ -456,6 +546,41 @@ mod tests {
         assert_eq!(t.encode_key(&Key::Up, Modifiers::default()), b"\x1b[A");
         t.feed(b"\x1b[?1h");
         assert_eq!(t.encode_key(&Key::Up, Modifiers::default()), b"\x1bOA");
+    }
+
+    #[test]
+    fn selection_search_and_clearing() {
+        let mut t = Terminal::new(10, 2, 100);
+        t.feed(b"one\r\ntwo http://a.test\r\nthree");
+        // two は折り返してスクロールバックへ
+        let all = t.select_all();
+        assert_eq!(t.selection_text(&all), "one\ntwo http://a.test\nthree");
+        let q = crate::SearchQuery {
+            text: "t".into(),
+            ..Default::default()
+        };
+        let found = t.search(&q.compile().unwrap());
+        assert!(found.len() >= 3);
+        assert_eq!(
+            t.url_at(Point::new(-1, 5)).as_deref(),
+            Some("http://a.test")
+        );
+        assert_eq!(t.urls(-3, 1).len(), 1);
+        t.clear_screen();
+        assert_eq!(
+            t.selection_text(&Selection {
+                start: Point::new(0, 0),
+                end: Point::new(1, 10),
+                block: false
+            }),
+            ""
+        );
+        assert!(t.snapshot(0).history > 0);
+        t.clear_buffer();
+        assert_eq!(t.snapshot(0).history, 0);
+        t.feed(b"\x1b[?1h");
+        t.reset();
+        assert_eq!(t.encode_key(&Key::Up, Modifiers::default()), b"\x1b[A");
     }
 
     #[test]

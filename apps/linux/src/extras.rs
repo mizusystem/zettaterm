@@ -546,3 +546,71 @@ pub fn broadcast_dialog(parent: &gtk::Window) {
     entry.connect_activate(move |_| do_send());
     win.present();
 }
+
+/// 貼り付けの確認（Tera Term の「クリップボードの確認」）。内容を直してから送れる。
+pub fn confirm_paste(
+    parent: &gtk::Window,
+    text: String,
+    words: Vec<String>,
+    send: impl Fn(String) + 'static,
+) {
+    let (win, content, row) = modal(parent, &tt("DLG_CLIPBOARD_TITLE", "クリップボードの確認"));
+    win.set_resizable(true);
+    win.set_default_size(520, 320);
+    let warning = gtk::Label::new(None);
+    warning.set_xalign(0.0);
+    warning.set_wrap(true);
+    warning.add_css_class("error");
+    let info = gtk::Label::new(None);
+    info.set_xalign(0.0);
+    info.add_css_class("dim-label");
+    let view = gtk::TextView::new();
+    view.set_monospace(true);
+    view.buffer().set_text(&text);
+    let scroll = gtk::ScrolledWindow::builder()
+        .min_content_height(160)
+        .vexpand(true)
+        .child(&view)
+        .build();
+    content.append(&warning);
+    content.append(&info);
+    content.append(&scroll);
+
+    let refresh = {
+        let (warning, info) = (warning.clone(), info.clone());
+        move |buf: &gtk::TextBuffer| {
+            let t = buf.text(&buf.start_iter(), &buf.end_iter(), false);
+            let check = mt_core::check_paste(&t, &words);
+            warning.set_visible(!check.dangerous.is_empty());
+            warning.set_text(&lf(
+                "危険な語が含まれています: {}",
+                &[&check.dangerous.join(", ")],
+            ));
+            info.set_text(&lf(
+                "{} 行を貼り付けます。改行の位置でそれぞれ実行されます。",
+                &[&check.lines],
+            ));
+        }
+    };
+    refresh(&view.buffer());
+    view.buffer().connect_changed(refresh);
+
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let ok = gtk::Button::with_label(&l("貼り付け"));
+    ok.add_css_class("suggested-action");
+    row.append(&cancel);
+    row.append(&ok);
+    let w = win.clone();
+    cancel.connect_clicked(move |_| w.close());
+    let w = win.clone();
+    ok.connect_clicked(move |_| {
+        let buf = view.buffer();
+        send(
+            buf.text(&buf.start_iter(), &buf.end_iter(), false)
+                .to_string(),
+        );
+        w.close();
+    });
+    win.set_default_widget(Some(&ok));
+    win.present();
+}

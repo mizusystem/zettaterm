@@ -16,7 +16,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
-use mt_vt::{GridSnapshot, Key, Modifiers, Row, Terminal, VtEvent};
+use mt_vt::{
+    GridSnapshot, Key, Modifiers, Point, Row, SearchQuery, Selection, Terminal, UrlMatch, VtEvent,
+};
 
 use crate::charset::{self, Charset, ReceiveDecoder};
 use crate::log::{LogOptions, Logger};
@@ -384,6 +386,60 @@ impl Session {
     /// `from` 行目から `rows` 行。0 が画面の最上行、負の値はスクロールバック。
     pub fn scrollback(&self, from: i64, rows: u16) -> Vec<Row> {
         self.inner.vt().scrollback(from, rows)
+    }
+
+    /// 選択範囲の文字列（コピー）。
+    pub fn selection_text(&self, sel: &Selection) -> String {
+        self.inner.vt().selection_text(sel)
+    }
+
+    /// `p` の位置の単語（ダブルクリック）。`delims` は単語を区切る文字。
+    pub fn word_at(&self, p: Point, delims: &str) -> Selection {
+        self.inner.vt().word_at(p, delims)
+    }
+
+    /// `line` を含む論理行（トリプルクリック）。
+    pub fn line_at(&self, line: i32) -> Selection {
+        self.inner.vt().line_at(line)
+    }
+
+    /// スクロールバックを含む全体（全て選択）。
+    pub fn select_all(&self) -> Selection {
+        self.inner.vt().select_all()
+    }
+
+    /// スクロールバックを含む全体から探す。条件が空か、正規表現が誤っていれば Err（メッセージ）。
+    pub fn search(&self, query: &SearchQuery) -> Result<Vec<Selection>, String> {
+        let re = query.compile()?;
+        Ok(self.inner.vt().search(&re))
+    }
+
+    /// 行 `first..=last` にある URL（下線を引くため）。
+    pub fn urls(&self, first: i32, last: i32) -> Vec<UrlMatch> {
+        self.inner.vt().urls(first, last)
+    }
+
+    /// `p` の位置の URL（Cmd / Ctrl + クリック）。
+    pub fn url_at(&self, p: Point) -> Option<String> {
+        self.inner.vt().url_at(p)
+    }
+
+    /// 画面を消す（「編集 > 画面クリア」）。スクロールバックは残す。
+    pub fn clear_screen(&self) {
+        self.inner.vt().clear_screen();
+        self.inner.notify_damage();
+    }
+
+    /// スクロールバックも消す（「編集 > バッファのクリア」）。
+    pub fn clear_buffer(&self) {
+        self.inner.vt().clear_buffer();
+        self.inner.notify_damage();
+    }
+
+    /// 端末の状態を初期化する（「コントロール > 端末リセット」）。
+    pub fn reset_terminal(&self) {
+        self.inner.vt().reset();
+        self.inner.notify_damage();
     }
 
     pub fn send_break(&self, ms: u32) -> io::Result<()> {

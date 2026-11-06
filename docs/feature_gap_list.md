@@ -6,6 +6,22 @@
 
 ---
 
+## 進め方と進捗
+
+このリストを当面の実装目標のチェックリストとして使う（2026-11-06 から）。
+
+- 順序は第 7 章の Step 1 → 4、その後に残りの章
+- `[x]` は Mac 版と Linux（GTK）版の両方で実装済み。片方だけのものは項目の後ろに注記する
+- 選択・検索・URL・貼り付けの確認のような判断はコア（`mt_vt::select`、`mt_core::paste`）に置き、両 UI はそれを呼ぶだけにする
+- 次は作らない（理由つき）：TEK ウィンドウ、Quick-VAN / B-Plus（使われていない）、Windows の名前付きパイプ（Windows 版を作らないため）
+
+| Step | 状態 |
+| --- | --- |
+| Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
+| Step 2（ログ・設定・シリアル） | 未着手 |
+| Step 3（TTL） | 未着手 |
+| Step 4（TTSSH・設定互換） | 未着手 |
+
 ## 目次
 
 1. [メインメニュー構成の未実装項目](#1-メインメニュー構成の未実装項目)
@@ -34,15 +50,15 @@
 - [ ] **Tera Term の全終了 (`MENU_FILE_EXITALL`)**: 全ウィンドウ・セッションを一括終了
 
 ### 1-2. 「編集 (Edit)」メニュー (`MENU_EDIT`) ※メニュー自体が未作成
-- [ ] **コピー (`MENU_EDIT_COPY`)** (`Alt+C` / `Cmd+C`)
-- [ ] **テーブルをコピー (`MENU_EDIT_COPYTABLE`)**: 空白区切りの表出力をタブ区切り (TSV) に変換してコピー
-- [ ] **貼り付け (`MENU_EDIT_PASTE`)** (`Alt+V` / `Cmd+V`)
-- [ ] **貼り付け `<CR>` (`MENU_EDIT_PASTECR`)** (`Alt+R`): クリップボード内容の末尾に改行を付加して貼り付け
-- [ ] **画面クリア (`MENU_EDIT_CLSCREEN`)**: 表示中の画面を消去
-- [ ] **バッファのクリア (`MENU_EDIT_CLBUFFER`)**: スクロールバックバッファも含めて消去
-- [ ] **選択を解除 (`MENU_EDIT_CANCELSELECT`)**
-- [ ] **表示画面を選択 (`MENU_EDIT_SELECTSCREEN`)**: 現在見えている画面領域のみを選択
-- [ ] **全て選択 (`MENU_EDIT_SELECTALL`)**: スクロールバックを含む全バッファを選択
+- [x] **コピー (`MENU_EDIT_COPY`)** (`Alt+C` / `Cmd+C`)
+- [x] **テーブルをコピー (`MENU_EDIT_COPYTABLE`)**: 空白区切りの表出力をタブ区切り (TSV) に変換してコピー
+- [x] **貼り付け (`MENU_EDIT_PASTE`)** (`Alt+V` / `Cmd+V`)
+- [x] **貼り付け `<CR>` (`MENU_EDIT_PASTECR`)** (`Alt+R`): クリップボード内容の末尾に改行を付加して貼り付け
+- [x] **画面クリア (`MENU_EDIT_CLSCREEN`)**: 表示中の画面を消去
+- [x] **バッファのクリア (`MENU_EDIT_CLBUFFER`)**: スクロールバックバッファも含めて消去
+- [x] **選択を解除 (`MENU_EDIT_CANCELSELECT`)**
+- [x] **表示画面を選択 (`MENU_EDIT_SELECTSCREEN`)**: 現在見えている画面領域のみを選択
+- [x] **全て選択 (`MENU_EDIT_SELECTALL`)**: スクロールバックを含む全バッファを選択
 
 ### 1-3. 「設定 (Setup)」メニュー (`MENU_SETUP`)
 現在は「端末...」と「シリアルポート...」の 2 項目のみ。本家にある以下の設定ダイアログが未実装：
@@ -60,7 +76,7 @@
   - [ ] **SSH 鍵生成... (`MENU_SSH_KEYGEN` / `DLG_KEYGEN_TITLE`)**: RSA / ECDSA / Ed25519 鍵ペア生成、パスフレーズ設定、OpenSSH / PuTTY / SSH2 形式での公開鍵・秘密鍵保存
 
 ### 1-4. 「コントロール (Control)」メニュー (`MENU_CONTROL`)
-- [ ] **端末リセット (`MENU_CONTROL_RESET`)**: VT パーサ状態、スクロール領域、文字セット、タブストップ、属性のリセット
+- [x] **端末リセット (`MENU_CONTROL_RESET`)**: VT パーサ状態、スクロール領域、文字セット、タブストップ、属性のリセット
 - [ ] **リモートタイトルリセット (`MENU_CONTROL_RESETTITLE`)**: OSC 0/2 で変更されたタイトルを初期タイトルに戻す
 - [ ] **ポートのリセット (`MENU_CONTROL_RESETPORT`)**: シリアル通信バッファのクリアとポート再初期化
 - [ ] **AYT 送信 (`MENU_CONTROL_AREYOUTHERE`)** (`Alt+T`): Telnet の `IAC AYT` 送信
@@ -118,17 +134,17 @@
    - [ ] カーソル形状・点滅制御シーケンス (`CursorCtrlSequence`) の許可/拒否
    - [ ] ベル動作の選択（無効 / サウンド / ビジュアルベル） (`Beep`) と連続ベル抑制
 3. **コピーと貼り付け (`DLG_TAB_COPYPASTE`)**:
-   - [ ] **選択時自動コピー (`AutoTextCopy`)**: マウスでテキストを選択した瞬間にクリップボードへコピー
-   - [ ] **右クリックでの貼り付け (`DisablePasteMouseRButton` / `ConfirmPasteMouseRButton`)** および **中クリックでの貼り付け (`DisablePasteMouseMButton`)**
-   - [ ] **複数行貼り付け時の確認ダイアログ (`ConfirmChangePaste` / `ConfirmChangePasteCR`)**: 改行を含むテキストをペーストする際に内容をプレビュー・編集して確認するダイアログ (`DLG_CLIPBOARD_TITLE`)
-   - [ ] **危険文字列リストによるペースト警告 (`ConfirmChangePasteStringFile`)**: 指定ファイル内の危険語（`reboot`, `reload`, `rm -rf`, `shutdown` 等）が含まれる場合に赤字警告を出す機能
-   - [ ] 折り返し継続行の連結コピー (`EnableContinuedLineCopy`)
-   - [ ] ペースト時の末尾改行トリム (`TrimTrailingNLonPaste`) と行単位ペースト遅延 (`PasteDelayPerLine`)
-   - [ ] ダブルクリック選択時の単語区切り文字 (`DelimList`) 設定
+   - [x] **選択時自動コピー (`AutoTextCopy`)**: マウスでテキストを選択した瞬間にクリップボードへコピー
+   - [x] **右クリックでの貼り付け (`DisablePasteMouseRButton` / `ConfirmPasteMouseRButton`)** および **中クリックでの貼り付け (`DisablePasteMouseMButton`)**
+   - [x] **複数行貼り付け時の確認ダイアログ (`ConfirmChangePaste` / `ConfirmChangePasteCR`)**: 改行を含むテキストをペーストする際に内容をプレビュー・編集して確認するダイアログ (`DLG_CLIPBOARD_TITLE`)
+   - [x] **危険文字列リストによるペースト警告 (`ConfirmChangePasteStringFile`)**: 指定ファイル内の危険語（※ファイルではなく設定画面の一覧で持つ）（`reboot`, `reload`, `rm -rf`, `shutdown` 等）が含まれる場合に赤字警告を出す機能
+   - [x] 折り返し継続行の連結コピー (`EnableContinuedLineCopy`)
+   - [ ] ペースト時の末尾改行トリム (`TrimTrailingNLonPaste`) と行単位ペースト遅延 (`PasteDelayPerLine`)（※末尾改行トリムは実装済み、行単位の遅延は未実装）
+   - [x] ダブルクリック選択時の単語区切り文字 (`DelimList`) 設定
 4. **表示 / テーマ (`DLG_TAB_VISUAL` / `DLG_THEME_*`)**:
    - [ ] ウィンドウ不透明度（アクティブ時 / 非アクティブ時） (`AlphaBlendActive`, `AlphaBlend`)
    - [ ] 背景画像・背景透過テーマの読み込みとプレビュー (`BGThemeFile`)
-   - [ ] URL の自動検出・色分け・下線表示 (`EnableClickableUrl`, `URLColor`, `URLUnderline`)
+   - [x] URL の自動検出・色分け・下線表示 (`EnableClickableUrl`, `URLColor`, `URLUnderline`)（※下線のみ。色の設定は未実装）
    - [ ] ANSI 16色カラーパレットの RGB カスタマイズ (`ANSIColor`)
 5. **ログ (`DLG_TAB_LOG`)**:
    - [ ] 標準のログ保存先フォルダ (`LogDefaultPath`)、標準ログファイル名 (`LogDefaultName`)、自動開始 (`LogAutoStart`)、ローテート設定、ログ表示用エディタ指定 (`ViewlogEditor`)
@@ -166,20 +182,20 @@
 
 ## 4. 端末画面・UI 操作の不足機能 (`mt-vt` / `TerminalView`)
 
-- [ ] **スクロールバック・画面内テキスト検索（Find バー `Cmd+F` / `Ctrl+Shift+F`）**:
+- [x] **スクロールバック・画面内テキスト検索（Find バー `Cmd+F` / `Ctrl+Shift+F`）**:
   - キーワード検索、正規表現オプション、大文字小文字区別、一致箇所のハイライトと前後移動
-- [ ] **視覚的な縦スクロールバーの表示**:
+- [x] **視覚的な縦スクロールバーの表示**:
   - スクロールバックの位置と全体量がひと目で分かり、ドラッグで高速移動できるスクロールバー
-- [ ] **矩形選択（ブロック選択）**:
+- [x] **矩形選択（ブロック選択）**:
   - `Option` (macOS) / `Alt` (Linux) + マウスドラッグによる矩形領域の選択とコピー
-- [ ] **クリッカブル URL**:
+- [x] **クリッカブル URL**:
   - 端末内の URL 文字列の検出と `Cmd + クリック` / `Ctrl + クリック` によるブラウザ起動
 - [ ] **カーソル描画バリエーション**:
   - ブロック（四角）・縦線（バー）・下線（アンダーライン）の形状切替
   - 点滅（ブリンク）の ON/OFF
   - ウィンドウ非フォーカス時の白抜き（中抜き）ブロックカーソル表示
 - [ ] **OSC 52（リモートクリップボード操作）のサポートと権限制御**
-- [ ] **端末のハードリセット (`Terminal::reset`)** メソッドの実装と UI 連携
+- [x] **端末のハードリセット (`Terminal::reset`)** メソッドの実装と UI 連携
 
 ---
 
@@ -265,11 +281,11 @@
 ## 7. 推奨実装優先度（フェーズ別チェックリスト）
 
 ### Step 1: 日常操作の体感差をなくす必須 UI・操作機能
-- [ ] マウス選択時の自動コピー (`AutoTextCopy`)、右クリックペースト、Option/Alt 矩形選択
-- [ ] 複数行ペースト時の確認・プレビューダイアログ (`ConfirmChangePaste`) と危険コマンド警告
-- [ ] 「編集」メニューの追加（画面クリア、バッファクリア、テーブルコピー、全て選択）
-- [ ] 端末内テキスト検索バー (`Cmd+F` / `Ctrl+Shift+F`) と縦スクロールバーの表示
-- [ ] クリッカブル URL 表示とブラウザ起動
+- [x] マウス選択時の自動コピー (`AutoTextCopy`)、右クリックペースト、Option/Alt 矩形選択
+- [x] 複数行ペースト時の確認・プレビューダイアログ (`ConfirmChangePaste`) と危険コマンド警告
+- [x] 「編集」メニューの追加（画面クリア、バッファクリア、テーブルコピー、全て選択）
+- [x] 端末内テキスト検索バー (`Cmd+F` / `Ctrl+Shift+F`) と縦スクロールバーの表示
+- [x] クリッカブル URL 表示とブラウザ起動
 
 ### Step 2: 現場運用で必須のログ・設定・シリアル拡張
 - [ ] 自動ログ開始 (`LogAutoStart`) とファイル名フォーマット展開 (`&h_%Y%m%d_%H%M%S.log`)

@@ -11,6 +11,7 @@ name = "mt_vt"
 
 [dependencies]
 alacritty_terminal = "0.26.0"
+regex = "1"
 
 [lints]
 workspace = true

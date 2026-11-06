@@ -1,37 +1,129 @@
-//! 端末ビュー。DrawingArea に Pango で描き、キー入力（IME を含む）・選択・スクロールを扱う。
+//! 端末ビュー。DrawingArea に Pango で描き、キー入力（IME を含む）・選択・検索・スクロールを扱う。
+//!
+//! 選択や検索の一致は端末上の位置（`mt_core::Point`：0 が画面の最上行、負はスクロールバック）で持ち、
+//! 文字列や単語の範囲の計算はコア（mt_vt::select）に任せる。Mac 版の TerminalView と同じ作り。
 
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
-use gtk::{gdk, glib, pango};
-use mt_core::{CellFlags, CursorShape, Key, Modifiers, Row, Session};
+use gtk::{gdk, gio, glib, pango};
+use mt_core::{
+    CellFlags, CursorShape, Key, Modifiers, Point, Row, SearchQuery, Selection, Session,
+};
 
 use crate::screen::Screen;
+use crate::settings::{CopyPaste, Settings};
+use crate::strings::{l, tt};
 
 const FONT: &str = "Monospace 12";
+const MATCH_COLORS: (u32, u32) = (0x000000, 0xF2D64B);
+const CURRENT_COLORS: (u32, u32) = (0x000000, 0xFF9632);
+/// これより短い間隔で同じ場所を押したら、ダブル・トリプルクリック
+const MULTI_CLICK: Duration = Duration::from_millis(400);
 
-/// 選択の位置（行は 0 が画面の最上行、負はスクロールバック）
-type Pos = (i32, u16);
+thread_local! {
+    /// コピーと貼り付けの設定（全タブ共通。設定ダイアログの後で読み直す）
+    static CONF: RefCell<Option<CopyPaste>> = const { RefCell::new(None) };
+}
+
+fn conf() -> CopyPaste {
+    CONF.with(|c| {
+        c.borrow_mut()
+            .get_or_insert_with(|| Settings::load().copy_paste)
+            .clone()
+    })
+}
+
+/// 設定を保存した後に呼ぶ。
+pub fn reload_conf() {
+    CONF.with(|c| *c.borrow_mut() = None);
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Unit {
+    Cell,
+    Word,
+    Line,
+}
+
+/// 描画中の画面にかかる選択・検索の一致・URL。
+#[derive(Default)]
+struct Marks {
+    selection: Option<Selection>,
+    matches: Vec<Selection>,
+    current: Option<Selection>,
+    urls: Vec<Selection>,
+}
 
 struct State {
     screen: Screen,
     session: Option<Arc<Session>>,
+    /// 切断した接続（画面の文字の読み取りだけに使う）
+    closed: Option<Arc<Session>>,
     dirty: Arc<AtomicBool>,
     font: pango::FontDescription,
     cell_w: f64,
     cell_h: f64,
     ascent: f64,
-    selection: Option<(Pos, Pos)>,
+    selection: Option<Selection>,
+    unit: Unit,
+    /// ダブル・トリプルクリックで最初に選んだ範囲
+    anchor: Option<Selection>,
+    last_click: Option<(Instant, Point)>,
+    clicks: u32,
+    /// URL を開いたので、このドラッグは選択にしない
+    link_clicked: bool,
+    matches: Vec<Selection>,
+    current: Option<usize>,
+    /// 表示中の行の URL（世代とスクロール位置が変わったら取り直す）
+    urls: Option<(u64, u32, Vec<Selection>)>,
     scroll_rest: f64,
     focused: bool,
+    /// スクロールバーをプログラムから動かしている
+    adjusting: bool,
+}
+
+impl State {
+    fn text_session(&self) -> Option<&Arc<Session>> {
+        self.session.as_ref().or(self.closed.as_ref())
+    }
+
+    /// 行が `delta` 行ぶんスクロールバックへ押し出された。
+    fn shift(&mut self, delta: i32) {
+        let f = |s: Selection| Selection {
+            start: Point::new(s.start.line - delta, s.start.col),
+            end: Point::new(s.end.line - delta, s.end.col),
+            block: s.block,
+        };
+        self.selection = self.selection.map(f);
+        self.anchor = self.anchor.map(f);
+        for m in &mut self.matches {
+            *m = f(*m);
+        }
+    }
+}
+
+/// 端末の右上に出す検索欄（Ctrl+Shift+F）。
+struct SearchUi {
+    bar: gtk::Box,
+    entry: gtk::Entry,
+    case: gtk::ToggleButton,
+    regex: gtk::ToggleButton,
+    status: gtk::Label,
 }
 
 #[derive(Clone)]
 pub struct TermView {
+    /// タブに置くもの（端末・検索欄・スクロールバー）
+    pub widget: gtk::Box,
     pub area: gtk::DrawingArea,
+    scrollbar: gtk::Scrollbar,
+    search: Rc<SearchUi>,
+    menu: gtk::PopoverMenu,
     state: Rc<RefCell<State>>,
 }
 
@@ -41,6 +133,30 @@ fn rgb(c: u32) -> (f64, f64, f64) {
         ((c >> 8) & 0xff) as f64 / 255.0,
         (c & 0xff) as f64 / 255.0,
     )
+}
+
+fn context_menu() -> gio::Menu {
+    let menu = gio::Menu::new();
+    let edit = gio::Menu::new();
+    edit.append(Some(&tt("MENU_EDIT_COPY", "コピー")), Some("win.copy"));
+    edit.append(
+        Some(&tt("MENU_EDIT_COPYTABLE", "テーブルをコピー")),
+        Some("win.copy-table"),
+    );
+    edit.append(Some(&tt("MENU_EDIT_PASTE", "貼り付け")), Some("win.paste"));
+    edit.append(
+        Some(&tt("MENU_EDIT_PASTECR", "貼り付け<CR>")),
+        Some("win.paste-cr"),
+    );
+    menu.append_section(None, &edit);
+    let sel = gio::Menu::new();
+    sel.append(
+        Some(&tt("MENU_EDIT_SELECTALL", "全て選択")),
+        Some("win.select-all"),
+    );
+    sel.append(Some(&l("検索...")), Some("win.find"));
+    menu.append_section(None, &sel);
+    menu
 }
 
 impl TermView {
@@ -54,18 +170,95 @@ impl TermView {
         let state = Rc::new(RefCell::new(State {
             screen: Screen::default(),
             session: None,
+            closed: None,
             dirty: Arc::new(AtomicBool::new(true)),
             font,
             cell_w: 8.0,
             cell_h: 16.0,
             ascent: 12.0,
             selection: None,
+            unit: Unit::Cell,
+            anchor: None,
+            last_click: None,
+            clicks: 0,
+            link_clicked: false,
+            matches: Vec::new(),
+            current: None,
+            urls: None,
             scroll_rest: 0.0,
             focused: false,
+            adjusting: false,
         }));
-        let view = Self { area, state };
+
+        // 検索欄
+        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        bar.set_halign(gtk::Align::End);
+        bar.set_valign(gtk::Align::Start);
+        bar.set_margin_top(6);
+        bar.set_margin_end(6);
+        bar.add_css_class("osd");
+        bar.add_css_class("toolbar");
+        let entry = gtk::Entry::new();
+        entry.set_placeholder_text(Some(&l("検索")));
+        entry.set_width_chars(18);
+        let status = gtk::Label::new(None);
+        status.set_width_chars(8);
+        let case = gtk::ToggleButton::with_label("Aa");
+        case.set_tooltip_text(Some(&l("大文字と小文字を区別する")));
+        let regex = gtk::ToggleButton::with_label(".*");
+        regex.set_tooltip_text(Some(&l("正規表現")));
+        let prev = gtk::Button::from_icon_name("go-up-symbolic");
+        prev.set_tooltip_text(Some(&l("前を検索")));
+        let next = gtk::Button::from_icon_name("go-down-symbolic");
+        next.set_tooltip_text(Some(&l("次を検索")));
+        let close = gtk::Button::from_icon_name("window-close-symbolic");
+        close.set_tooltip_text(Some(&l("閉じる")));
+        for w in [
+            entry.upcast_ref::<gtk::Widget>(),
+            status.upcast_ref(),
+            case.upcast_ref(),
+            regex.upcast_ref(),
+            prev.upcast_ref(),
+            next.upcast_ref(),
+            close.upcast_ref(),
+        ] {
+            bar.append(w);
+        }
+        bar.set_visible(false);
+
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&area));
+        overlay.add_overlay(&bar);
+        overlay.set_hexpand(true);
+        let adjustment = gtk::Adjustment::new(0.0, 0.0, 1.0, 1.0, 1.0, 1.0);
+        let scrollbar = gtk::Scrollbar::new(gtk::Orientation::Vertical, Some(&adjustment));
+        let widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        widget.append(&overlay);
+        widget.append(&scrollbar);
+
+        let menu = gtk::PopoverMenu::from_model(Some(&context_menu()));
+        menu.set_parent(&area);
+        menu.set_has_arrow(false);
+        menu.set_halign(gtk::Align::Start);
+
+        let search = Rc::new(SearchUi {
+            bar,
+            entry,
+            case,
+            regex,
+            status,
+        });
+        let view = Self {
+            widget,
+            area,
+            scrollbar,
+            search,
+            menu,
+            state,
+        };
         view.measure();
         view.install();
+        view.install_search(prev, next, close);
         view
     }
 
@@ -100,11 +293,12 @@ impl TermView {
         )
     }
 
-    /// 文字数から、ウィンドウの中身の大きさ（ピクセル）。
+    /// 文字数から、ウィンドウの中身の大きさ（ピクセル。スクロールバーを含む）。
     pub fn pixel_size(&self, cols: u16, rows: u16) -> (i32, i32) {
         let st = self.state.borrow();
+        let bar = self.scrollbar.preferred_size().1.width();
         (
-            (cols as f64 * st.cell_w).ceil() as i32,
+            (cols as f64 * st.cell_w).ceil() as i32 + bar,
             (rows as f64 * st.cell_h).ceil() as i32,
         )
     }
@@ -115,6 +309,11 @@ impl TermView {
 
     pub fn session(&self) -> Option<Arc<Session>> {
         self.state.borrow().session.clone()
+    }
+
+    /// 画面の文字を読むセッション（接続中か、最後に切断したもの）。
+    pub fn text_session(&self) -> Option<Arc<Session>> {
+        self.state.borrow().text_session().cloned()
     }
 
     pub fn attach(&self, session: Arc<Session>) {
@@ -129,40 +328,114 @@ impl TermView {
         let mut st = self.state.borrow_mut();
         st.screen = Screen::default();
         st.selection = None;
+        st.anchor = None;
+        st.matches.clear();
+        st.current = None;
+        st.urls = None;
+        st.closed = None;
         st.session = Some(session);
         st.dirty.store(true, Ordering::SeqCst);
     }
 
+    /// タブを閉じるとき。端末に付けたメニューを外し、読み取り用に残した接続も手放す。
+    pub fn dispose(&self) {
+        if self.menu.parent().is_some() {
+            self.menu.unparent();
+        }
+        self.state.borrow_mut().closed = None;
+    }
+
     pub fn detach(&self) -> Option<Arc<Session>> {
-        self.state.borrow_mut().session.take()
+        let mut st = self.state.borrow_mut();
+        let s = st.session.take();
+        // 切断後も画面の文字を選んでコピー・検索できるよう、読み取り用に残す
+        if let Some(s) = &s {
+            st.closed = Some(Arc::clone(s));
+        }
+        s
     }
 
     /// 押したキーを送る（最新の行に戻る）。
     fn send_key(&self, key: Key, mods: Modifiers) {
         let session = {
             let mut st = self.state.borrow_mut();
-            st.selection = None;
             if st.screen.scroll_to_bottom() {
                 self.area.queue_draw();
             }
             st.session.clone()
         };
+        self.update_scrollbar();
         if let Some(s) = session {
             s.key(key, mods);
         }
     }
 
-    pub fn paste(&self) {
-        let clipboard = self.area.clipboard();
+    // ---- コピーと貼り付け（編集メニュー） ----
+
+    fn window(&self) -> Option<gtk::Window> {
+        self.area.root().and_downcast::<gtk::Window>()
+    }
+
+    /// クリップボードを貼り付ける。`cr` なら末尾に改行を足す（「貼り付け<CR>」）。
+    pub fn paste_clipboard(&self, cr: bool) {
         let view = self.clone();
-        clipboard.read_text_async(None::<&gtk::gio::Cancellable>, move |r| {
-            if let Ok(Some(text)) = r
-                && let Some(s) = view.session()
-            {
-                view.state.borrow_mut().screen.scroll_to_bottom();
-                s.paste(text.to_string());
+        self.area
+            .clipboard()
+            .read_text_async(None::<&gio::Cancellable>, move |r| {
+                if let Ok(Some(text)) = r {
+                    view.request_paste(text.to_string(), cr);
+                }
+            });
+    }
+
+    pub fn paste(&self) {
+        self.paste_clipboard(false);
+    }
+
+    /// 改行や危険な語を含む貼り付けは、送る前に確かめる（Tera Term の ConfirmChangePaste）。
+    fn request_paste(&self, mut text: String, cr: bool) {
+        let c = conf();
+        if c.trim_trailing_newline {
+            let n = text.trim_end_matches(['\r', '\n']).len();
+            text.truncate(n);
+        }
+        if text.is_empty() && !cr {
+            return;
+        }
+        if c.confirm_paste {
+            let check = mt_core::check_paste(&text, &c.dangerous_words);
+            if check.multiline || !check.dangerous.is_empty() {
+                if let Some(win) = self.window() {
+                    let view = self.clone();
+                    crate::extras::confirm_paste(&win, text, c.dangerous_words, move |t| {
+                        view.send_paste(if cr { t + "\r" } else { t })
+                    });
+                }
+                return;
             }
-        });
+        }
+        self.send_paste(if cr { text + "\r" } else { text });
+    }
+
+    /// 確認を済ませた文字列を送る。
+    pub fn send_paste(&self, text: String) {
+        let session = {
+            let mut st = self.state.borrow_mut();
+            st.screen.scroll_to_bottom();
+            st.session.clone()
+        };
+        self.update_scrollbar();
+        self.area.queue_draw();
+        if let Some(s) = session {
+            s.paste(text);
+        }
+    }
+
+    fn selected_text(&self) -> Option<String> {
+        let st = self.state.borrow();
+        let sel = st.selection.filter(|s| !s.is_empty())?;
+        let text = st.text_session()?.selection_text(&sel);
+        (!text.is_empty()).then_some(text)
     }
 
     pub fn copy(&self) {
@@ -171,58 +444,388 @@ impl TermView {
         }
     }
 
-    fn row_at(&self, line: i32) -> Option<Row> {
-        let st = self.state.borrow();
-        if line >= 0 {
-            return st.screen.lines.get(line as usize).cloned();
+    /// 「テーブルをコピー」：空白の並びをタブにしてコピーする。
+    pub fn copy_table(&self) {
+        if let Some(text) = self.selected_text() {
+            self.area
+                .clipboard()
+                .set_text(&mt_core::table_to_tsv(&text));
         }
-        st.session
-            .as_ref()?
-            .scrollback(line as i64, 1)
-            .into_iter()
-            .next()
     }
 
-    fn selected_text(&self) -> Option<String> {
-        let (a, b) = self.state.borrow().selection?;
-        let (start, end) = if a <= b { (a, b) } else { (b, a) };
-        if start == end {
-            return None;
+    pub fn select_all(&self) {
+        let sel = self.text_session().map(|s| s.select_all());
+        self.state.borrow_mut().selection = sel;
+        self.area.queue_draw();
+    }
+
+    /// 「表示画面を選択」
+    pub fn select_screen(&self) {
+        let mut st = self.state.borrow_mut();
+        let top = -(st.screen.scroll_offset as i32);
+        st.selection = Some(Selection {
+            start: Point::new(top, 0),
+            end: Point::new(top + st.screen.rows as i32 - 1, st.screen.cols),
+            block: false,
+        });
+        drop(st);
+        self.area.queue_draw();
+    }
+
+    pub fn cancel_selection(&self) {
+        self.state.borrow_mut().selection = None;
+        self.area.queue_draw();
+    }
+
+    pub fn clear_screen(&self) {
+        self.state.borrow_mut().selection = None;
+        if let Some(s) = self.text_session() {
+            s.clear_screen();
         }
-        let mut out = String::new();
-        for line in start.0..=end.0 {
-            let Some(row) = self.row_at(line) else {
-                continue;
-            };
-            let from = if line == start.0 { start.1 as usize } else { 0 };
-            let to = if line == end.0 {
-                end.1 as usize
-            } else {
-                row.cells.len()
-            };
-            let text: String = row
-                .cells
-                .iter()
-                .skip(from)
-                .take(to.saturating_sub(from))
-                .map(|c| c.text.as_str())
-                .collect();
-            out.push_str(text.trim_end());
-            if line != end.0 && !row.wrapped {
-                out.push('\n');
+    }
+
+    pub fn clear_buffer(&self) {
+        {
+            let mut st = self.state.borrow_mut();
+            st.selection = None;
+            st.matches.clear();
+            st.current = None;
+        }
+        if let Some(s) = self.text_session() {
+            s.clear_buffer();
+        }
+    }
+
+    pub fn reset_terminal(&self) {
+        if let Some(s) = self.text_session() {
+            s.reset_terminal();
+        }
+    }
+
+    // ---- 検索 ----
+
+    fn install_search(&self, prev: gtk::Button, next: gtk::Button, close: gtk::Button) {
+        let ui = &self.search;
+        let v = self.clone();
+        ui.entry.connect_changed(move |_| v.run_search());
+        let v = self.clone();
+        ui.entry.connect_activate(move |_| v.find_step(true));
+        for t in [&ui.case, &ui.regex] {
+            let v = self.clone();
+            t.connect_toggled(move |_| v.run_search());
+        }
+        let v = self.clone();
+        prev.connect_clicked(move |_| v.find_step(false));
+        let v = self.clone();
+        next.connect_clicked(move |_| v.find_step(true));
+        let v = self.clone();
+        close.connect_clicked(move |_| v.close_search());
+        // Esc で閉じる、Shift+Enter で前へ
+        let keys = gtk::EventControllerKey::new();
+        let v = self.clone();
+        keys.connect_key_pressed(move |_, key, _, state| match key {
+            gdk::Key::Escape => {
+                v.close_search();
+                glib::Propagation::Stop
             }
-        }
-        Some(out)
+            gdk::Key::Return | gdk::Key::KP_Enter
+                if state.contains(gdk::ModifierType::SHIFT_MASK) =>
+            {
+                v.find_step(false);
+                glib::Propagation::Stop
+            }
+            _ => glib::Propagation::Proceed,
+        });
+        ui.bar.add_controller(keys);
     }
 
-    /// ピクセル位置 → 選択の位置。
-    fn pos_at(&self, x: f64, y: f64) -> Pos {
+    pub fn show_search(&self) {
+        self.search.bar.set_visible(true);
+        self.search.entry.grab_focus();
+    }
+
+    fn close_search(&self) {
+        self.search.bar.set_visible(false);
+        {
+            let mut st = self.state.borrow_mut();
+            st.matches.clear();
+            st.current = None;
+        }
+        self.area.queue_draw();
+        self.area.grab_focus();
+    }
+
+    /// 探し直して、最後の一致（いちばん新しい出力）へ移る。
+    fn run_search(&self) {
+        let query = SearchQuery {
+            text: self.search.entry.text().to_string(),
+            case_sensitive: self.search.case.is_active(),
+            regex: self.search.regex.is_active(),
+        };
+        let result = match self.text_session() {
+            Some(s) if !query.text.is_empty() => s.search(&query),
+            _ => Ok(Vec::new()),
+        };
+        let status = {
+            let mut st = self.state.borrow_mut();
+            match result {
+                Ok(m) => {
+                    st.current = m.len().checked_sub(1);
+                    st.matches = m;
+                    None
+                }
+                Err(e) => {
+                    st.matches.clear();
+                    st.current = None;
+                    Some(e)
+                }
+            }
+        };
+        self.reveal_current(status);
+    }
+
+    /// 次（`forward`）または前の一致へ。検索欄が閉じていれば開く。
+    pub fn find_step(&self, forward: bool) {
+        if !self.search.bar.is_visible() {
+            self.show_search();
+            return;
+        }
+        {
+            let mut st = self.state.borrow_mut();
+            let n = st.matches.len();
+            if n == 0 {
+                return;
+            }
+            let i = st.current.unwrap_or(if forward { n - 1 } else { 0 });
+            st.current = Some(if forward {
+                (i + 1) % n
+            } else {
+                (i + n - 1) % n
+            });
+        }
+        self.reveal_current(None);
+    }
+
+    /// 今の一致が見えるようにスクロールし、件数を出す。
+    fn reveal_current(&self, error: Option<String>) {
+        let text = {
+            let mut st = self.state.borrow_mut();
+            if let Some(m) = st.current.and_then(|i| st.matches.get(i)).copied() {
+                let line = m.ordered().0.line;
+                let rows = st.screen.rows as i32;
+                let top = -(st.screen.scroll_offset as i32);
+                if line < top || line >= top + rows {
+                    let offset = (rows / 2 - line).clamp(0, st.screen.history as i32);
+                    st.screen.scroll_offset = offset as u32;
+                }
+            }
+            match (&error, st.current) {
+                (Some(e), _) => e.clone(),
+                (None, _) if self.search.entry.text().is_empty() => String::new(),
+                (None, Some(i)) => format!("{} / {}", i + 1, st.matches.len()),
+                (None, None) => l("見つかりません"),
+            }
+        };
+        self.search.status.set_text(&text);
+        self.update_scrollbar();
+        self.area.queue_draw();
+    }
+
+    // ---- マウス ----
+
+    /// ピクセル位置 → セルの境目（選択の端）。
+    fn boundary(&self, x: f64, y: f64) -> Point {
         let st = self.state.borrow();
         let col = (x / st.cell_w).round().clamp(0.0, st.screen.cols as f64) as u16;
         let row = (y / st.cell_h)
             .floor()
             .clamp(0.0, st.screen.rows.saturating_sub(1) as f64) as i32;
-        (row - st.screen.scroll_offset as i32, col)
+        Point::new(row - st.screen.scroll_offset as i32, col)
+    }
+
+    /// ピクセル位置 → その下のセル。
+    fn cell_at(&self, x: f64, y: f64) -> Point {
+        let st = self.state.borrow();
+        let col = (x / st.cell_w)
+            .floor()
+            .clamp(0.0, st.screen.cols.saturating_sub(1) as f64) as u16;
+        let row = (y / st.cell_h)
+            .floor()
+            .clamp(0.0, st.screen.rows.saturating_sub(1) as f64) as i32;
+        Point::new(row - st.screen.scroll_offset as i32, col)
+    }
+
+    fn unit_range(&self, unit: Unit, p: Point) -> Option<Selection> {
+        let s = self.text_session()?;
+        match unit {
+            Unit::Cell => None,
+            Unit::Word => Some(s.word_at(p, &conf().delimiters)),
+            Unit::Line => Some(s.line_at(p.line)),
+        }
+    }
+
+    fn press(&self, x: f64, y: f64, state: gdk::ModifierType) {
+        self.area.grab_focus();
+        let here = self.cell_at(x, y);
+        let c = conf();
+        if state.contains(gdk::ModifierType::CONTROL_MASK)
+            && c.clickable_url
+            && let Some(url) = self.text_session().and_then(|s| s.url_at(here))
+        {
+            let _ = gio::AppInfo::launch_default_for_uri(&url, None::<&gio::AppLaunchContext>);
+            self.state.borrow_mut().link_clicked = true;
+            return;
+        }
+        let unit = {
+            let mut st = self.state.borrow_mut();
+            st.link_clicked = false;
+            let now = Instant::now();
+            st.clicks = match st.last_click {
+                Some((t, p)) if now - t < MULTI_CLICK && p == here => st.clicks + 1,
+                _ => 1,
+            };
+            st.last_click = Some((now, here));
+            st.unit = match st.clicks {
+                1 => Unit::Cell,
+                2 => Unit::Word,
+                _ => Unit::Line,
+            };
+            st.unit
+        };
+        let range = self.unit_range(unit, here);
+        let p = self.boundary(x, y);
+        let mut st = self.state.borrow_mut();
+        if let Some(r) = range {
+            st.anchor = Some(r);
+            st.selection = Some(r);
+        } else if state.contains(gdk::ModifierType::SHIFT_MASK)
+            && let Some(sel) = st.selection.as_mut()
+        {
+            sel.end = p;
+        } else {
+            st.anchor = None;
+            st.selection = Some(Selection {
+                start: p,
+                end: p,
+                block: state.contains(gdk::ModifierType::ALT_MASK),
+            });
+        }
+        drop(st);
+        self.area.queue_draw();
+    }
+
+    fn drag_to(&self, x: f64, y: f64) {
+        if self.state.borrow().link_clicked || self.state.borrow().selection.is_none() {
+            return;
+        }
+        // 端より外へ引っぱったらスクロールする
+        let h = self.area.height() as f64;
+        let scrolled = {
+            let mut st = self.state.borrow_mut();
+            (y < 0.0 && st.screen.scroll(1)) || (y > h && st.screen.scroll(-1))
+        };
+        if scrolled {
+            self.update_scrollbar();
+        }
+        let (unit, anchor) = {
+            let st = self.state.borrow();
+            (st.unit, st.anchor)
+        };
+        let range = anchor.and(self.unit_range(unit, self.cell_at(x, y)));
+        let p = self.boundary(x, y);
+        let mut st = self.state.borrow_mut();
+        if let (Some(a), Some(r)) = (anchor, range) {
+            let (a0, a1) = a.ordered();
+            let (r0, r1) = r.ordered();
+            st.selection = Some(if r0 < a0 {
+                Selection {
+                    start: a1,
+                    end: r0,
+                    block: false,
+                }
+            } else {
+                Selection {
+                    start: a0,
+                    end: r1.max(a1),
+                    block: false,
+                }
+            });
+        } else if let Some(sel) = st.selection.as_mut() {
+            sel.end = p;
+        }
+        drop(st);
+        self.area.queue_draw();
+    }
+
+    fn release(&self) {
+        let empty = self.state.borrow().selection.is_some_and(|s| s.is_empty());
+        if empty {
+            self.state.borrow_mut().selection = None;
+            self.area.queue_draw();
+            return;
+        }
+        if let Some(text) = self.selected_text() {
+            // X11 の習慣で PRIMARY には必ず入れる。CLIPBOARD は設定しだい
+            self.area.primary_clipboard().set_text(&text);
+            if conf().auto_copy {
+                self.area.clipboard().set_text(&text);
+            }
+        }
+    }
+
+    /// 描画する画面にかかる選択・一致・URL。
+    fn marks(&self) -> Marks {
+        let mut st = self.state.borrow_mut();
+        let first = -(st.screen.scroll_offset as i32);
+        let last = first + st.screen.rows as i32 - 1;
+        let visible = |s: &Selection| {
+            let (a, b) = s.ordered();
+            b.line >= first && a.line <= last
+        };
+        let mut marks = Marks {
+            selection: st.selection.filter(|s| !s.is_empty()),
+            matches: st.matches.iter().filter(|s| visible(s)).copied().collect(),
+            current: st.current.and_then(|i| st.matches.get(i)).copied(),
+            urls: Vec::new(),
+        };
+        if conf().clickable_url {
+            let key = (st.screen.generation, st.screen.scroll_offset);
+            match &st.urls {
+                Some((g, o, urls)) if (*g, *o) == key => marks.urls = urls.clone(),
+                _ => {
+                    let urls: Vec<Selection> = st
+                        .text_session()
+                        .map(|s| s.urls(first, last).into_iter().map(|u| u.range).collect())
+                        .unwrap_or_default();
+                    st.urls = Some((key.0, key.1, urls.clone()));
+                    marks.urls = urls;
+                }
+            }
+        }
+        marks
+    }
+
+    // ---- スクロール ----
+
+    /// スクロールバー：つまみの大きさは画面の行数 / 全体、下端が最新。
+    fn update_scrollbar(&self) {
+        let adj = self.scrollbar.adjustment();
+        let mut st = self.state.borrow_mut();
+        let history = st.screen.history as f64;
+        let rows = st.screen.rows as f64;
+        st.adjusting = true;
+        drop(st);
+        adj.configure(
+            history - self.state.borrow().screen.scroll_offset as f64,
+            0.0,
+            history + rows,
+            1.0,
+            rows.max(1.0),
+            rows,
+        );
+        self.state.borrow_mut().adjusting = false;
+        let alt = self.state.borrow().screen.alt_screen;
+        self.scrollbar.set_sensitive(history > 0.0 && !alt);
     }
 
     /// 画面に出た後で寸法を測り直してから `f` を呼ぶ（表示前は解像度が違うことがある）。
@@ -248,12 +851,39 @@ impl TermView {
                 && let Some(s) = st.session.clone()
             {
                 let snap = s.snapshot(st.screen.generation);
-                if st.screen.apply(snap) {
+                let before = st.screen.history;
+                let changed = st.screen.apply(snap);
+                let after = st.screen.history;
+                // 行がスクロールバックへ押し出されたぶん、選択と一致の行番号をずらす
+                if after > before {
+                    st.shift((after - before) as i32);
+                } else if after < before {
+                    st.selection = None;
+                }
+                drop(st);
+                view.update_scrollbar();
+                if changed {
                     area.queue_draw();
                 }
             }
             glib::ControlFlow::Continue
         });
+
+        // スクロールバーを動かした
+        let view = self.clone();
+        self.scrollbar
+            .adjustment()
+            .connect_value_changed(move |adj| {
+                let mut st = view.state.borrow_mut();
+                if st.adjusting {
+                    return;
+                }
+                let history = st.screen.history as f64;
+                st.screen.scroll_offset =
+                    (history - adj.value()).round().clamp(0.0, history) as u32;
+                drop(st);
+                view.area.queue_draw();
+            });
 
         // 大きさが変わったら相手に知らせる
         let view = self.clone();
@@ -297,31 +927,19 @@ impl TermView {
         });
         self.area.add_controller(focus);
 
-        // ドラッグで選択（離したら PRIMARY に入れる）
+        // 左ボタン：ドラッグで選択、ダブルクリックで単語、トリプルで行、Alt で矩形、Ctrl で URL を開く
         let drag = gtk::GestureDrag::new();
+        drag.set_button(gdk::BUTTON_PRIMARY);
         let view = self.clone();
-        drag.connect_drag_begin(move |_, x, y| {
-            view.area.grab_focus();
-            let p = view.pos_at(x, y);
-            view.state.borrow_mut().selection = Some((p, p));
-            view.area.queue_draw();
-        });
+        drag.connect_drag_begin(move |g, x, y| view.press(x, y, g.current_event_state()));
         let view = self.clone();
         drag.connect_drag_update(move |g, dx, dy| {
             if let Some((sx, sy)) = g.start_point() {
-                let p = view.pos_at(sx + dx, sy + dy);
-                if let Some(sel) = view.state.borrow_mut().selection.as_mut() {
-                    sel.1 = p;
-                }
-                view.area.queue_draw();
+                view.drag_to(sx + dx, sy + dy);
             }
         });
         let view = self.clone();
-        drag.connect_drag_end(move |_, _, _| {
-            if let Some(text) = view.selected_text() {
-                view.area.primary_clipboard().set_text(&text);
-            }
-        });
+        drag.connect_drag_end(move |_, _, _| view.release());
         self.area.add_controller(drag);
 
         // 中クリックで PRIMARY を貼り付け（X11 の習慣）
@@ -329,19 +947,34 @@ impl TermView {
         middle.set_button(gdk::BUTTON_MIDDLE);
         let view = self.clone();
         middle.connect_pressed(move |_, _, _, _| {
+            if !conf().middle_click_paste {
+                return;
+            }
             let v = view.clone();
-            view.area.primary_clipboard().read_text_async(
-                None::<&gtk::gio::Cancellable>,
-                move |r| {
-                    if let Ok(Some(t)) = r
-                        && let Some(s) = v.session()
-                    {
-                        s.paste(t.to_string());
+            view.area
+                .primary_clipboard()
+                .read_text_async(None::<&gio::Cancellable>, move |r| {
+                    if let Ok(Some(t)) = r {
+                        v.request_paste(t.to_string(), false);
                     }
-                },
-            );
+                });
         });
         self.area.add_controller(middle);
+
+        // 右クリック：貼り付けか、メニュー
+        let right = gtk::GestureClick::new();
+        right.set_button(gdk::BUTTON_SECONDARY);
+        let view = self.clone();
+        right.connect_pressed(move |_, _, x, y| {
+            if conf().right_click_paste {
+                view.paste();
+            } else {
+                view.menu
+                    .set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
+                view.menu.popup();
+            }
+        });
+        self.area.add_controller(right);
 
         // ホイールでスクロールバック
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
@@ -356,7 +989,10 @@ impl TermView {
             st.scroll_rest -= lines;
             let whole = st.scroll_rest.trunc();
             st.scroll_rest -= whole;
-            if whole != 0.0 && st.screen.scroll(whole as i32) {
+            let moved = whole != 0.0 && st.screen.scroll(whole as i32);
+            drop(st);
+            if moved {
+                view.update_scrollbar();
                 view.area.queue_draw();
             }
             glib::Propagation::Stop
@@ -445,6 +1081,7 @@ impl TermView {
     }
 
     fn draw(&self, cr: &gtk::cairo::Context, w: i32, h: i32) {
+        let marks = self.marks();
         let st = self.state.borrow();
         let sc = &st.screen;
         let (r, g, b) = rgb(sc.default_bg);
@@ -454,18 +1091,23 @@ impl TermView {
 
         // 表示する行（スクロールバックを見ているときはコアから取る）
         let rows: Vec<Row> = if sc.scroll_offset > 0 {
-            match &st.session {
+            match st.text_session() {
                 Some(s) => s.scrollback(-(sc.scroll_offset as i64), sc.rows),
                 None => Vec::new(),
             }
         } else {
             sc.lines.clone()
         };
-        let sel = st
-            .selection
-            .map(|(a, b)| if a <= b { (a, b) } else { (b, a) });
-        let selected = |line: i32, col: u16| -> bool {
-            sel.is_some_and(|(s, e)| s != e && (line, col) >= s && (line, col) < e)
+        let colors = |cell: &mt_core::Cell, line: i32, col: u16| -> (u32, u32) {
+            if marks.selection.is_some_and(|s| s.contains(line, col)) {
+                (cell.bg, cell.fg)
+            } else if marks.current.is_some_and(|s| s.contains(line, col)) {
+                CURRENT_COLORS
+            } else if marks.matches.iter().any(|s| s.contains(line, col)) {
+                MATCH_COLORS
+            } else {
+                (cell.fg, cell.bg)
+            }
         };
 
         let layout = pangocairo_layout(cr, &st.font);
@@ -484,10 +1126,7 @@ impl TermView {
                 } else {
                     1
                 };
-                let (mut fg, mut bg) = (cell.fg, cell.bg);
-                if selected(line, col as u16) {
-                    std::mem::swap(&mut fg, &mut bg);
-                }
+                let (mut fg, mut bg) = colors(cell, line, col as u16);
                 let is_cursor = sc.scroll_offset == 0
                     && line == sc.cursor.row as i32
                     && col == sc.cursor.col as usize
@@ -529,6 +1168,14 @@ impl TermView {
                             .min(if width == 2 { cw } else { 0.0 });
                     cr.move_to(x + dx, y);
                     pangocairo::functions::show_layout(cr, &layout);
+                }
+                if marks.urls.iter().any(|u| u.contains(line, col as u16)) {
+                    let (r, g, b) = rgb(fg);
+                    cr.set_source_rgb(r, g, b);
+                    cr.set_line_width(1.0);
+                    cr.move_to(x, y + st.ascent + 1.5);
+                    cr.line_to(x + cw, y + st.ascent + 1.5);
+                    let _ = cr.stroke();
                 }
                 if cell.flags & (CellFlags::UNDERLINE | CellFlags::STRIKEOUT) != 0 {
                     let (r, g, b) = rgb(fg);

@@ -8,6 +8,7 @@ pub mod charset;
 pub mod log;
 pub mod mock;
 pub mod newline;
+pub mod paste;
 pub mod profile;
 pub mod session;
 pub mod transfer;
@@ -19,8 +20,13 @@ pub use auth::{
 };
 pub use charset::Charset;
 pub use log::{LogFormat, LogOptions, TimestampKind};
-pub use mt_vt::{Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, Modifiers, Row};
+pub use mt_vt::select::{DEFAULT_DELIMITERS, table_to_tsv};
+pub use mt_vt::{
+    Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, Modifiers, Point, Row, SearchQuery,
+    Selection, UrlMatch,
+};
 pub use newline::{NewlineReceive, NewlineSend};
+pub use paste::{PasteCheck, check_paste, default_dangerous_words};
 pub use profile::{ConnectionProfile, HostHistory};
 pub use session::{
     ReceiveTap, Session, SessionListener, SessionOptions, SessionState, TerminalSettings,

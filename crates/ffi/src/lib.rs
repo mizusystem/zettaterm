@@ -229,6 +229,101 @@ pub struct GridSnapshot {
     pub cursor_color: u32,
 }
 
+/// 端末上の位置。`line` は 0 が画面の最上行、負はスクロールバック。`col` はセルの境目。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TermPoint {
+    pub line: i32,
+    pub col: u16,
+}
+
+/// 選択範囲（両端はどちらが先でもよい）。`block` は矩形選択。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct TermRange {
+    pub start: TermPoint,
+    pub end: TermPoint,
+    pub block: bool,
+}
+
+/// 端末上の URL。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct UrlMatch {
+    pub range: TermRange,
+    pub url: String,
+}
+
+impl From<TermPoint> for core::Point {
+    fn from(p: TermPoint) -> Self {
+        core::Point::new(p.line, p.col)
+    }
+}
+
+impl From<core::Point> for TermPoint {
+    fn from(p: core::Point) -> Self {
+        TermPoint {
+            line: p.line,
+            col: p.col,
+        }
+    }
+}
+
+impl From<TermRange> for core::Selection {
+    fn from(r: TermRange) -> Self {
+        core::Selection {
+            start: r.start.into(),
+            end: r.end.into(),
+            block: r.block,
+        }
+    }
+}
+
+impl From<core::Selection> for TermRange {
+    fn from(s: core::Selection) -> Self {
+        TermRange {
+            start: s.start.into(),
+            end: s.end.into(),
+            block: s.block,
+        }
+    }
+}
+
+/// ダブルクリックで単語を区切る文字の既定値（Tera Term の DelimList）。
+#[uniffi::export]
+pub fn default_word_delimiters() -> String {
+    core::DEFAULT_DELIMITERS.to_owned()
+}
+
+/// 貼り付けようとしている文字列の中身（確認ダイアログを出すかの判断に使う）。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct PasteCheck {
+    pub lines: u32,
+    pub multiline: bool,
+    /// 含まれていた危険な語
+    pub dangerous: Vec<String>,
+}
+
+/// 貼り付ける前に調べる。`words` は危険な語の一覧。
+#[uniffi::export]
+pub fn check_paste(text: String, words: Vec<String>) -> PasteCheck {
+    let c = core::check_paste(&text, &words);
+    PasteCheck {
+        lines: c.lines as u32,
+        multiline: c.multiline,
+        dangerous: c.dangerous,
+    }
+}
+
+/// 危険な語の既定の一覧。
+#[uniffi::export]
+pub fn default_dangerous_words() -> Vec<String> {
+    core::default_dangerous_words()
+}
+
+/// 「テーブルをコピー」：連続する空白をタブ 1 つにする。
+#[uniffi::export]
+pub fn table_to_tsv(text: String) -> String {
+    core::table_to_tsv(&text)
+}
+
 impl From<core::Row> for Row {
     fn from(r: core::Row) -> Self {
         Row {
@@ -456,6 +551,76 @@ impl Session {
             .into_iter()
             .map(Row::from)
             .collect()
+    }
+
+    /// 選択範囲の文字列（コピー）。
+    pub fn selection_text(&self, range: TermRange) -> String {
+        self.inner.selection_text(&range.into())
+    }
+
+    /// `point` の位置の単語（ダブルクリック）。
+    pub fn word_at(&self, point: TermPoint, delimiters: String) -> TermRange {
+        self.inner.word_at(point.into(), &delimiters).into()
+    }
+
+    /// `line` を含む論理行（トリプルクリック）。
+    pub fn line_at(&self, line: i32) -> TermRange {
+        self.inner.line_at(line).into()
+    }
+
+    /// スクロールバックを含む全体（全て選択）。
+    pub fn select_all(&self) -> TermRange {
+        self.inner.select_all().into()
+    }
+
+    /// スクロールバックを含む全体から探す。正規表現が誤っていれば Err。
+    pub fn search(
+        &self,
+        text: String,
+        case_sensitive: bool,
+        regex: bool,
+    ) -> Result<Vec<TermRange>, MtError> {
+        let query = core::SearchQuery {
+            text,
+            case_sensitive,
+            regex,
+        };
+        self.inner
+            .search(&query)
+            .map(|v| v.into_iter().map(TermRange::from).collect())
+            .map_err(|message| MtError::Io { message })
+    }
+
+    /// 行 `first..=last` にある URL。
+    pub fn urls(&self, first: i32, last: i32) -> Vec<UrlMatch> {
+        self.inner
+            .urls(first, last)
+            .into_iter()
+            .map(|u| UrlMatch {
+                range: u.range.into(),
+                url: u.url,
+            })
+            .collect()
+    }
+
+    /// `point` の位置の URL。
+    pub fn url_at(&self, point: TermPoint) -> Option<String> {
+        self.inner.url_at(point.into())
+    }
+
+    /// 画面を消す（スクロールバックは残す）。
+    pub fn clear_screen(&self) {
+        self.inner.clear_screen();
+    }
+
+    /// スクロールバックも含めて消す。
+    pub fn clear_buffer(&self) {
+        self.inner.clear_buffer();
+    }
+
+    /// 端末の状態を初期化する（端末リセット）。
+    pub fn reset_terminal(&self) {
+        self.inner.reset_terminal();
     }
 
     pub fn send_break(&self, ms: u32) -> Result<(), MtError> {
