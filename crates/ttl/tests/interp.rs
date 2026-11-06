@@ -252,8 +252,11 @@ fn connect_goes_through_the_host() {
         pending: Some(Arc::clone(&session)),
         ..Default::default()
     };
-    let src = "connect '/C=/dev/cu.test /BAUD=9600'\nsendln 'hi'\ndisconnect\n";
-    run(src, &mut host, None);
+    // 接続した直後（マクロが受信を見始める前）に届いたプロンプトも wait で見える
+    remote.send(b"\r\nUsername: ");
+    thread::sleep(Duration::from_millis(100));
+    let src = "connect '/C=/dev/cu.test /BAUD=9600'\ntimeout = 2\nwait 'Username:'\nint2str s result\nmessagebox s\nsendln 'hi'\ndisconnect\n";
+    assert_eq!(run(src, &mut host, None), ["1"]);
     assert_eq!(
         host.connects,
         [ConnectSpec::Serial {

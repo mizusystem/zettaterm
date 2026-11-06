@@ -148,7 +148,7 @@ impl Host for CliHost {
             Session::open(transport, options, Arc::new(Quiet)).map_err(|e| e.to_string())?;
         if !self.quiet {
             // 受信を標準出力へ写す
-            let tap = session.tap();
+            let tap = session.tap_with_history();
             let s = Arc::clone(&session);
             std::thread::spawn(move || {
                 let mut out = io::stdout();

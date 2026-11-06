@@ -116,9 +116,18 @@ struct Inner {
     divert: Mutex<Option<Box<dyn ByteDivert>>>,
     zmodem: Mutex<ZmodemDetector>,
     local_echo: AtomicBool,
-    /// 受信の写しの送り先（TTL の wait など）
-    taps: Mutex<Vec<Sender<String>>>,
+    /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
+    taps: Mutex<Taps>,
 }
+
+#[derive(Default)]
+struct Taps {
+    senders: Vec<Sender<String>>,
+    history: String,
+}
+
+/// `tap_with_history` で渡す最近の受信の上限
+const TAP_HISTORY: usize = 64 * 1024;
 
 /// 受信した文字の写し（`Session::tap`）。文字コード変換の後、改行コード変換の前の文字列で届く。
 /// 捨てると写しも止まる。ファイル転送中の受信は届かない。
@@ -172,7 +181,7 @@ impl Session {
             divert: Mutex::new(None),
             zmodem: Mutex::new(ZmodemDetector::default()),
             local_echo: AtomicBool::new(options.terminal.local_echo),
-            taps: Mutex::new(Vec::new()),
+            taps: Mutex::new(Taps::default()),
         });
 
         let delay = options.send_delay;
@@ -228,14 +237,32 @@ impl Session {
         self.send_user(bytes);
     }
 
-    /// 受信した文字の写しを受け取り始める。
+    /// 相手には送らず、自分の画面にだけ文字を出す（TTL の dispstr）。
+    pub fn display_local(&self, text: &str) {
+        self.inner.echo(text.as_bytes());
+    }
+
+    /// 受信した文字の写しを、これから届く分から受け取り始める。
     pub fn tap(&self) -> ReceiveTap {
         let (tx, rx) = mpsc::channel();
         self.inner
             .taps
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+            .senders
             .push(tx);
+        ReceiveTap { rx }
+    }
+
+    /// `tap` と同じだが、最近の受信（最大 64 KiB）から受け取る。開いたばかりの接続で、
+    /// 写しを取り始める前に届いたログインプロンプトなどを取りこぼさないために使う。
+    pub fn tap_with_history(&self) -> ReceiveTap {
+        let (tx, rx) = mpsc::channel();
+        let mut taps = self.inner.taps.lock().unwrap_or_else(|e| e.into_inner());
+        if !taps.history.is_empty() {
+            let _ = tx.send(taps.history.clone());
+        }
+        taps.senders.push(tx);
         ReceiveTap { rx }
     }
 
@@ -561,9 +588,18 @@ impl Inner {
             .into_owned();
         {
             let mut taps = self.taps.lock().unwrap_or_else(|e| e.into_inner());
-            if !taps.is_empty() {
-                let text = String::from_utf8_lossy(&decoded).into_owned();
-                taps.retain(|t| t.send(text.clone()).is_ok());
+            let text = String::from_utf8_lossy(&decoded);
+            taps.history.push_str(&text);
+            if taps.history.len() > TAP_HISTORY {
+                let mut cut = taps.history.len() - TAP_HISTORY;
+                while !taps.history.is_char_boundary(cut) {
+                    cut += 1;
+                }
+                taps.history.drain(..cut);
+            }
+            if !taps.senders.is_empty() {
+                let text = text.into_owned();
+                taps.senders.retain(|t| t.send(text.clone()).is_ok());
             }
         }
         let converted = self

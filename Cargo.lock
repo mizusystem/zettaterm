@@ -1341,6 +1341,7 @@ dependencies = [
  "mt-core",
  "mt-net",
  "mt-serial",
+ "mt-ttl",
  "mt-xfer",
  "uniffi",
 ]

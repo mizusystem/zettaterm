@@ -719,7 +719,8 @@ impl<'h> Interp<'h> {
                 let spec = parse_connect(&spec)?;
                 match self.host.connect(&spec) {
                     Ok(session) => {
-                        self.tap = Some(session.tap());
+                        // 接続してから写しを取り始めるまでに届いたプロンプトも見る
+                        self.tap = Some(session.tap_with_history());
                         self.session = Some(session);
                         self.recv.clear();
                         self.set_result(2);

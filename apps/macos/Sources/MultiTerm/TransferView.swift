@@ -87,7 +87,8 @@ extension TerminalController {
 
     /// 相手で sz / rz が動いたとき（Tera Term の ZMODEM 自動切り替え）。
     func handleTransferRequest(_ request: TransferRequest) {
-        guard sheet == nil, view.session?.isTransferring() == false else { return }
+        // マクロの実行中は、マクロが転送を始める（zmodemsend など）ので自動では動かない
+        guard sheet == nil, macro == nil, view.session?.isTransferring() == false else { return }
         switch request {
         case .zmodemReceive:
             // Tera Term と同じく、尋ねずにダウンロードフォルダへ受け取る

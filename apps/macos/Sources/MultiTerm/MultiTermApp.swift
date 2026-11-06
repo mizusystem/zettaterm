@@ -37,6 +37,11 @@ struct TerminalWindow: View {
 
     var body: some View {
         TerminalContainer(controller: controller)
+            .overlay(alignment: .topTrailing) {
+                if let m = controller.macro {
+                    MacroBadge(macro: m) { controller.stopMacro() }
+                }
+            }
             .background(WindowAccessor { window in
                 WindowTabs.attach(window, asTab: request?.asTab ?? false)
                 if let sheet = controller.sheet {
@@ -190,6 +195,13 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_CONTROL_SENDBREAK", "ブレーク送信")) { controller?.sendBreak() }
                 .keyboardShortcut("b")
                 .disabled(controller?.isSerialConnected != true)
+
+            Divider()
+
+            Button(TT.text("MENU_CONTROL_MACRO", "マクロ") + "...") { controller?.chooseMacro() }
+                .disabled(controller == nil || controller?.macro != nil)
+            Button("マクロの停止") { controller?.stopMacro() }
+                .disabled(controller?.macro == nil)
 
             Divider()
 

@@ -20,6 +20,10 @@ final class TerminalController: ObservableObject {
     @Published private(set) var authPrompt: AuthPrompt?
     /// 進行中（か、終わったばかり）のファイル転送
     @Published var transfer: ActiveTransfer?
+    /// 実行中のマクロ
+    @Published var macro: ActiveMacro?
+    /// マクロの `settitle`
+    @Published var macroTitle: String?
 
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false
@@ -47,7 +51,7 @@ final class TerminalController: ObservableObject {
     var connectionLabel: String { target?.label ?? "" }
 
     var windowTitle: String {
-        var base = remoteTitle.isEmpty ? connectionLabel : remoteTitle
+        var base = macroTitle ?? (remoteTitle.isEmpty ? connectionLabel : remoteTitle)
         if base.isEmpty { base = "Multi-Term" }
         switch status {
         case .connected: return base
@@ -261,6 +265,8 @@ final class TerminalController: ObservableObject {
             ("connection timed out", "接続がタイムアウトしました。"),
             ("Connection refused", "接続を拒否されました（ホストまたはポートを確かめてください）。"),
             ("host is empty", "ホストを入力してください。"),
+            // LAN 内のアドレスで出るときは、たいてい macOS のローカルネットワークの許可がない
+            ("No route to host", "ホストに到達できません。同じ LAN 内のホストなら、「システム設定 > プライバシーとセキュリティ > ローカルネットワーク」で Multi-Term を許可してください。"),
         ]
         for (en, ja) in table where message.contains(en) {
             return message == en ? ja : "\(ja)\n（\(message)）"

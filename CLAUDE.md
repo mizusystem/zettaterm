@@ -116,6 +116,6 @@ cargo test -p mt-xfer --test lrzsz -- --nocapture
 
 Kermit は C-Kermit（openkermit 11 系。`brew install openkermit`）と相互転送テストする（`cargo test -p mt-xfer --test kermit`）。Homebrew の c-kermit 9.0.302 は macOS でファイルを書けないので使わない。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
 
-TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`。
+TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`、macOS は「コントロール > マクロ」（ffi の `run_macro` と `MacroHost`）。`connect` 直後のプロンプトを取りこぼさないよう、マクロは `Session::tap_with_history` で直前の受信から見る。
 
 接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。

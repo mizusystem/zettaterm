@@ -43,6 +43,8 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 	<true/>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>LAN 内のホストへ SSH・Telnet・TCP で接続するために使います。</string>
 </dict>
 </plist>
 PLIST

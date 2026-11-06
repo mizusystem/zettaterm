@@ -34,6 +34,9 @@
 
 ## 実行
 
+macOS アプリは「コントロール > マクロ...」で .ttl を選ぶと、そのウィンドウの接続で動く（未接続なら `connect` で接続する）。ウィンドウの右上に実行中の表示と停止ボタン、`statusbox` の内容が出る。`messagebox` などはウィンドウのシートで尋ねる。実行中は相手の `sz` / `rz` による ZMODEM の自動切り替えを止める（マクロの `zmodemrecv` などに任せる）。`connect` の `/passwd=` は最初の認証ダイアログの代わりに使う。
+
+
 ```bash
 mt run macro.ttl [param2 ...]     # 受信は標準出力、messagebox などは標準エラー
 mt run --quiet macro.ttl          # 受信を出さない

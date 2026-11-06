@@ -13,12 +13,14 @@ use mt_serial::SerialTransport;
 
 mod auth;
 mod history;
+mod macros;
 mod scp;
 mod transfer;
 pub use auth::{
     AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
     KeyboardPrompt, SshPrompter,
 };
+pub use macros::{MacroConnect, MacroHost, MacroRun, run_macro};
 pub use scp::ScpHandle;
 pub use transfer::{TransferHandle, TransferProgress, TransferProtocol, TransferStatus};
 mod serial;
