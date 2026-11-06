@@ -25,6 +25,14 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 <dict>
 	<key>CFBundleExecutable</key>
 	<string>MultiTerm</string>
+	<!-- 対応言語。これが無いと、ファイル・編集・ウインドウなどシステムのメニューが英語のままになる -->
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ja</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>ja</string>
+		<string>en</string>
+	</array>
 	<key>CFBundleIdentifier</key>
 	<string>dev.multiterm.MultiTerm</string>
 	<key>CFBundleName</key>
@@ -48,5 +56,11 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+# 言語フォルダ（中身は表示名だけ。macOS はこれを見て、システムのメニューの言語を決める）
+for lang in ja en; do
+  mkdir -p "$BUNDLE/Contents/Resources/$lang.lproj"
+  printf '"CFBundleDisplayName" = "Multi-Term";\n"CFBundleName" = "Multi-Term";\n' \
+    > "$BUNDLE/Contents/Resources/$lang.lproj/InfoPlist.strings"
+done
 codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || true
 echo "built: $BUNDLE"

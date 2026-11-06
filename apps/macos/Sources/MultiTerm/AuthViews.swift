@@ -296,7 +296,7 @@ struct PassphraseView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(ttssh("DLG_AUTH_TITLE", "SSH認証")).font(.headline)
-            Text("鍵ファイルのパスフレーズを入力してください。")
+            Text(L("鍵ファイルのパスフレーズを入力してください。"))
             Text(keyPath).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
                 .textSelection(.enabled)
             if failed {
@@ -307,7 +307,7 @@ struct PassphraseView: View {
                 SecureField("", text: $passphrase).onSubmit { done(passphrase) }
             }
             HStack {
-                Text("キャンセルすると、この鍵は使わずに次の方法を試します。").font(.callout).foregroundStyle(.secondary)
+                Text(L("キャンセルすると、この鍵は使わずに次の方法を試します。")).font(.callout).foregroundStyle(.secondary)
                 Spacer()
                 Button(TT.text("BTN_CANCEL", "キャンセル")) { done(nil) }
                     .keyboardShortcut(.cancelAction)

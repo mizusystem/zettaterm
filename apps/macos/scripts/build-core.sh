@@ -79,6 +79,7 @@ cp "$GEN"/*.swift "$APP/Sources/MTCore/Generated/"
 RES="$APP/Sources/MultiTerm/Resources/spec"
 rm -rf "$APP/Sources/MultiTerm/Resources"
 mkdir -p "$RES"
-cp "$ROOT/spec/lang/ja_JP.json" "$ROOT/spec/lang/en_US.json" "$ROOT"/spec/*-options.json "$RES/"
+# 全言語を入れておく（表示言語は Info.plist の CFBundleLocalizations と OS の設定で決まる）
+cp "$ROOT"/spec/lang/*.json "$ROOT"/spec/*-options.json "$RES/"
 
 echo "built: $XCF"

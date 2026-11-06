@@ -6,9 +6,10 @@ import Foundation
 enum TT {
     /// セクション（"Tera Term"、"TTSSH" など）ごとの文言
     private static let sections: [String: [String: String]] = {
-        let preferJapanese = Locale.preferredLanguages.first?.hasPrefix("ja") ?? true
-        let locale = preferJapanese ? "ja_JP" : "en_US"
-        return loadJSON(locale) as? [String: [String: String]] ?? [:]
+        // 表示言語の lng。足りないキーは英語、それも無ければ呼び出し側の日本語
+        let main = loadJSON(Lang.specFile) as? [String: [String: String]] ?? [:]
+        let english = loadJSON("en_US") as? [String: [String: String]] ?? [:]
+        return english.merging(main) { en, local in en.merging(local) { _, l in l } }
     }()
 
     private static let options: [String: [String]] = {
@@ -23,7 +24,7 @@ enum TT {
     /// リソースの入った SwiftPM のバンドル。`.app` では Contents/Resources に置いてある。
     /// `Bundle.module` は .app の直下とビルドフォルダしか探さず、ビルドフォルダ（~/Desktop の下など）に
     /// 触るとフォルダのアクセス確認が出て起動が止まるので、先に自分で探す。
-    private static let resources: Bundle = {
+    static let resources: Bundle = {
         if let url = Bundle.main.url(forResource: "MultiTerm_MultiTerm", withExtension: "bundle"),
            let bundle = Bundle(url: url) {
             return bundle

@@ -56,7 +56,7 @@ extension TerminalController {
     func macroFinished(stopped: Bool, error: String?) {
         macro = nil
         if let error {
-            errorMessage = "マクロを中止しました。\n\(error)"
+            errorMessage = L("マクロを中止しました。\n%@", error)
         }
     }
 
@@ -206,7 +206,7 @@ final class MacroBridge: MacroHost, @unchecked Sendable {
 
     func transferStarted(name: String, send: Bool) {
         let file = URL(fileURLWithPath: name).lastPathComponent
-        onMain { self.controller?.macro?.transferring = "\(send ? "送信中" : "受信中"): \(file)" }
+        onMain { self.controller?.macro?.transferring = "\(send ? L("送信中") : L("受信中")): \(file)" }
     }
 
     func transferFinished(ok: Bool) {
@@ -229,14 +229,14 @@ struct MacroBadge: View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text("マクロ: \(macro.name)").font(.caption).lineLimit(1)
+                Text(L("マクロ: %@", macro.name)).font(.caption).lineLimit(1)
                 Button {
                     stop()
                 } label: {
                     Image(systemName: "stop.fill")
                 }
                 .buttonStyle(.borderless)
-                .help("マクロの停止")
+                .help(L("マクロの停止"))
             }
             ForEach([macro.transferring, macro.status].compactMap { $0 }, id: \.self) { line in
                 Text(line).font(.caption).lineLimit(3).frame(maxWidth: 260, alignment: .trailing)

@@ -139,7 +139,7 @@ struct TerminalCommands: Commands {
             }
             .keyboardShortcut("n")
 
-            Button("新しいタブ") {
+            Button(L("新しいタブ")) {
                 WindowTabs.prepareTab()
                 openWindow(value: ConnectRequest(target: .dialog, asTab: true))
             }
@@ -204,7 +204,7 @@ struct TerminalCommands: Commands {
 
             Button(TT.text("MENU_CONTROL_MACRO", "マクロ") + "...") { controller?.chooseMacro() }
                 .disabled(controller == nil || controller?.macro != nil)
-            Button("マクロの停止") { controller?.stopMacro() }
+            Button(L("マクロの停止")) { controller?.stopMacro() }
                 .disabled(controller?.macro == nil)
 
             Divider()

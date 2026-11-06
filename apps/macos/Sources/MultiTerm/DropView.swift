@@ -38,10 +38,10 @@ struct DropView: View {
             Text(TT.text("DLG_DANDD_TEXT", "ファイル転送を行いますか？"))
 
             Picker("", selection: $action) {
-                if isMacro { Text("マクロとして実行").tag(Action.macro) }
+                if isMacro { Text(L("マクロとして実行")).tag(Action.macro) }
                 Text(TT.text("DLG_DANDD_SCP_RADIO", "SCP")).tag(Action.scp).disabled(!controller.canScp)
                 Text(TT.text("DLG_DANDD_SENDFILE_RADIO", "ファイル送信（ファイルの内容を貼り付け）")).tag(Action.sendFile)
-                Text("プロトコルで送る").tag(Action.transfer)
+                Text(L("プロトコルで送る")).tag(Action.transfer)
                 Text(TT.text("DLG_DANDD_PASTE_RADIO", "ファイル名を貼り付け")).tag(Action.paste)
             }
             .pickerStyle(.radioGroup)

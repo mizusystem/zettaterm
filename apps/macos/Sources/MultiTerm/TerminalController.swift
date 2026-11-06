@@ -58,9 +58,9 @@ final class TerminalController: ObservableObject {
         if base.isEmpty { base = "Multi-Term" }
         switch status {
         case .connected: return base
-        case .connecting: return "\(connectionLabel) [接続中]"
-        case .reconnecting: return "\(base) [再接続待ち]"
-        case .disconnected: return target == nil ? "Multi-Term" : "\(base) [未接続]"
+        case .connecting: return L("%@ [接続中]", connectionLabel)
+        case .reconnecting: return L("%@ [再接続待ち]", base)
+        case .disconnected: return target == nil ? "Multi-Term" : L("%@ [未接続]", base)
         }
     }
 
@@ -272,7 +272,7 @@ final class TerminalController: ObservableObject {
             ("No route to host", "ホストに到達できません。同じ LAN 内のホストなら、「システム設定 > プライバシーとセキュリティ > ローカルネットワーク」で Multi-Term を許可してください。"),
         ]
         for (en, ja) in table where message.contains(en) {
-            return message == en ? ja : "\(ja)\n（\(message)）"
+            return message == en ? L(ja) : "\(L(ja))\n（\(message)）"
         }
         return message
     }

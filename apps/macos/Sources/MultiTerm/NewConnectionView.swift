@@ -42,7 +42,7 @@ struct NewConnectionView: View {
                 GridRow {
                     Text(TT.text("DLG_HOST_TCPIPHOST", "ホスト:", section: "TTSSH")).gridColumnAlignment(.trailing)
                     HStack(spacing: 4) {
-                        TextField("例：web、user@host、192.0.2.10", text: $host)
+                        TextField(L("例：web、user@host、192.0.2.10"), text: $host)
                             .frame(minWidth: 260)
                             .onSubmit { if canConnect { connect() } }
                         if !hosts.hostSuggestions.isEmpty {
@@ -95,10 +95,10 @@ struct NewConnectionView: View {
 
             if kind == .tcpip && service == .ssh {
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("システムの ssh を使う（認証は端末の中で行う）", isOn: $systemSSH)
+                    Toggle(L("システムの ssh を使う（認証は端末の中で行う）"), isOn: $systemSSH)
                     Text(systemSSH
-                         ? "システムの ssh を起動します。~/.ssh/config のすべての項目が効きます。"
-                         : "~/.ssh/config の Host 名・User・Port・鍵・ProxyJump・ProxyCommand が効きます。パスワードなどはダイアログで尋ねます。")
+                         ? L("システムの ssh を起動します。~/.ssh/config のすべての項目が効きます。")
+                         : L("~/.ssh/config の Host 名・User・Port・鍵・ProxyJump・ProxyCommand が効きます。パスワードなどはダイアログで尋ねます。"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -117,7 +117,7 @@ struct NewConnectionView: View {
             .disabled(kind != .serial)
             .padding(.leading, 18)
             if kind == .serial && devices.devices.isEmpty {
-                Text("シリアルデバイスが見つかりません。USB シリアルを挿すと一覧に出ます。")
+                Text(L("シリアルデバイスが見つかりません。USB シリアルを挿すと一覧に出ます。"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 18)
@@ -125,7 +125,7 @@ struct NewConnectionView: View {
 
             Divider()
 
-            radio(.localShell, "ローカルシェル")
+            radio(.localShell, L("ローカルシェル"))
 
             HStack {
                 Spacer()
@@ -237,7 +237,7 @@ struct PortPicker: View {
                 Text(d.displayName).tag(d.path)
             }
             if !port.isEmpty && !devices.contains(where: { $0.path == port }) {
-                Text("\(port)（未接続）").tag(port)
+                Text(L("%@（未接続）", port)).tag(port)
             }
         }
         .labelsHidden()

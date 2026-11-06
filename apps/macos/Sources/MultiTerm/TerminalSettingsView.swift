@@ -35,7 +35,7 @@ struct TerminalSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            GroupBox("エンコーディング") {
+            GroupBox(L("エンコーディング")) {
                 Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                     GridRow {
                         Text(TT.text("DLG_TERM_KANJI", "エンコーディング-受信:")).gridColumnAlignment(.trailing)
@@ -60,8 +60,8 @@ struct TerminalSettingsView: View {
                    isOn: $config.localEcho)
 
             Text(controller.target?.serialPort != nil
-                 ? "シリアル接続用の設定として保存します。LF だけで改行する機器（ESP32 など）は受信を LF か AUTO にします。"
-                 : "シェル・SSH・Telnet 用の設定として保存します（シリアル用とは別）。通常は受信 CR のままにします。")
+                 ? L("シリアル接続用の設定として保存します。LF だけで改行する機器（ESP32 など）は受信を LF か AUTO にします。")
+                 : L("シェル・SSH・Telnet 用の設定として保存します（シリアル用とは別）。通常は受信 CR のままにします。"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -57,3 +57,17 @@ Command Line Tools を指しているなら `DEVELOPER_DIR=/Applications/Xcode.a
 - macOS では mark / space パリティと DSR/DTR フロー制御はまだ使えない（serialport が未対応）
 - 最低対応は macOS 14（`NSView.displayLink` を使うため）。最終決定は未決事項
 - 最初のターゲットは Apple Silicon のみ
+
+## 表示言語（ローカライズ）
+
+表示言語は、OS の優先言語のうち、アプリが対応しているもの（`make-app.sh` が Info.plist に書く `CFBundleLocalizations`。今は日本語と英語）で決まる。ファイル・編集・ウインドウなどシステムのメニューも、この設定で同じ言語になる。
+
+- Tera Term 由来の文言は `TT.text(キー, 予備の日本語)` で引く。`spec/lang` の 13 言語をすべて入れてあり、足りないキーは英語で補う
+- アプリ独自の文言は `L("日本語の文")` で引く。日本語の文がそのままキーで、訳は `Sources/MultiTerm/Localization/<言語>.json`（`{"日本語": "訳"}`）。書式は `L("%@ 件", n)`
+- `swift test` の `LocalizationTests` が、`L()` に渡した文の英語訳が `en.json` にすべてあるかを確かめる
+
+言語を足すには、`Localization/<言語>.json` を置いて、`make-app.sh` の `CFBundleLocalizations` と言語フォルダの一覧に足す。試すだけなら OS の設定を変えずに：
+
+```bash
+open apps/macos/build/MultiTerm.app --args -AppleLanguages "(en)"
+```

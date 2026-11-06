@@ -58,7 +58,7 @@ struct SerialSettingsView: View {
                         .menuIndicator(.hidden)
                         .fixedSize()
                         if baud == nil {
-                            Text("数値を入れてください").font(.caption).foregroundStyle(.red)
+                            Text(L("数値を入れてください")).font(.caption).foregroundStyle(.red)
                         }
                     }
                 }
@@ -108,7 +108,7 @@ struct SerialSettingsView: View {
             }
 
             if config.parity == .mark || config.parity == .space || config.flow == .dsrDtr {
-                Text("この設定は macOS ではまだ使えません（mark / space パリティ、DSR/DTR フロー制御）。")
+                Text(L("この設定は macOS ではまだ使えません（mark / space パリティ、DSR/DTR フロー制御）。"))
                     .font(.callout)
                     .foregroundStyle(.orange)
             }

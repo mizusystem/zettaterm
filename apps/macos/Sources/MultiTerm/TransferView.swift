@@ -58,7 +58,7 @@ extension TerminalController {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = kind.batch
         panel.canChooseDirectories = false
-        panel.message = "\(kind.rawValue) で送るファイルを選んでください"
+        panel.message = L("%@ で送るファイルを選んでください", kind.rawValue)
         // XMODEM はブロックの大きさ（128 / 1K）とチェックサム / CRC を選べる（Tera Term の「オプション」）
         let popup = kind == .xmodem ? Self.xmodemOptions(send: true) : nil
         if let popup { panel.accessoryView = Self.accessory(popup); panel.isAccessoryViewDisclosed = true }
@@ -74,7 +74,7 @@ extension TerminalController {
             // XMODEM はファイル名が送られてこないので、保存するファイルを選ぶ
             let panel = NSSavePanel()
             panel.directoryURL = Self.downloads
-            panel.message = "XMODEM で受け取るファイルの保存先"
+            panel.message = L("XMODEM で受け取るファイルの保存先")
             let popup = Self.xmodemOptions(send: false)
             panel.accessoryView = Self.accessory(popup)
             guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -86,8 +86,8 @@ extension TerminalController {
             panel.canChooseDirectories = true
             panel.canCreateDirectories = true
             panel.directoryURL = Self.downloads
-            panel.prompt = "ここに保存"
-            panel.message = "\(kind.rawValue) で受け取るファイルの保存先フォルダ"
+            panel.prompt = L("ここに保存")
+            panel.message = L("%@ で受け取るファイルの保存先フォルダ", kind.rawValue)
             guard panel.runModal() == .OK, let url = panel.url else { return }
             startTransfer(kind, send: false, files: [], destination: url.path)
         }
@@ -130,11 +130,12 @@ extension TerminalController {
         guard kind == .xmodem || kind == .ymodem, isSerialConnected, serialConfig.flow == .xonXoff else { return true }
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "フロー制御が XON/XOFF になっています"
-        alert.informativeText = "\(kind.rawValue) はデータをそのまま送るので、ファイルの中の 0x11 / 0x13 がフロー制御として扱われ、転送が失敗します。"
-            + "「設定 > シリアルポート」でフロー制御を「なし」か「RTS/CTS」にしてから転送してください。"
+        alert.messageText = L("フロー制御が XON/XOFF になっています")
+        alert.informativeText = L(
+            "%@ はデータをそのまま送るので、ファイルの中の 0x11 / 0x13 がフロー制御として扱われ、転送が失敗します。「設定 > シリアルポート」でフロー制御を「なし」か「RTS/CTS」にしてから転送してください。",
+            kind.rawValue)
         alert.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
-        alert.addButton(withTitle: "このまま転送")
+        alert.addButton(withTitle: L("このまま転送"))
         return alert.runModal() == .alertSecondButtonReturn
     }
 
@@ -184,7 +185,7 @@ extension TerminalController {
         do {
             let handle = try session.startTransfer(
                 protocol: proto ?? kind.core, send: send, files: files, destination: destination)
-            let title = "\(send ? TT.text("DLG_FILETRANS_TITLE", "ファイル送信") : "ファイル受信")（\(kind.rawValue)）"
+            let title = "\(send ? TT.text("DLG_FILETRANS_TITLE", "ファイル送信") : L("ファイル受信"))（\(kind.rawValue)）"
             show(ActiveTransfer(
                 title: title, send: send,
                 poll: { handle.progress() },
@@ -248,23 +249,23 @@ struct TransferView: View {
                         }
                     }
                     GridRow {
-                        Text("速度:")
+                        Text(L("速度:"))
                         TimelineView(.periodic(from: t.started, by: 1)) { context in
                             Text(rateText(t, now: t.finished ?? context.date)).monospacedDigit()
                         }
                     }
                     if t.showsRetries {
                         GridRow {
-                            Text("リトライ:")
-                            Text("\(t.progress.retries) 回")
+                            Text(L("リトライ:"))
+                            Text(L("%@ 回", String(t.progress.retries)))
                                 .monospacedDigit()
                                 .foregroundStyle(t.progress.retries > 0 ? .orange : .primary)
                         }
                     }
                     if t.progress.filesDone > 0 {
                         GridRow {
-                            Text("完了:")
-                            Text("\(t.progress.filesDone) ファイル")
+                            Text(L("完了:"))
+                            Text(L("%@ ファイル", String(t.progress.filesDone)))
                         }
                     }
                 }
@@ -278,7 +279,7 @@ struct TransferView: View {
                 statusLine(t)
                 HStack {
                     if !t.progress.saved.isEmpty {
-                        Button("Finder で表示") {
+                        Button(L("Finder で表示")) {
                             NSWorkspace.shared.activateFileViewerSelecting(t.progress.saved.map { URL(fileURLWithPath: $0) })
                         }
                     }
@@ -300,10 +301,10 @@ struct TransferView: View {
     @ViewBuilder
     private func statusLine(_ t: ActiveTransfer) -> some View {
         switch t.progress.status {
-        case .running: Text(t.send ? "送信中…" : "受信中…").foregroundStyle(.secondary)
-        case .done: Text("完了しました").foregroundStyle(.green)
-        case .canceled: Text("中止しました").foregroundStyle(.orange)
-        case .failed: Text("失敗しました：\(t.progress.message ?? "")").foregroundStyle(.red)
+        case .running: Text(t.send ? L("送信中…") : L("受信中…")).foregroundStyle(.secondary)
+        case .done: Text(L("完了しました")).foregroundStyle(.green)
+        case .canceled: Text(L("中止しました")).foregroundStyle(.orange)
+        case .failed: Text(L("失敗しました：%@", t.progress.message ?? "")).foregroundStyle(.red)
         }
     }
 
@@ -326,7 +327,7 @@ struct TransferView: View {
         var text = "\(f.string(fromByteCount: Int64(rate)))/s"
         if t.progress.status == .running, let total = t.progress.total, total > t.progress.bytes, rate > 0 {
             let left = Int(Double(total - t.progress.bytes) / rate)
-            text += String(format: "（残り %d:%02d）", left / 60, left % 60)
+            text += L("（残り %@）", String(format: "%d:%02d", left / 60, left % 60))
         }
         return text
     }

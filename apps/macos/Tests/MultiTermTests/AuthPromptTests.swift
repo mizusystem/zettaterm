@@ -41,8 +41,10 @@ final class AuthPromptTests: XCTestCase {
     }
 
     func testCoreMessagesAreLocalized() {
-        XCTAssertEqual(TerminalController.localized("authentication canceled"), "認証を中止しました。")
-        XCTAssertTrue(TerminalController.localized("10.0.0.1: connection timed out").hasPrefix("接続がタイムアウトしました。"))
+        // 表示言語（テストの実行環境では英語になることがある）によらず、対応表の文に置き換わる
+        XCTAssertEqual(TerminalController.localized("authentication canceled"), L("認証を中止しました。"))
+        XCTAssertTrue(TerminalController.localized("10.0.0.1: connection timed out").hasPrefix(L("接続がタイムアウトしました。")))
+        XCTAssertNotEqual(L("認証を中止しました。"), "authentication canceled")
         XCTAssertEqual(TerminalController.localized("something else"), "something else")
     }
 

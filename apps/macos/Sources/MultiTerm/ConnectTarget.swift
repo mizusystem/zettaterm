@@ -70,7 +70,7 @@ enum ConnectTarget: Codable, Hashable, Sendable {
     var label: String {
         switch self {
         case .localShell:
-            return "ローカルシェル"
+            return L("ローカルシェル")
         case let .serial(port, config):
             return "\(port) - \(config.summary)"
         case let .ssh(host, port, user, _):

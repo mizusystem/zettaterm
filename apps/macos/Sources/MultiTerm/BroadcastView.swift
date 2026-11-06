@@ -25,9 +25,9 @@ struct BroadcastView: View {
                 Toggle(TT.text("DLG_BROADCAST_ENTER", "Enterキー"), isOn: $enter)
             }
 
-            Text("送り先").foregroundStyle(.secondary)
+            Text(L("送り先")).foregroundStyle(.secondary)
             if targets.isEmpty {
-                Text("接続中のセッションがありません。").foregroundStyle(.secondary)
+                Text(L("接続中のセッションがありません。")).foregroundStyle(.secondary)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(targets, id: \.id) { c in
@@ -35,7 +35,7 @@ struct BroadcastView: View {
                             get: { !excluded.contains(c.id) },
                             set: { on in if on { excluded.remove(c.id) } else { excluded.insert(c.id) } }
                         )) {
-                            Text(c.windowTitle + (c === controller ? "（このウィンドウ）" : ""))
+                            Text(c.windowTitle + (c === controller ? L("（このウィンドウ）") : ""))
                         }
                     }
                 }
@@ -43,7 +43,7 @@ struct BroadcastView: View {
 
             HStack {
                 if let sentCount {
-                    Text("\(sentCount) 件に送信しました").font(.callout).foregroundStyle(.secondary)
+                    Text(L("%@ 件に送信しました", String(sentCount))).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button(TT.text("DLG_BROADCAST_CLOSE", "閉じる")) { dismiss() }
