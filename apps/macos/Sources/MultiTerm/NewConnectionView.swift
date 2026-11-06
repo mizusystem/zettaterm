@@ -17,6 +17,8 @@ struct NewConnectionView: View {
     @AppStorage("ssh.systemSSH") private var systemSSH = false
     @State private var kind: Kind = .tcpip
     @State private var host = ""
+    /// SSH のユーザー名。空なら ~/.ssh/config の User か、この Mac のユーザー名
+    @State private var user = ""
     @State private var service: Service = .ssh
     @State private var portText = "22"
     @State private var ip: ConnectTarget.IP = .auto
@@ -62,6 +64,14 @@ struct NewConnectionView: View {
                 GridRow {
                     Color.clear.frame(width: 1, height: 1)
                     Toggle(TT.text("DLG_HOST_TCPIPHISTORY", "ホストリストへ追加", section: "TTSSH"), isOn: $addToHistory)
+                }
+                if service == .ssh {
+                    GridRow {
+                        Text(TT.text("DLG_AUTH_USERNAME", "ユーザ名:", section: "TTSSH"))
+                        TextField(L("空なら ~/.ssh/config の User か、この Mac のユーザー名"), text: $user)
+                            .frame(minWidth: 260)
+                            .onSubmit { if canConnect { connect() } }
+                    }
                 }
                 GridRow {
                     Text(TT.text("DLG_HOST_TCPIPSERVICE", "サービス:", section: "TTSSH"))
@@ -172,6 +182,7 @@ struct NewConnectionView: View {
 
     private func pickHost(_ h: String) {
         host = h
+        user = ""
         guard let last = hosts.last(forHost: h) else {
             // ssh_config の Host 名は SSH で開く
             service = .ssh
@@ -179,7 +190,8 @@ struct NewConnectionView: View {
             return
         }
         switch last {
-        case let .ssh(_, p, _, system): service = .ssh; portText = String(p ?? 22); systemSSH = system
+        case let .ssh(_, p, u, system):
+            service = .ssh; portText = String(p ?? 22); systemSSH = system; user = u ?? ""
         case let .telnet(_, p, i): service = .telnet; portText = String(p ?? 23); ip = i
         case let .tcp(_, p, i): service = .other; portText = String(p); ip = i
         default: break
@@ -208,7 +220,11 @@ struct NewConnectionView: View {
             savedKind = "tcpip"
             let h = host.trimmingCharacters(in: .whitespaces)
             switch service {
-            case .ssh: target = .ssh(host: h, port: port == 22 ? nil : port, user: nil, systemSSH: systemSSH)
+            case .ssh:
+                // ホスト欄に user@host と書いてあれば、そちらを使う
+                let u = user.trimmingCharacters(in: .whitespaces)
+                target = .ssh(host: h, port: port == 22 ? nil : port,
+                              user: u.isEmpty || h.contains("@") ? nil : u, systemSSH: systemSSH)
             case .telnet: target = .telnet(host: h, port: port == 23 ? nil : port, ip: ip)
             case .other: target = .tcp(host: h, port: port ?? 23, ip: ip)
             }

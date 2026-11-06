@@ -163,6 +163,16 @@ pub fn show_dialog(
     port.set_value(22.0);
     let system_ssh =
         gtk::CheckButton::with_label(&l("システムの ssh を使う（認証は端末の中で行う）"));
+    // SSH のユーザー名。空なら ~/.ssh/config の User か、このコンピュータのユーザー名
+    let user_entry = gtk::Entry::new();
+    user_entry.set_placeholder_text(Some(&l(
+        "空なら ~/.ssh/config の User か、このコンピュータのユーザー名",
+    )));
+    user_entry.set_hexpand(true);
+    {
+        let user_entry = user_entry.clone();
+        svc_ssh.connect_toggled(move |b| user_entry.set_sensitive(b.is_active()));
+    }
 
     // サービスを変えたら既定のポートにする
     for (b, p) in [(&svc_ssh, 22.0), (&svc_telnet, 23.0)] {
@@ -226,7 +236,14 @@ pub fn show_dialog(
     ))));
     port_box.append(&port);
     grid.attach(&port_box, 2, 3, 1, 1);
-    grid.attach(&system_ssh, 1, 4, 2, 1);
+    let user_label = label(tt("DLG_AUTH_USERNAME", "ユーザ名:"));
+    let user_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    user_box.append(&user_label);
+    user_box.append(&user_entry);
+    let ssh_box = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    ssh_box.append(&user_box);
+    ssh_box.append(&system_ssh);
+    grid.attach(&ssh_box, 1, 4, 2, 1);
     grid.attach(
         &gtk::Separator::new(gtk::Orientation::Horizontal),
         0,
@@ -266,6 +283,7 @@ pub fn show_dialog(
         svc.clone().upcast(),
         port_box.clone().upcast(),
         system_ssh.clone().upcast(),
+        user_box.clone().upcast(),
     ];
     let serial_widgets: Vec<gtk::Widget> = vec![ports.clone().upcast(), baud_box.clone().upcast()];
     let sync = {
@@ -288,12 +306,13 @@ pub fn show_dialog(
 
     // 履歴を選んだら、その接続先の設定を入れる
     {
-        let (svc_ssh, svc_telnet, svc_other, port, system_ssh) = (
+        let (svc_ssh, svc_telnet, svc_other, port, system_ssh, user_entry) = (
             svc_ssh.clone(),
             svc_telnet.clone(),
             svc_other.clone(),
             port.clone(),
             system_ssh.clone(),
+            user_entry.clone(),
         );
         host.connect_changed(move |c| {
             let Some(i) = c.active().map(|i| i as usize) else {
@@ -308,6 +327,8 @@ pub fn show_dialog(
                     svc_ssh.set_active(true);
                     port.set_value(p.unwrap_or(22) as f64);
                     system_ssh.set_active(*s);
+                    // ユーザー名は履歴の表示（user@host）からホスト欄経由で戻るので、欄は空にする
+                    user_entry.set_text("");
                 }
                 Some(ConnectionProfile::Telnet { port: p, .. }) => {
                     svc_telnet.set_active(true);
@@ -369,6 +390,9 @@ pub fn show_dialog(
                 return;
             }
             let p = typed_port.unwrap_or(port.value() as u16);
+            // ホスト欄の user@host が優先、無ければユーザー名の欄
+            let typed_user = user_entry.text().trim().to_owned();
+            let user = user.or((!typed_user.is_empty()).then_some(typed_user));
             if svc_ssh.is_active() {
                 ConnectionProfile::Ssh {
                     host: name,

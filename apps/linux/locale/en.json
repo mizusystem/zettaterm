@@ -52,5 +52,6 @@
   "次を検索": "Find Next",
   "正規表現": "Regular expression",
   "見つかりません": "Not found",
-  "貼り付け": "Paste"
+  "貼り付け": "Paste",
+  "空なら ~/.ssh/config の User か、このコンピュータのユーザー名": "If empty, User in ~/.ssh/config or your user name on this computer"
 }

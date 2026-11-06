@@ -73,5 +73,6 @@
   "正規表現": "Regular expression",
   "見つかりません": "Not found",
   "貼り付け": "Paste",
-  "閉じる": "Close"
+  "閉じる": "Close",
+  "空なら ~/.ssh/config の User か、この Mac のユーザー名": "If empty, User in ~/.ssh/config or your Mac user name"
 }
