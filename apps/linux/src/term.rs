@@ -19,7 +19,6 @@ use crate::screen::Screen;
 use crate::settings::{CopyPaste, Settings};
 use crate::strings::{l, tt};
 
-const FONT: &str = "Monospace 12";
 const MATCH_COLORS: (u32, u32) = (0x000000, 0xF2D64B);
 const CURRENT_COLORS: (u32, u32) = (0x000000, 0xFF9632);
 /// これより短い間隔で同じ場所を押したら、ダブル・トリプルクリック
@@ -85,6 +84,9 @@ struct State {
     focused: bool,
     /// スクロールバーをプログラムから動かしている
     adjusting: bool,
+    /// カーソルの点滅で、今は見せているか
+    blink_on: bool,
+    blink_at: Instant,
 }
 
 impl State {
@@ -166,7 +168,7 @@ impl TermView {
         area.set_vexpand(true);
         area.set_focusable(true);
         area.set_can_focus(true);
-        let font = pango::FontDescription::from_string(FONT);
+        let font = pango::FontDescription::from_string(&Settings::load().look.font);
         let state = Rc::new(RefCell::new(State {
             screen: Screen::default(),
             session: None,
@@ -188,6 +190,8 @@ impl TermView {
             scroll_rest: 0.0,
             focused: false,
             adjusting: false,
+            blink_on: true,
+            blink_at: Instant::now(),
         }));
 
         // 検索欄
@@ -333,8 +337,30 @@ impl TermView {
         st.current = None;
         st.urls = None;
         st.closed = None;
+        session.set_appearance(&Settings::load().look.appearance());
         st.session = Some(session);
         st.dirty.store(true, Ordering::SeqCst);
+    }
+
+    /// 「設定 > ウィンドウ / フォント」を変えたとき。フォントが変われば行数・桁数も変わる。
+    pub fn apply_look(&self) {
+        let look = Settings::load().look;
+        self.state.borrow_mut().font = pango::FontDescription::from_string(&look.font);
+        self.measure();
+        if let Some(s) = self.text_session() {
+            s.set_appearance(&look.appearance());
+        }
+        let (cols, rows) = self.grid_size();
+        if let Some(s) = self.session() {
+            s.resize(mt_core::WindowSize {
+                cols,
+                rows,
+                pixel_width: self.area.width().max(0) as u16,
+                pixel_height: self.area.height().max(0) as u16,
+            });
+        }
+        self.state.borrow_mut().urls = None;
+        self.area.queue_draw();
     }
 
     /// タブを閉じるとき。端末に付けたメニューを外し、読み取り用に残した接続も手放す。
@@ -359,6 +385,9 @@ impl TermView {
     fn send_key(&self, key: Key, mods: Modifiers) {
         let session = {
             let mut st = self.state.borrow_mut();
+            // 打っている間は点滅させずに見せる
+            st.blink_on = true;
+            st.blink_at = Instant::now();
             if st.screen.scroll_to_bottom() {
                 self.area.queue_draw();
             }
@@ -847,6 +876,17 @@ impl TermView {
         let view = self.clone();
         self.area.add_tick_callback(move |area, _| {
             let mut st = view.state.borrow_mut();
+            // カーソルの点滅
+            if st.screen.cursor.blinking && st.focused {
+                if st.blink_at.elapsed() >= Duration::from_millis(550) {
+                    st.blink_on = !st.blink_on;
+                    st.blink_at = Instant::now();
+                    area.queue_draw();
+                }
+            } else if !st.blink_on {
+                st.blink_on = true;
+                area.queue_draw();
+            }
             if st.dirty.swap(false, Ordering::SeqCst)
                 && let Some(s) = st.session.clone()
             {
@@ -1127,7 +1167,8 @@ impl TermView {
                     1
                 };
                 let (mut fg, mut bg) = colors(cell, line, col as u16);
-                let is_cursor = sc.scroll_offset == 0
+                let is_cursor = !(sc.cursor.blinking && st.focused && !st.blink_on)
+                    && sc.scroll_offset == 0
                     && line == sc.cursor.row as i32
                     && col == sc.cursor.col as usize
                     && sc.cursor.shape != CursorShape::Hidden;
@@ -1211,6 +1252,7 @@ impl TermView {
             }
             // 行が短い（未描画）ときもカーソルは出す
             if sc.scroll_offset == 0
+                && !(sc.cursor.blinking && st.focused && !st.blink_on)
                 && line == sc.cursor.row as i32
                 && sc.cursor.col as usize >= row.cells.len()
             {

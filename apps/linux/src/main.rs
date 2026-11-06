@@ -41,6 +41,18 @@ fn menu() -> gio::Menu {
         Some("win.log-stop"),
     );
     file.append(
+        Some(&tt("MENU_FILE_PAUSELOG", "ログを中断")),
+        Some("win.log-pause"),
+    );
+    file.append(
+        Some(&tt("MENU_FILE_COMMENTLOG", "ログにコメントを付加...")),
+        Some("win.log-comment"),
+    );
+    file.append(
+        Some(&tt("MENU_FILE_VIEWLOG", "ログを表示")),
+        Some("win.log-view"),
+    );
+    file.append(
         Some(&tt("MENU_FILE_SENDFILE", "ファイル送信...")),
         Some("win.send-file"),
     );
@@ -101,6 +113,14 @@ fn menu() -> gio::Menu {
         Some("win.setup-terminal"),
     );
     setup.append(
+        Some(&tt("MENU_SETUP_WINDOW", "ウィンドウ...")),
+        Some("win.setup-window"),
+    );
+    setup.append(
+        Some(&tt("MENU_SETUP_FONT", "フォント...")),
+        Some("win.setup-font"),
+    );
+    setup.append(
         Some(&tt("MENU_SETUP_SERIALPORT", "シリアルポート...")),
         Some("win.setup-serial"),
     );
@@ -111,6 +131,18 @@ fn menu() -> gio::Menu {
         )),
         Some("win.setup-copypaste"),
     );
+    setup.append(
+        Some(&format!("{}...", tt("DLG_FOPT_TITLE", "ログ"))),
+        Some("win.setup-log"),
+    );
+    // 文字コードのクイック切り替え（Tera Term の TTXKanjiMenu）。受信と送信をまとめて変える
+    let charsets = gio::Menu::new();
+    for (_, id, name) in crate::window::CHARSETS {
+        let item = gio::MenuItem::new(Some(name), None);
+        item.set_action_and_target_value(Some("win.charset"), Some(&id.to_variant()));
+        charsets.append_item(&item);
+    }
+    setup.append_submenu(Some(&l("エンコーディング")), &charsets);
     bar.append_submenu(Some(&tt("MENU_SETUP", "設定")), &setup);
 
     let trans = gio::Menu::new();
@@ -151,6 +183,8 @@ fn menu() -> gio::Menu {
         Some(&tt("MENU_CONTROL_SENDBREAK", "ブレーク送信")),
         Some("win.send-break"),
     );
+    control.append(Some("DTR"), Some("win.dtr"));
+    control.append(Some("RTS"), Some("win.rts"));
     control.append(
         Some(&format!(
             "{}...",

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use gtk::gio;
 use gtk::prelude::*;
-use mt_core::{LogFormat, LogOptions, TimestampKind};
+use mt_core::LogOptions;
 use mt_net::{ScpStatus, SshFiles};
 
 use crate::dialogs::modal;
@@ -20,12 +20,17 @@ fn heading(text: &str) -> gtk::Label {
 }
 
 /// 「ファイル > ログ」（Tera Term の「ログ」ダイアログ）。
-pub fn log_dialog(parent: &gtk::Window, start: impl Fn(LogOptions) + 'static) {
+/// ファイル名は「設定 > ログ」の標準のフォルダと名前から作り、選んだ項目は次回のために覚える。
+pub fn log_dialog(
+    parent: &gtk::Window,
+    profile: Option<&mt_core::ConnectionProfile>,
+    start: impl Fn(LogOptions) + 'static,
+) {
+    let conf = crate::settings::Settings::load().log;
     let (win, content, row) = modal(parent, &tt("DLG_FOPT_TITLE", "ログ"));
     let path = gtk::Entry::new();
     path.set_hexpand(true);
-    let default = glib_home().join(format!("teraterm-{}.log", chrono_like_now()));
-    path.set_text(&default.to_string_lossy());
+    path.set_text(&conf.path_for(profile).to_string_lossy());
     let browse = gtk::Button::with_label("...");
     {
         let (path, win) = (path.clone(), win.clone());
@@ -50,7 +55,8 @@ pub fn log_dialog(parent: &gtk::Window, start: impl Fn(LogOptions) + 'static) {
     let text = gtk::CheckButton::with_label(&tt("DLG_FOPT_TEXT", "テキスト"));
     let binary = gtk::CheckButton::with_label(&tt("DLG_FOPT_BINARY", "バイナリ"));
     binary.set_group(Some(&text));
-    text.set_active(true);
+    text.set_active(!conf.binary);
+    binary.set_active(conf.binary);
     let mode = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     mode.append(&text);
     mode.append(&binary);
@@ -60,7 +66,8 @@ pub fn log_dialog(parent: &gtk::Window, start: impl Fn(LogOptions) + 'static) {
     let append = gtk::CheckButton::with_label(&tt("DLG_FOPT_APPEND", "追記"));
     let overwrite = gtk::CheckButton::with_label(&tt("DLG_FOPT_NEW_OVERWRITE", "新規/上書き"));
     overwrite.set_group(Some(&append));
-    append.set_active(true);
+    append.set_active(conf.append);
+    overwrite.set_active(!conf.append);
     let amode = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     amode.append(&append);
     amode.append(&overwrite);
@@ -72,6 +79,14 @@ pub fn log_dialog(parent: &gtk::Window, start: impl Fn(LogOptions) + 'static) {
     srow.append(&stamp);
     srow.append(&utc);
     content.append(&srow);
+    stamp.set_active(conf.timestamp);
+    utc.set_active(conf.utc);
+    let screen = gtk::CheckButton::with_label(&tt("DLG_FOPT_ALLBUFFINFIRST", "現在バッファを含む"));
+    screen.set_tooltip_text(Some(&l(
+        "スクロールバックを含めて、今画面に出ている内容を先に書きます。",
+    )));
+    screen.set_active(conf.include_screen);
+    content.append(&screen);
     {
         let sync = {
             let (stamp, utc, binary) = (stamp.clone(), utc.clone(), binary.clone());
@@ -100,20 +115,18 @@ pub fn log_dialog(parent: &gtk::Window, start: impl Fn(LogOptions) + 'static) {
         if p.is_empty() {
             return;
         }
-        let mut opts = LogOptions::new(PathBuf::from(p));
-        opts.append = append.is_active();
-        opts.format = if binary.is_active() {
-            LogFormat::Binary
-        } else {
-            LogFormat::Text
-        };
-        opts.timestamp = (stamp.is_active() && !binary.is_active()).then(|| {
-            if utc.is_active() {
-                TimestampKind::Utc
-            } else {
-                TimestampKind::Local
-            }
-        });
+        let mut s = crate::settings::Settings::load();
+        s.log.append = append.is_active();
+        s.log.binary = binary.is_active();
+        s.log.timestamp = stamp.is_active();
+        s.log.utc = utc.is_active();
+        s.log.include_screen = screen.is_active();
+        s.save();
+        let path = PathBuf::from(p);
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let opts = s.log.options(path);
         w.close();
         start(opts);
     });
@@ -121,17 +134,40 @@ pub fn log_dialog(parent: &gtk::Window, start: impl Fn(LogOptions) + 'static) {
     win.present();
 }
 
-fn glib_home() -> PathBuf {
-    gtk::glib::home_dir()
-}
-
-/// ログの既定のファイル名に使う日時（YYYYMMDD-HHMMSS）。
-fn chrono_like_now() -> String {
-    gtk::glib::DateTime::now_local()
-        .ok()
-        .and_then(|d| d.format("%Y%m%d-%H%M%S").ok())
-        .map(|s| s.to_string())
-        .unwrap_or_default()
+/// 「ファイル > ログにコメントを付加」。
+pub fn log_comment_dialog(parent: &gtk::Window, write: impl Fn(String) + 'static) {
+    let (win, content, row) = modal(parent, &tt("DLG_COMMENT_TITLE", "ログにコメントを付加"));
+    let entry = gtk::Entry::new();
+    entry.set_hexpand(true);
+    content.append(&entry);
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let ok = gtk::Button::with_label(&tt("BTN_OK", "OK"));
+    ok.add_css_class("suggested-action");
+    row.append(&cancel);
+    row.append(&ok);
+    let w = win.clone();
+    cancel.connect_clicked(move |_| w.close());
+    let w = win.clone();
+    let e = entry.clone();
+    let write = std::rc::Rc::new(write);
+    let wr = write.clone();
+    ok.connect_clicked(move |_| {
+        let t = e.text().to_string();
+        w.close();
+        if !t.is_empty() {
+            wr(t);
+        }
+    });
+    let w = win.clone();
+    entry.connect_activate(move |e| {
+        let t = e.text().to_string();
+        w.close();
+        if !t.is_empty() {
+            write(t);
+        }
+    });
+    win.set_default_widget(Some(&ok));
+    win.present();
 }
 
 pub fn scp_progress(parent: &gtk::Window, send: bool, job: mt_net::ScpJob) {

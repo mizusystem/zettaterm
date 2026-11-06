@@ -53,5 +53,17 @@
   "正規表現": "Regular expression",
   "見つかりません": "Not found",
   "貼り付け": "Paste",
-  "空なら ~/.ssh/config の User か、このコンピュータのユーザー名": "If empty, User in ~/.ssh/config or your user name on this computer"
+  "空なら ~/.ssh/config の User か、このコンピュータのユーザー名": "If empty, User in ~/.ssh/config or your user name on this computer",
+  "&h はホスト名、&p はポート、&u はユーザー名。例：{}": "&h is the host, &p the port, &u your user name. Example: {}",
+  "スクロールバックを含めて、今画面に出ている内容を先に書きます。": "Writes what is on the screen now, including the scrollback, first.",
+  "エンコーディング": "Encoding",
+  "カーソルの形:": "Cursor shape:",
+  "カーソルを点滅させる": "Blink the cursor",
+  "カーソル色:": "Cursor color:",
+  "ブロック": "Block",
+  "下線": "Underline",
+  "文字色:": "Text color:",
+  "縦線": "Bar",
+  "背景色:": "Background:",
+  "配色:": "Theme:"
 }

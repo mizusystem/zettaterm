@@ -5,7 +5,7 @@ import MTCore
 struct ScreenBuffer {
     private(set) var lines: [Row] = []
     private(set) var generation: UInt64 = 0
-    private(set) var cursor = Cursor(row: 0, col: 0, shape: .block)
+    private(set) var cursor = Cursor(row: 0, col: 0, shape: .block, blinking: false)
     private(set) var history: Int = 0
     private(set) var altScreen = false
     private(set) var defaultFg: UInt32 = 0xE5E5E5

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use mt_core::{FlowControl, Parity, SerialDevice, SerialSettings, StopBits, Transport};
+use mt_core::{FlowControl, ModemLines, Parity, SerialDevice, SerialSettings, StopBits, Transport};
 use serialport::SerialPort;
 
 use crate::devices::list_devices;
@@ -21,6 +21,9 @@ pub struct SerialTransport {
     device: Option<SerialDevice>,
     port: Option<Box<dyn SerialPort>>,
     closed: Arc<AtomicBool>,
+    /// 出している DTR / RTS（読み出せないので、設定した値を覚えておく。開いた直後はどちらもオン）
+    dtr: bool,
+    rts: bool,
 }
 
 impl SerialTransport {
@@ -33,6 +36,8 @@ impl SerialTransport {
             device,
             port: Some(port),
             closed: Arc::new(AtomicBool::new(false)),
+            dtr: true,
+            rts: true,
         })
     }
 
@@ -157,7 +162,23 @@ impl Transport for SerialTransport {
     fn set_lines(&mut self, dtr: bool, rts: bool) -> io::Result<()> {
         let port = self.port()?;
         port.write_data_terminal_ready(dtr).map_err(to_io)?;
-        port.write_request_to_send(rts).map_err(to_io)
+        port.write_request_to_send(rts).map_err(to_io)?;
+        self.dtr = dtr;
+        self.rts = rts;
+        Ok(())
+    }
+
+    fn modem_lines(&mut self) -> io::Result<ModemLines> {
+        let (dtr, rts) = (self.dtr, self.rts);
+        let port = self.port()?;
+        Ok(ModemLines {
+            cts: port.read_clear_to_send().map_err(to_io)?,
+            dsr: port.read_data_set_ready().map_err(to_io)?,
+            ri: port.read_ring_indicator().map_err(to_io)?,
+            cd: port.read_carrier_detect().map_err(to_io)?,
+            dtr,
+            rts,
+        })
     }
 
     fn set_serial_settings(&mut self, settings: &SerialSettings) -> io::Result<()> {
@@ -179,7 +200,10 @@ impl Transport for SerialTransport {
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
         // 古いハンドルを先に閉じる（排他オープンのため）
         self.port = None;
-        let port = open_port(&path, &self.settings)?;
+        let mut port = open_port(&path, &self.settings)?;
+        // 抜く前に出していた DTR / RTS に戻す
+        let _ = port.write_data_terminal_ready(self.dtr);
+        let _ = port.write_request_to_send(self.rts);
         self.port = Some(port);
         self.path = path;
         Ok(())

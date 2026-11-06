@@ -19,11 +19,14 @@ pub use auth::{
     HostKeyStatus, KeyboardPrompt, NoPrompt,
 };
 pub use charset::Charset;
-pub use log::{LogFormat, LogOptions, TimestampKind};
+pub use log::{
+    DEFAULT_LOG_NAME, LogFormat, LogNameVars, LogOptions, LogStatus, TimestampKind,
+    expand_log_name, expand_log_name_now,
+};
 pub use mt_vt::select::{DEFAULT_DELIMITERS, table_to_tsv};
 pub use mt_vt::{
-    Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, Modifiers, Point, Row, SearchQuery,
-    Selection, UrlMatch,
+    Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, Modifiers, Point, Row,
+    SearchQuery, Selection, UrlMatch, themes,
 };
 pub use newline::{NewlineReceive, NewlineSend};
 pub use paste::{PasteCheck, check_paste, default_dangerous_words};
@@ -33,6 +36,6 @@ pub use session::{
 };
 pub use transfer::{ByteDivert, TransferRequest};
 pub use transport::{
-    DeviceListener, FlowControl, Parity, SendDelay, SerialDevice, SerialSettings, StopBits,
-    Transport, WindowSize,
+    DeviceListener, FlowControl, ModemLines, Parity, SendDelay, SerialDevice, SerialSettings,
+    StopBits, Transport, WindowSize,
 };

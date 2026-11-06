@@ -40,6 +40,17 @@ fn unsupported(what: &str) -> io::Error {
     )
 }
 
+/// シリアルの信号線。入力（CTS・DSR・RI・CD）は相手の状態、出力（DTR・RTS）は自分が出している状態。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ModemLines {
+    pub cts: bool,
+    pub dsr: bool,
+    pub ri: bool,
+    pub cd: bool,
+    pub dtr: bool,
+    pub rts: bool,
+}
+
 /// 接続の実体。1 つの Session が 1 つの Transport を持つ。
 ///
 /// `reader` と `writer` は接続のたびに（開始時と、`reconnect` が成功した後に）1 回ずつ呼ばれる。
@@ -64,6 +75,11 @@ pub trait Transport: Send + 'static {
     /// DTR / RTS 線を設定する。シリアル以外は未対応。
     fn set_lines(&mut self, _dtr: bool, _rts: bool) -> io::Result<()> {
         Err(unsupported("set_lines"))
+    }
+
+    /// シリアルの信号線の状態（Tera Term の getmodemstatus と、DTR / RTS の表示）。シリアル以外は未対応。
+    fn modem_lines(&mut self) -> io::Result<ModemLines> {
+        Err(unsupported("modem_lines"))
     }
 
     /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。シリアル以外は未対応。

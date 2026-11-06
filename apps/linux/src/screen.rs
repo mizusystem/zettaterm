@@ -27,6 +27,7 @@ impl Default for Screen {
                 row: 0,
                 col: 0,
                 shape: CursorShape::Block,
+                blinking: false,
             },
             generation: 0,
             default_fg: 0xd0d0d0,

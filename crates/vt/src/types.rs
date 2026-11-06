@@ -53,6 +53,23 @@ pub struct Cursor {
     /// 列（0 起点）。全角文字の上にあるときは左半分の列。
     pub col: u16,
     pub shape: CursorShape,
+    /// 点滅させる（設定の既定か、相手の DECSCUSR / DECSET 12）
+    pub blinking: bool,
+}
+
+/// 見た目の設定（Tera Term の「設定 > ウィンドウ」の色とカーソル形状）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Appearance {
+    /// 既定の前景色 0xRRGGBB
+    pub foreground: u32,
+    /// 既定の背景色
+    pub background: u32,
+    pub cursor: u32,
+    /// ANSI の 16 色（0..7 が通常、8..15 が明るい色）
+    pub ansi: [u32; 16],
+    /// 相手が指定しないときのカーソル形状（Hidden は Block とみなす）
+    pub cursor_shape: CursorShape,
+    pub cursor_blink: bool,
 }
 
 /// `Terminal::snapshot(since)` の戻り値。

@@ -26,8 +26,8 @@ pub use transfer::{TransferHandle, TransferProgress, TransferProtocol, TransferS
 mod serial;
 pub use history::{HostHistory, ssh_config_hosts};
 pub use serial::{
-    Charset, DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogTimestamp, NewlineReceive,
-    NewlineSend, Parity, SerialDevice, SerialSettings, StopBits, TerminalSettings,
+    Charset, DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogStatus, LogTimestamp,
+    NewlineReceive, NewlineSend, Parity, SerialDevice, SerialSettings, StopBits, TerminalSettings,
     default_serial_settings, default_terminal_settings, list_serial_devices,
 };
 
@@ -199,7 +199,7 @@ pub struct Row {
     pub wrapped: bool,
 }
 
-#[derive(Clone, Copy, Debug, uniffi::Enum)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum CursorShape {
     Block,
     Underline,
@@ -212,6 +212,82 @@ pub struct Cursor {
     pub row: u16,
     pub col: u16,
     pub shape: CursorShape,
+    pub blinking: bool,
+}
+
+/// 見た目の設定（「設定 > ウィンドウ」の色とカーソル形状）。色は 0xRRGGBB、`ansi` は 16 色。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Appearance {
+    pub foreground: u32,
+    pub background: u32,
+    pub cursor: u32,
+    pub ansi: Vec<u32>,
+    pub cursor_shape: CursorShape,
+    pub cursor_blink: bool,
+}
+
+/// 選べる配色。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct Theme {
+    pub name: String,
+    pub appearance: Appearance,
+}
+
+impl From<core::CursorShape> for CursorShape {
+    fn from(s: core::CursorShape) -> Self {
+        match s {
+            core::CursorShape::Block => CursorShape::Block,
+            core::CursorShape::Underline => CursorShape::Underline,
+            core::CursorShape::Beam => CursorShape::Beam,
+            core::CursorShape::Hidden => CursorShape::Hidden,
+        }
+    }
+}
+
+impl From<core::Appearance> for Appearance {
+    fn from(a: core::Appearance) -> Self {
+        Appearance {
+            foreground: a.foreground,
+            background: a.background,
+            cursor: a.cursor,
+            ansi: a.ansi.to_vec(),
+            cursor_shape: a.cursor_shape.into(),
+            cursor_blink: a.cursor_blink,
+        }
+    }
+}
+
+impl Appearance {
+    fn to_core(&self) -> core::Appearance {
+        let mut ansi = core::Appearance::default().ansi;
+        for (slot, c) in ansi.iter_mut().zip(&self.ansi) {
+            *slot = *c;
+        }
+        core::Appearance {
+            foreground: self.foreground,
+            background: self.background,
+            cursor: self.cursor,
+            ansi,
+            cursor_shape: match self.cursor_shape {
+                CursorShape::Underline => core::CursorShape::Underline,
+                CursorShape::Beam => core::CursorShape::Beam,
+                CursorShape::Block | CursorShape::Hidden => core::CursorShape::Block,
+            },
+            cursor_blink: self.cursor_blink,
+        }
+    }
+}
+
+/// 選べる配色の一覧（最初が既定）。
+#[uniffi::export]
+pub fn themes() -> Vec<Theme> {
+    core::themes()
+        .into_iter()
+        .map(|(name, a)| Theme {
+            name: name.to_owned(),
+            appearance: a.into(),
+        })
+        .collect()
 }
 
 #[derive(Clone, Debug, uniffi::Record)]
@@ -286,6 +362,17 @@ impl From<core::Selection> for TermRange {
     }
 }
 
+/// シリアルの信号線。CTS・DSR・RI・CD は相手の状態、DTR・RTS は自分が出している状態。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct ModemLines {
+    pub cts: bool,
+    pub dsr: bool,
+    pub ri: bool,
+    pub cd: bool,
+    pub dtr: bool,
+    pub rts: bool,
+}
+
 /// ダブルクリックで単語を区切る文字の既定値（Tera Term の DelimList）。
 #[uniffi::export]
 pub fn default_word_delimiters() -> String {
@@ -354,12 +441,8 @@ impl From<core::GridSnapshot> for GridSnapshot {
             cursor: Cursor {
                 row: s.cursor.row,
                 col: s.cursor.col,
-                shape: match s.cursor.shape {
-                    core::CursorShape::Block => CursorShape::Block,
-                    core::CursorShape::Underline => CursorShape::Underline,
-                    core::CursorShape::Beam => CursorShape::Beam,
-                    core::CursorShape::Hidden => CursorShape::Hidden,
-                },
+                shape: s.cursor.shape.into(),
+                blinking: s.cursor.blinking,
             },
             history: s.history,
             alt_screen: s.alt_screen,
@@ -618,6 +701,11 @@ impl Session {
         self.inner.clear_buffer();
     }
 
+    /// 色とカーソル形状の既定を変える。
+    pub fn set_appearance(&self, appearance: Appearance) {
+        self.inner.set_appearance(&appearance.to_core());
+    }
+
     /// 端末の状態を初期化する（端末リセット）。
     pub fn reset_terminal(&self) {
         self.inner.reset_terminal();
@@ -629,6 +717,19 @@ impl Session {
 
     pub fn set_lines(&self, dtr: bool, rts: bool) -> Result<(), MtError> {
         Ok(self.inner.set_lines(dtr, rts)?)
+    }
+
+    /// シリアルの信号線の状態。シリアル以外は Err。
+    pub fn modem_lines(&self) -> Result<ModemLines, MtError> {
+        let m = self.inner.modem_lines()?;
+        Ok(ModemLines {
+            cts: m.cts,
+            dsr: m.dsr,
+            ri: m.ri,
+            cd: m.cd,
+            dtr: m.dtr,
+            rts: m.rts,
+        })
     }
 
     /// 接続したままシリアル設定と送信遅延を変える（Tera Term の「現在の接続を再設定」）。
@@ -651,6 +752,25 @@ impl Session {
     /// 受信データのログを始める。記録中なら切り替える。
     pub fn log_start(&self, options: LogOptions) -> Result<(), MtError> {
         Ok(self.inner.log_start(&options.to_core())?)
+    }
+
+    /// ログの中断・再開。
+    pub fn log_pause(&self, paused: bool) {
+        self.inner.log_pause(paused);
+    }
+
+    /// ログにコメントを書く（記録中でなければ何もしない）。
+    pub fn log_write(&self, text: String) -> Result<(), MtError> {
+        Ok(self.inner.log_write(&text)?)
+    }
+
+    /// 記録中のログの様子。記録中でなければ None。
+    pub fn log_status(&self) -> Option<LogStatus> {
+        self.inner.log_status().map(|s| LogStatus {
+            path: s.path.to_string_lossy().into_owned(),
+            bytes: s.bytes,
+            paused: s.paused,
+        })
     }
 
     /// ファイル転送を始める。`files` は送るファイル（XMODEM は 1 つ）、`destination` は受け取り先

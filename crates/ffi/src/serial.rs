@@ -198,6 +198,34 @@ pub struct LogOptions {
     pub binary: bool,
     /// テキストのときだけ効く
     pub timestamp: LogTimestamp,
+    /// 始めるときに、スクロールバックを含む今の画面の内容を先に書く
+    pub include_screen: bool,
+}
+
+/// 記録中のログの様子。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct LogStatus {
+    pub path: String,
+    pub bytes: u64,
+    pub paused: bool,
+}
+
+/// ログのファイル名のテンプレート（Tera Term の LogDefaultName）を今の時刻で展開する。
+/// `&h` はホスト名、`&p` はポート、`&u` はこのコンピュータのユーザー名、`%Y` などは strftime。
+#[uniffi::export]
+pub fn expand_log_name(template: String, host: String, port: String) -> String {
+    let vars = core::LogNameVars {
+        host,
+        port,
+        user: String::new(),
+    };
+    core::expand_log_name_now(&template, &vars)
+}
+
+/// ファイル名のテンプレートの既定。
+#[uniffi::export]
+pub fn default_log_name() -> String {
+    core::DEFAULT_LOG_NAME.to_owned()
 }
 
 impl LogOptions {
@@ -215,6 +243,7 @@ impl LogOptions {
                 LogTimestamp::Local => Some(core::TimestampKind::Local),
                 LogTimestamp::Utc => Some(core::TimestampKind::Utc),
             },
+            include_screen: self.include_screen,
         }
     }
 }

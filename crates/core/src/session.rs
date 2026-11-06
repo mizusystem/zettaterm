@@ -21,10 +21,10 @@ use mt_vt::{
 };
 
 use crate::charset::{self, Charset, ReceiveDecoder};
-use crate::log::{LogOptions, Logger};
+use crate::log::{LogOptions, LogStatus, Logger};
 use crate::newline::{NewlineReceive, NewlineSend, ReceiveConverter};
 use crate::transfer::{ByteDivert, TransferRequest, ZmodemDetector};
-use crate::transport::{SendDelay, SerialSettings, Transport, WindowSize};
+use crate::transport::{ModemLines, SendDelay, SerialSettings, Transport, WindowSize};
 
 /// 既定のスクロールバック行数
 pub const DEFAULT_SCROLLBACK: usize = 10_000;
@@ -436,6 +436,12 @@ impl Session {
         self.inner.notify_damage();
     }
 
+    /// 色とカーソル形状の既定を変える（「設定 > ウィンドウ」）。
+    pub fn set_appearance(&self, appearance: &mt_vt::Appearance) {
+        self.inner.vt().set_appearance(appearance);
+        self.inner.notify_damage();
+    }
+
     /// 端末の状態を初期化する（「コントロール > 端末リセット」）。
     pub fn reset_terminal(&self) {
         self.inner.vt().reset();
@@ -448,6 +454,11 @@ impl Session {
 
     pub fn set_lines(&self, dtr: bool, rts: bool) -> io::Result<()> {
         self.inner.transport()?.set_lines(dtr, rts)
+    }
+
+    /// シリアルの信号線の状態。シリアル以外は Unsupported。
+    pub fn modem_lines(&self) -> io::Result<ModemLines> {
+        self.inner.transport()?.modem_lines()
     }
 
     /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。
@@ -465,9 +476,42 @@ impl Session {
 
     /// 受信データのログを始める。記録中なら前のログを閉じて切り替える。
     pub fn log_start(&self, options: &LogOptions) -> io::Result<()> {
-        let logger = Logger::open(options)?;
+        let mut logger = Logger::open(options)?;
+        if options.include_screen {
+            // 受信スレッドがログに書き始める前に、今の画面の内容を書く
+            let mut log = self.inner.log();
+            let text = {
+                let vt = self.inner.vt();
+                vt.selection_text(&vt.select_all())
+            };
+            if !text.is_empty() {
+                logger.write_text(&text)?;
+            }
+            *log = Some(logger);
+            return Ok(());
+        }
         *self.inner.log() = Some(logger);
         Ok(())
+    }
+
+    /// ログの中断・再開（Tera Term の「ログを中断」、TTL の logpause / logstart）。
+    pub fn log_pause(&self, paused: bool) {
+        if let Some(l) = self.inner.log().as_mut() {
+            l.set_paused(paused);
+        }
+    }
+
+    /// ログに文字列を書く（「ログにコメントを付加」、TTL の logwrite）。記録中でなければ何もしない。
+    pub fn log_write(&self, text: &str) -> io::Result<()> {
+        match self.inner.log().as_mut() {
+            Some(l) => l.write_text(text),
+            None => Ok(()),
+        }
+    }
+
+    /// 記録中のログの様子（TTL の loginfo）。記録中でなければ None。
+    pub fn log_status(&self) -> Option<LogStatus> {
+        self.inner.log().as_ref().map(Logger::status)
     }
 
     pub fn log_stop(&self) {

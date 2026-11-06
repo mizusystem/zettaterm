@@ -14,6 +14,137 @@ use serde::{Deserialize, Serialize};
 use crate::dialogs::modal;
 use crate::strings::{l, tt};
 
+/// 「設定 > ウィンドウ」（配色・カーソル）と「設定 > フォント」。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Look {
+    /// 配色の名前（mt_core::themes の名前）。ANSI の 16 色はここから
+    pub theme: String,
+    pub foreground: u32,
+    pub background: u32,
+    pub cursor: u32,
+    /// "block" / "underline" / "beam"
+    pub cursor_shape: String,
+    pub cursor_blink: bool,
+    /// Pango のフォント指定（"Monospace 12" など）
+    pub font: String,
+}
+
+impl Default for Look {
+    fn default() -> Self {
+        let a = mt_core::Appearance::default();
+        Self {
+            theme: "xterm".to_owned(),
+            foreground: a.foreground,
+            background: a.background,
+            cursor: a.cursor,
+            cursor_shape: "block".to_owned(),
+            cursor_blink: false,
+            font: "Monospace 12".to_owned(),
+        }
+    }
+}
+
+impl Look {
+    pub fn appearance(&self) -> mt_core::Appearance {
+        let ansi = mt_core::themes()
+            .into_iter()
+            .find(|(n, _)| *n == self.theme)
+            .map(|(_, a)| a.ansi)
+            .unwrap_or(mt_core::Appearance::default().ansi);
+        mt_core::Appearance {
+            foreground: self.foreground,
+            background: self.background,
+            cursor: self.cursor,
+            ansi,
+            cursor_shape: match self.cursor_shape.as_str() {
+                "underline" => mt_core::CursorShape::Underline,
+                "beam" => mt_core::CursorShape::Beam,
+                _ => mt_core::CursorShape::Block,
+            },
+            cursor_blink: self.cursor_blink,
+        }
+    }
+}
+
+/// ログの設定。「ログ」ダイアログで最後に選んだものと、「その他の設定 > ログ」の標準のフォルダ・名前・自動開始。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LogConf {
+    /// 標準のログ保存先フォルダ（LogDefaultPath）
+    pub folder: String,
+    /// 標準のログファイル名（LogDefaultName。`&h` `&p` `&u` と strftime）
+    pub name: String,
+    /// つないだら自動でログを取り始める（LogAutoStart）
+    pub auto_start: bool,
+    pub append: bool,
+    pub binary: bool,
+    pub timestamp: bool,
+    pub utc: bool,
+    /// 現在のバッファを最初に書き込む
+    pub include_screen: bool,
+}
+
+impl Default for LogConf {
+    fn default() -> Self {
+        Self {
+            folder: gtk::glib::home_dir().to_string_lossy().into_owned(),
+            name: mt_core::DEFAULT_LOG_NAME.to_owned(),
+            auto_start: false,
+            append: true,
+            binary: false,
+            timestamp: false,
+            utc: false,
+            include_screen: false,
+        }
+    }
+}
+
+impl LogConf {
+    /// `profile` 向けのログファイルのパス（テンプレートを今の時刻で展開）。
+    pub fn path_for(&self, profile: Option<&ConnectionProfile>) -> std::path::PathBuf {
+        let (host, port) = match profile {
+            Some(ConnectionProfile::Ssh { host, port, .. }) => {
+                (host.clone(), port.unwrap_or(22).to_string())
+            }
+            Some(ConnectionProfile::Telnet { host, port }) => {
+                (host.clone(), port.unwrap_or(23).to_string())
+            }
+            Some(ConnectionProfile::Tcp { host, port }) => (host.clone(), port.to_string()),
+            Some(ConnectionProfile::Serial { port, .. }) => (port.clone(), port.clone()),
+            _ => ("localhost".to_owned(), "shell".to_owned()),
+        };
+        let vars = mt_core::LogNameVars {
+            host,
+            port,
+            user: String::new(),
+        };
+        let folder = match self.folder.strip_prefix("~/") {
+            Some(rest) => gtk::glib::home_dir().join(rest),
+            None => std::path::PathBuf::from(&self.folder),
+        };
+        folder.join(mt_core::expand_log_name_now(&self.name, &vars))
+    }
+
+    /// ダイアログで選んだ書き込みモードなどで、`path` に書く設定。
+    pub fn options(&self, path: std::path::PathBuf) -> mt_core::LogOptions {
+        let mut o = mt_core::LogOptions::new(path);
+        o.append = self.append;
+        o.format = if self.binary {
+            mt_core::LogFormat::Binary
+        } else {
+            mt_core::LogFormat::Text
+        };
+        o.timestamp = (self.timestamp && !self.binary).then_some(if self.utc {
+            mt_core::TimestampKind::Utc
+        } else {
+            mt_core::TimestampKind::Local
+        });
+        o.include_screen = self.include_screen;
+        o
+    }
+}
+
 /// Tera Term の「その他の設定 > コピーと貼り付け」と、クリッカブル URL。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -87,6 +218,8 @@ pub struct Settings {
     /// 相手の sz で尋ねずに受け取るか（既定は Tera Term と同じくオン）
     pub zmodem_auto_receive: bool,
     pub copy_paste: CopyPaste,
+    pub log: LogConf,
+    pub look: Look,
 }
 
 impl Default for Settings {
@@ -99,6 +232,8 @@ impl Default for Settings {
             serial_port: None,
             zmodem_auto_receive: true,
             copy_paste: CopyPaste::default(),
+            log: LogConf::default(),
+            look: Look::default(),
         }
     }
 }
@@ -542,6 +677,226 @@ pub fn copy_paste_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
         };
         s.save();
         applied();
+    });
+    win.present();
+}
+
+/// 「設定 > ログ」：標準の保存先フォルダ、標準のファイル名、自動開始。
+pub fn log_settings_dialog(parent: &gtk::Window, profile: Option<ConnectionProfile>) {
+    let current = Settings::load().log;
+    let (win, content, row) = modal(parent, &tt("DLG_FOPT_TITLE", "ログ"));
+    let caption = |t: String| {
+        let l = gtk::Label::new(Some(&t));
+        l.set_xalign(0.0);
+        content.append(&l);
+    };
+    caption(tt("DLG_TAB_LOG_FILEPATH", "標準のログ保存先フォルダ"));
+    let folder = gtk::Entry::new();
+    folder.set_text(&current.folder);
+    folder.set_hexpand(true);
+    let browse = gtk::Button::with_label("...");
+    {
+        let (folder, win) = (folder.clone(), win.clone());
+        browse.connect_clicked(move |_| {
+            let folder = folder.clone();
+            gtk::FileDialog::new().select_folder(
+                Some(&win),
+                None::<&gtk::gio::Cancellable>,
+                move |r| {
+                    if let Some(p) = r.ok().and_then(|f| f.path()) {
+                        folder.set_text(&p.to_string_lossy());
+                    }
+                },
+            );
+        });
+    }
+    let frow = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    frow.append(&folder);
+    frow.append(&browse);
+    content.append(&frow);
+
+    caption(tt(
+        "DLG_TAB_LOG_FILENAME",
+        "標準ログファイル名(strftimeフォーマット可)",
+    ));
+    let name = gtk::Entry::new();
+    name.set_text(&current.name);
+    content.append(&name);
+    let example = gtk::Label::new(None);
+    example.set_xalign(0.0);
+    example.set_wrap(true);
+    example.add_css_class("dim-label");
+    content.append(&example);
+    let refresh = {
+        let (folder, name, example, profile) = (
+            folder.clone(),
+            name.clone(),
+            example.clone(),
+            profile.clone(),
+        );
+        move || {
+            let conf = LogConf {
+                folder: folder.text().to_string(),
+                name: name.text().to_string(),
+                ..LogConf::default()
+            };
+            example.set_text(&crate::strings::lf(
+                "&h はホスト名、&p はポート、&u はユーザー名。例：{}",
+                &[&conf.path_for(profile.as_ref()).display()],
+            ));
+        }
+    };
+    refresh();
+    let r = refresh.clone();
+    name.connect_changed(move |_| r());
+    folder.connect_changed(move |_| refresh());
+
+    let auto =
+        gtk::CheckButton::with_label(&tt("DLG_TAB_LOG_AUTOSTART", "自動的にログ採取を開始する"));
+    auto.set_active(current.auto_start);
+    content.append(&auto);
+
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut s = Settings::load();
+        s.log.folder = folder.text().to_string();
+        let n = name.text().trim().to_owned();
+        s.log.name = if n.is_empty() {
+            mt_core::DEFAULT_LOG_NAME.to_owned()
+        } else {
+            n
+        };
+        s.log.auto_start = auto.is_active();
+        s.save();
+    });
+    win.present();
+}
+
+fn rgba(c: u32) -> gtk::gdk::RGBA {
+    gtk::gdk::RGBA::new(
+        ((c >> 16) & 0xff) as f32 / 255.0,
+        ((c >> 8) & 0xff) as f32 / 255.0,
+        (c & 0xff) as f32 / 255.0,
+        1.0,
+    )
+}
+
+fn from_rgba(c: &gtk::gdk::RGBA) -> u32 {
+    let v = |x: f32| (x.clamp(0.0, 1.0) * 255.0).round() as u32;
+    (v(c.red()) << 16) | (v(c.green()) << 8) | v(c.blue())
+}
+
+/// 「設定 > ウィンドウ」：配色、文字色・背景色・カーソル色、カーソルの形と点滅。OK で保存して `applied()`。
+pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
+    let current = Settings::load().look;
+    let (win, content, row) = modal(parent, &tt("DLG_WIN_TITLE", "ウィンドウ"));
+    let grid = gtk::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(10)
+        .build();
+    let names: Vec<String> = mt_core::themes()
+        .iter()
+        .map(|(n, _)| (*n).to_owned())
+        .collect();
+    let theme = dropdown(
+        &names,
+        names.iter().position(|n| *n == current.theme).unwrap_or(0),
+    );
+    let color_button = |c: u32| {
+        let b = gtk::ColorDialogButton::new(Some(gtk::ColorDialog::new()));
+        b.set_rgba(&rgba(c));
+        b.set_halign(gtk::Align::Start);
+        b
+    };
+    let fg = color_button(current.foreground);
+    let bg = color_button(current.background);
+    let cur = color_button(current.cursor);
+    let shapes = [
+        ("block", l("ブロック")),
+        ("underline", l("下線")),
+        ("beam", l("縦線")),
+    ];
+    let shape_names: Vec<String> = shapes.iter().map(|s| s.1.clone()).collect();
+    let shape = dropdown(
+        &shape_names,
+        shapes
+            .iter()
+            .position(|s| s.0 == current.cursor_shape)
+            .unwrap_or(0),
+    );
+    let blink = gtk::CheckButton::with_label(&l("カーソルを点滅させる"));
+    blink.set_active(current.cursor_blink);
+    // 配色を選んだら、文字色などもその配色の色にする
+    {
+        let (fg, bg, cur) = (fg.clone(), bg.clone(), cur.clone());
+        theme.connect_selected_notify(move |d| {
+            if let Some((_, a)) = mt_core::themes().into_iter().nth(d.selected() as usize) {
+                fg.set_rgba(&rgba(a.foreground));
+                bg.set_rgba(&rgba(a.background));
+                cur.set_rgba(&rgba(a.cursor));
+            }
+        });
+    }
+    for (i, (text, w)) in [
+        (l("配色:"), theme.clone().upcast::<gtk::Widget>()),
+        (l("文字色:"), fg.clone().upcast()),
+        (l("背景色:"), bg.clone().upcast()),
+        (l("カーソル色:"), cur.clone().upcast()),
+        (l("カーソルの形:"), shape.clone().upcast()),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        grid.attach(&label(text), 0, i as i32, 1, 1);
+        grid.attach(&w, 1, i as i32, 1, 1);
+    }
+    grid.attach(&blink, 1, 5, 1, 1);
+    content.append(&grid);
+
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut s = Settings::load();
+        s.look.theme = names
+            .get(theme.selected() as usize)
+            .cloned()
+            .unwrap_or_default();
+        s.look.foreground = from_rgba(&fg.rgba());
+        s.look.background = from_rgba(&bg.rgba());
+        s.look.cursor = from_rgba(&cur.rgba());
+        s.look.cursor_shape = shapes
+            .get(shape.selected() as usize)
+            .map(|s| s.0)
+            .unwrap_or("block")
+            .to_owned();
+        s.look.cursor_blink = blink.is_active();
+        s.save();
+        applied();
+    });
+    win.present();
+}
+
+/// 「設定 > フォント」：等幅フォントと大きさ。OK で保存して `applied()`。
+pub fn font_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
+    let current = Settings::load().look;
+    let (win, content, row) = modal(
+        parent,
+        tt("MENU_SETUP_FONT", "フォント").trim_end_matches("..."),
+    );
+    let dialog = gtk::FontDialog::new();
+    // 等幅フォントだけを出す
+    let filter = gtk::CustomFilter::new(|o| {
+        o.downcast_ref::<gtk::pango::FontFamily>()
+            .is_some_and(|f| f.is_monospace())
+    });
+    dialog.set_filter(Some(&filter));
+    let button = gtk::FontDialogButton::new(Some(dialog));
+    button.set_font_desc(&gtk::pango::FontDescription::from_string(&current.font));
+    content.append(&button);
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        if let Some(desc) = button.font_desc() {
+            let mut s = Settings::load();
+            s.look.font = desc.to_string();
+            s.save();
+            applied();
+        }
     });
     win.present();
 }

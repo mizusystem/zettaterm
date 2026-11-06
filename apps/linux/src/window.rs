@@ -87,6 +87,7 @@ impl Tabs {
                 if let Some(p) = pane {
                     t.win.set_title(Some(&p.tab_label.text()));
                     p.view.area.grab_focus();
+                    p.sync_menu_state();
                 }
             });
         }
@@ -196,6 +197,16 @@ impl Tabs {
         add("find-prev", Box::new(|_, me| me.view.find_step(false)));
         add("reset-terminal", Box::new(|_, me| me.view.reset_terminal()));
         add(
+            "setup-window",
+            Box::new(|t, _| {
+                settings::window_dialog(&t.win.clone().upcast(), apply_look_everywhere)
+            }),
+        );
+        add(
+            "setup-font",
+            Box::new(|t, _| settings::font_dialog(&t.win.clone().upcast(), apply_look_everywhere)),
+        );
+        add(
             "setup-copypaste",
             Box::new(|t, _| {
                 crate::settings::copy_paste_dialog(&t.win.clone().upcast(), || {
@@ -219,15 +230,51 @@ impl Tabs {
         add("setup-terminal", Box::new(|_, me| me.setup_terminal()));
         add("setup-serial", Box::new(|_, me| me.setup_serial()));
         add("log", Box::new(|_, me| me.start_log()));
+        add("log-stop", Box::new(|_, me| me.stop_log()));
+        add("log-comment", Box::new(|_, me| me.comment_log()));
+        add("log-view", Box::new(|_, me| me.view_log()));
         add(
-            "log-stop",
-            Box::new(|_, me| {
-                if let Some(s) = me.view.session() {
-                    s.log_stop();
-                }
-                me.logging.set(false);
+            "setup-log",
+            Box::new(|t, me| {
+                settings::log_settings_dialog(&t.win.clone().upcast(), me.profile.borrow().clone())
             }),
         );
+        // チェック付きの項目。状態は sync_menu_state でタブに合わせる
+        for name in ["log-pause", "dtr", "rts"] {
+            let a = gio::SimpleAction::new_stateful(name, None, &false.to_variant());
+            let t = Rc::downgrade(self);
+            let n = name.to_owned();
+            a.connect_activate(move |_, _| {
+                let Some(me) = t.upgrade().and_then(|t| t.current()) else {
+                    return;
+                };
+                match n.as_str() {
+                    "log-pause" => me.toggle_log_pause(),
+                    "dtr" => me.toggle_line(true),
+                    _ => me.toggle_line(false),
+                }
+                me.sync_menu_state();
+            });
+            self.win.add_action(&a);
+        }
+        {
+            let a = gio::SimpleAction::new_stateful(
+                "charset",
+                Some(glib::VariantTy::STRING),
+                &"".to_variant(),
+            );
+            let t = Rc::downgrade(self);
+            a.connect_activate(move |_, v| {
+                let (Some(me), Some(c)) = (
+                    t.upgrade().and_then(|t| t.current()),
+                    v.and_then(|v| v.str()).and_then(charset_from_id),
+                ) else {
+                    return;
+                };
+                me.set_charset(c);
+            });
+            self.win.add_action(&a);
+        }
         add("scp", Box::new(|_, me| me.show_scp()));
         add("send-file", Box::new(|_, me| me.begin_send_file()));
         {
@@ -297,6 +344,12 @@ pub struct TermWindow {
     /// 内蔵 SSH のときだけ。SSH SCP に使う
     files: RefCell<Option<mt_net::SshFiles>>,
     logging: Cell<bool>,
+    log_paused: Cell<bool>,
+    /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
+    modem: Cell<Option<mt_core::ModemLines>>,
+    modem_timer: RefCell<Option<glib::SourceId>>,
+    /// 信号線の表示（右下）
+    lines_label: gtk::Label,
     /// 次の接続だけで使うパスワード（マクロの /passwd=）
     next_password: RefCell<Option<String>>,
 }
@@ -344,6 +397,17 @@ impl TermWindow {
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&view.widget));
         overlay.add_overlay(&badge);
+        // シリアルの信号線（CTS・DSR・CD・RI と、出している DTR・RTS）
+        let lines_label = gtk::Label::new(None);
+        lines_label.set_halign(gtk::Align::End);
+        lines_label.set_valign(gtk::Align::End);
+        lines_label.set_margin_end(24);
+        lines_label.set_margin_bottom(6);
+        lines_label.add_css_class("osd");
+        lines_label.add_css_class("monospace");
+        lines_label.set_can_target(false);
+        lines_label.set_visible(false);
+        overlay.add_overlay(&lines_label);
         let tab_label = gtk::Label::new(Some("Multi-Term"));
         // 省略表示にすると幅が縮みきるので、最低の幅を決めておく
         tab_label.set_width_chars(12);
@@ -375,6 +439,10 @@ impl TermWindow {
             waiters: RefCell::new(Vec::new()),
             files: RefCell::new(None),
             logging: Cell::new(false),
+            log_paused: Cell::new(false),
+            modem: Cell::new(None),
+            modem_timer: RefCell::new(None),
+            lines_label,
             next_password: RefCell::new(None),
         });
         me.install_drop();
@@ -516,6 +584,11 @@ impl TermWindow {
                     if keep {
                         connect::remember(&profile);
                     }
+                    me.logging.set(false);
+                    me.log_paused.set(false);
+                    me.auto_start_log(&session, &profile);
+                    me.start_modem_polling();
+                    me.sync_menu_state();
                     me.view.area.grab_focus();
                     me.notify_waiters(Some(session));
                 }
@@ -594,10 +667,199 @@ impl TermWindow {
             return;
         };
         let me = Rc::clone(self);
-        crate::extras::log_dialog(&self.parent(), move |opts| match session.log_start(&opts) {
-            Ok(()) => me.logging.set(true),
+        let profile = self.profile.borrow().clone();
+        crate::extras::log_dialog(&self.parent(), profile.as_ref(), move |opts| match session
+            .log_start(&opts)
+        {
+            Ok(()) => {
+                me.logging.set(true);
+                me.log_paused.set(false);
+                me.sync_menu_state();
+            }
             Err(e) => dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {}),
         });
+    }
+
+    /// 「設定 > ログ」の自動開始。標準のフォルダとファイル名で始める。
+    fn auto_start_log(&self, session: &Arc<mt_core::Session>, profile: &ConnectionProfile) {
+        let conf = Settings::load().log;
+        if !conf.auto_start {
+            return;
+        }
+        let path = conf.path_for(Some(profile));
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let mut opts = conf.options(path);
+        opts.include_screen = false;
+        match session.log_start(&opts) {
+            Ok(()) => self.logging.set(true),
+            Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),
+        }
+    }
+
+    pub fn stop_log(&self) {
+        if let Some(s) = self.view.session() {
+            s.log_stop();
+        }
+        self.logging.set(false);
+        self.log_paused.set(false);
+        self.sync_menu_state();
+    }
+
+    /// 「ログを中断」と再開。
+    pub fn toggle_log_pause(&self) {
+        let Some(s) = self.view.session() else { return };
+        if !self.logging.get() {
+            return;
+        }
+        let paused = !self.log_paused.get();
+        s.log_pause(paused);
+        self.log_paused.set(paused);
+        self.sync_menu_state();
+    }
+
+    pub fn comment_log(&self) {
+        let Some(s) = self.view.session() else { return };
+        if !self.logging.get() {
+            return;
+        }
+        let parent = self.parent();
+        crate::extras::log_comment_dialog(&self.parent(), move |text| {
+            if let Err(e) = s.log_write(&text) {
+                dialogs::message(&parent, "Multi-Term", &e.to_string(), || {});
+            }
+        });
+    }
+
+    /// 「ログを表示」：記録中のログを既定のアプリで開く。
+    pub fn view_log(&self) {
+        let Some(st) = self.view.session().and_then(|s| s.log_status()) else {
+            return;
+        };
+        let uri = gio::File::for_path(&st.path).uri();
+        let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
+    }
+
+    /// 文字コードを受信・送信とも切り替える（TTXKanjiMenu）。
+    pub fn set_charset(&self, charset: mt_core::Charset) {
+        let profile = self.profile.borrow().clone();
+        let mut s = Settings::load();
+        let mut conf = s.terminal_for(profile.as_ref());
+        conf.charset_receive = charset;
+        conf.charset_send = charset;
+        s.set_terminal_for(profile.as_ref(), conf);
+        s.save();
+        if let Some(session) = self.view.session() {
+            session.set_terminal_settings(conf.core());
+        }
+        self.sync_menu_state();
+    }
+
+    // ---- シリアルの信号線 ----
+
+    fn start_modem_polling(self: &Rc<Self>) {
+        self.stop_modem_polling();
+        if !matches!(
+            *self.profile.borrow(),
+            Some(ConnectionProfile::Serial { .. })
+        ) {
+            return;
+        }
+        self.poll_modem();
+        let me = Rc::downgrade(self);
+        let id = glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            match me.upgrade() {
+                Some(me) if me.connected() => {
+                    me.poll_modem();
+                    glib::ControlFlow::Continue
+                }
+                Some(me) => {
+                    me.modem_timer.borrow_mut().take();
+                    me.modem.set(None);
+                    me.lines_label.set_visible(false);
+                    glib::ControlFlow::Break
+                }
+                None => glib::ControlFlow::Break,
+            }
+        });
+        *self.modem_timer.borrow_mut() = Some(id);
+    }
+
+    fn stop_modem_polling(&self) {
+        if let Some(id) = self.modem_timer.borrow_mut().take() {
+            id.remove();
+        }
+        self.modem.set(None);
+        self.lines_label.set_visible(false);
+    }
+
+    fn poll_modem(&self) {
+        let lines = self.view.session().and_then(|s| s.modem_lines().ok());
+        let changed = lines != self.modem.get();
+        self.modem.set(lines);
+        match lines {
+            Some(m) => {
+                let lamp = |name: &str, on: bool| format!("{} {name}", if on { "●" } else { "○" });
+                self.lines_label.set_text(
+                    &[
+                        lamp("CTS", m.cts),
+                        lamp("DSR", m.dsr),
+                        lamp("CD", m.cd),
+                        lamp("RI", m.ri),
+                        "|".to_owned(),
+                        lamp("DTR", m.dtr),
+                        lamp("RTS", m.rts),
+                    ]
+                    .join("  "),
+                );
+                self.lines_label.set_visible(true);
+            }
+            None => self.lines_label.set_visible(false),
+        }
+        if changed {
+            self.sync_menu_state();
+        }
+    }
+
+    /// DTR / RTS の切り替え。ESP32 などは DTR / RTS でリセットや書き込みモードに入るので、押したときだけ変える。
+    pub fn toggle_line(&self, dtr: bool) {
+        let (Some(s), Some(m)) = (self.view.session(), self.modem.get()) else {
+            return;
+        };
+        let (d, r) = if dtr {
+            (!m.dtr, m.rts)
+        } else {
+            (m.dtr, !m.rts)
+        };
+        if let Err(e) = s.set_lines(d, r) {
+            dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {});
+        }
+        self.poll_modem();
+    }
+
+    /// メニューのチェック（ログの中断、文字コード、DTR / RTS）をこのタブの状態に合わせる。
+    pub fn sync_menu_state(&self) {
+        let set = |name: &str, v: glib::Variant| {
+            if let Some(a) = self
+                .win
+                .lookup_action(name)
+                .and_downcast::<gio::SimpleAction>()
+            {
+                a.set_state(&v);
+            }
+        };
+        set("log-pause", self.log_paused.get().to_variant());
+        let m = self.modem.get();
+        set("dtr", m.is_some_and(|m| m.dtr).to_variant());
+        set("rts", m.is_some_and(|m| m.rts).to_variant());
+        let conf = Settings::load().terminal_for(self.profile.borrow().as_ref());
+        let id = if conf.charset_receive == conf.charset_send {
+            charset_id(conf.charset_receive)
+        } else {
+            ""
+        };
+        set("charset", id.to_variant());
     }
 
     /// 端末にファイルを落としたら、送り方を尋ねる（Tera Term の「ファイル ドラッグ&ドロップ」）。
@@ -1172,4 +1434,33 @@ impl TermWindow {
             }
         });
     }
+}
+
+/// 「設定 > エンコーディング」のメニューの値。
+pub const CHARSETS: [(mt_core::Charset, &str, &str); 4] = [
+    (mt_core::Charset::Utf8, "utf8", "UTF-8"),
+    (mt_core::Charset::ShiftJis, "sjis", "Shift_JIS"),
+    (mt_core::Charset::EucJp, "eucjp", "EUC-JP"),
+    (mt_core::Charset::Jis, "jis", "JIS"),
+];
+
+fn charset_id(c: mt_core::Charset) -> &'static str {
+    CHARSETS
+        .iter()
+        .find(|x| x.0 == c)
+        .map(|x| x.1)
+        .unwrap_or("")
+}
+
+fn charset_from_id(id: &str) -> Option<mt_core::Charset> {
+    CHARSETS.iter().find(|x| x.1 == id).map(|x| x.0)
+}
+
+/// 見た目の設定を、開いているすべてのタブに効かせる。
+fn apply_look_everywhere() {
+    ALL.with(|all| {
+        for p in all.borrow().iter().filter_map(|w| w.upgrade()) {
+            p.view.apply_look();
+        }
+    });
 }

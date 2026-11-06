@@ -602,3 +602,34 @@ fn paste_echo_does_not_show_bracketed_paste_markers() {
     assert!(wait_until(|| screen_text(&session).starts_with("hi")));
     assert!(!screen_text(&session).contains("200~"));
 }
+
+/// LogIncludeScreenBuffer：始める前に画面に出ていた内容を先に書き、中断中の受信は書かない。
+#[test]
+fn log_can_start_with_the_screen_and_be_paused() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("screen.log");
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    remote.send(b"before\r\n");
+    assert!(wait_until(|| screen_text(&session).contains("before")));
+    let mut options = LogOptions::new(&path);
+    options.include_screen = true;
+    session.log_start(&options).unwrap();
+    session.log_write("# note").unwrap();
+    session.log_pause(true);
+    remote.send(b"skipped\r\n");
+    assert!(wait_until(|| screen_text(&session).contains("skipped")));
+    session.log_pause(false);
+    remote.send(b"after\r\n");
+    assert!(wait_until(|| screen_text(&session).contains("after")));
+    std::thread::sleep(Duration::from_millis(50));
+    let status = session.log_status().unwrap();
+    assert!(!status.paused);
+    session.log_stop();
+    assert!(session.log_status().is_none());
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(text, "before\n# note\nafter\n");
+    assert_eq!(status.bytes, text.len() as u64);
+    session.close();
+}

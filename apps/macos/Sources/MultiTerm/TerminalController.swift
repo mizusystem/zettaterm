@@ -9,7 +9,7 @@ final class TerminalController: ObservableObject {
 
     enum Sheet: String, Identifiable {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
-        case copyPasteSettings, pasteConfirm
+        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings
         var id: String { rawValue }
     }
 
@@ -36,6 +36,10 @@ final class TerminalController: ObservableObject {
 
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false
+    @Published private(set) var isLogPaused = false
+    /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
+    @Published private(set) var modemLines: ModemLines?
+    private var modemTimer: Timer?
     @Published private(set) var remoteTitle = ""
     @Published private(set) var target: ConnectTarget?
     @Published var sheet: Sheet?
@@ -110,6 +114,8 @@ final class TerminalController: ObservableObject {
                 guard current == attempt else { return }
                 status = .connected
                 if remember { HostStore.shared.add(target) }
+                autoStartLog()
+                startModemPolling()
             } catch is CancellationError {
                 prompter.setOneTimePassword(nil)
                 return
@@ -155,6 +161,8 @@ final class TerminalController: ObservableObject {
         view.disconnect()
         status = .disconnected
         isLogging = false
+        isLogPaused = false
+        stopModemPolling()
     }
 
     func sendBreak() {
@@ -261,6 +269,7 @@ final class TerminalController: ObservableObject {
         do {
             try session.logStart(options: options)
             isLogging = true
+            isLogPaused = false
         } catch {
             report(error)
         }
@@ -269,6 +278,93 @@ final class TerminalController: ObservableObject {
     func stopLog() {
         view.session?.logStop()
         isLogging = false
+        isLogPaused = false
+    }
+
+    /// 「設定 > ログ」の自動開始。標準のフォルダとファイル名で始める。
+    private func autoStartLog() {
+        let config = LogConfig.saved
+        guard config.autoStart else { return }
+        let path = config.path(for: target)
+        try? FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
+        startLog(LogOptionsView.savedOptions(path: path))
+    }
+
+    /// 「ログを中断」と再開。
+    func toggleLogPause() {
+        guard let session = view.session, isLogging else { return }
+        isLogPaused.toggle()
+        session.logPause(paused: isLogPaused)
+    }
+
+    func writeLogComment(_ text: String) {
+        do {
+            try view.session?.logWrite(text: text)
+        } catch {
+            report(error)
+        }
+    }
+
+    /// 「ログを表示」：記録中のログを既定のアプリで開く。
+    func viewLog() {
+        guard let path = view.session?.logStatus()?.path else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+    }
+
+    // MARK: 文字コード
+
+    /// 今の接続の文字コード（受信と送信が違えば nil）。
+    var charset: TerminalConfig.CharsetChoice? {
+        let c = terminalConfig
+        return c.charsetReceive == c.charsetSend ? c.charsetReceive : nil
+    }
+
+    /// 文字コードを受信・送信とも切り替える（TTXKanjiMenu）。
+    func setCharset(_ choice: TerminalConfig.CharsetChoice) {
+        var c = terminalConfig
+        c.charsetReceive = choice
+        c.charsetSend = choice
+        applyTerminal(c)
+    }
+
+    // MARK: シリアルの信号線
+
+    private func startModemPolling() {
+        modemTimer?.invalidate()
+        modemTimer = nil
+        modemLines = nil
+        guard isSerialConnected else { return }
+        pollModem()
+        modemTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.pollModem() }
+        }
+    }
+
+    private func stopModemPolling() {
+        modemTimer?.invalidate()
+        modemTimer = nil
+        modemLines = nil
+    }
+
+    /// ブレーク送信中は Transport が塞がるので、メインスレッドでは待たない。
+    private func pollModem() {
+        guard let session = view.session, isSerialConnected else { return stopModemPolling() }
+        Task {
+            let lines = await Task.detached { try? session.modemLines() }.value
+            if self.isSerialConnected { self.modemLines = lines }
+        }
+    }
+
+    /// DTR / RTS の切り替え（Tera Term の TTL setdtr / setrts に当たる）。
+    func setLine(dtr: Bool? = nil, rts: Bool? = nil) {
+        guard let session = view.session, let now = modemLines else { return }
+        do {
+            try session.setLines(dtr: dtr ?? now.dtr, rts: rts ?? now.rts)
+            pollModem()
+        } catch {
+            report(error)
+        }
     }
 
     // MARK: その他
@@ -290,6 +386,8 @@ final class TerminalController: ObservableObject {
         case .closed:
             status = .disconnected
             isLogging = false
+            isLogPaused = false
+            stopModemPolling()
             // シェルが終わったらウィンドウを閉じる（ターミナル.app と同じ）。
             // SSH / Telnet / シリアルは、エラーや切断の理由が読めるよう窓を残す
             if target?.isLocalShell == true {

@@ -53,27 +53,34 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private var scrollerWidth: CGFloat { NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) }
 
     // フォントとセル寸法
-    private let font: CTFont
-    private let boldFont: CTFont
-    private let italicFont: CTFont
-    private let geometry: GridGeometry
-    private let ascent: CGFloat
+    private var font: CTFont
+    private var boldFont: CTFont
+    private var italicFont: CTFont
+    private var geometry: GridGeometry
+    private var ascent: CGFloat
+    /// カーソルの点滅で、今は見せているか
+    private var blinkOn = true
+    private var blinkTimer: Timer?
     private var colorCache: [UInt32: CGColor] = [:]
 
-    init() {
-        let base = NSFont(name: "Menlo", size: 14) ?? .monospacedSystemFont(ofSize: 14, weight: .regular)
-        font = base as CTFont
-        boldFont = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitBold, .traitBold) ?? font
-        italicFont = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitItalic, .traitItalic) ?? font
-
+    /// フォントからセルの寸法を求める。
+    private static func metrics(_ base: NSFont) -> (CTFont, CTFont, CTFont, GridGeometry, CGFloat) {
+        let font = base as CTFont
+        let bold = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitBold, .traitBold) ?? font
+        let italic = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitItalic, .traitItalic) ?? font
         var glyph = CGGlyph()
         var advance = CGSize.zero
         var ch: UniChar = 0x4D // "M"
         CTFontGetGlyphsForCharacters(font, &ch, &glyph, 1)
         CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, &advance, 1)
-        ascent = ceil(CTFontGetAscent(font))
+        let ascent = ceil(CTFontGetAscent(font))
         let height = ascent + ceil(CTFontGetDescent(font)) + ceil(CTFontGetLeading(font))
-        geometry = GridGeometry(cellWidth: Double(ceil(advance.width * 2) / 2), cellHeight: Double(height), padding: 4)
+        let geometry = GridGeometry(cellWidth: Double(ceil(advance.width * 2) / 2), cellHeight: Double(height), padding: 4)
+        return (font, bold, italic, geometry, ascent)
+    }
+
+    init() {
+        (font, boldFont, italicFont, geometry, ascent) = Self.metrics(AppearanceConfig.saved.font)
         super.init(frame: .zero)
         registerForDraggedTypes([.fileURL])
 
@@ -86,6 +93,15 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         addSubview(scroller)
 
         NotificationCenter.default.addObserver(
+            forName: .appearanceConfigChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.applyAppearance() }
+        }
+        blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.55, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.blink() }
+        }
+
+        NotificationCenter.default.addObserver(
             forName: .copyPasteConfigChanged, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -94,6 +110,30 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
                 self?.needsDisplay = true
             }
         }
+    }
+
+    // MARK: 見た目
+
+    /// 「設定 > ウィンドウ / フォント」を変えたとき。フォントが変われば行数・桁数も変わる。
+    private func applyAppearance() {
+        let config = AppearanceConfig.saved
+        (font, boldFont, italicFont, geometry, ascent) = Self.metrics(config.font)
+        textSession?.setAppearance(appearance: config.appearance)
+        urlCache = nil
+        gridSize = (0, 0)
+        setFrameSize(frame.size)
+        needsDisplay = true
+    }
+
+    private func blink() {
+        guard screen.cursor.blinking, window?.isKeyWindow == true else {
+            if !blinkOn { blinkOn = true; setNeedsDisplay(cursorRect().insetBy(dx: -cellW, dy: 0)) }
+            return
+        }
+        blinkOn.toggle()
+        var r = cursorRect()
+        r.size.width *= 2
+        setNeedsDisplay(r)
     }
 
     // MARK: ドラッグ＆ドロップ
@@ -206,6 +246,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         }
         self.bridge = bridge
         session = opened
+        opened.setAppearance(appearance: AppearanceConfig.saved.appearance)
         // 待っている間にウィンドウの大きさが変わっていれば合わせる
         let now = geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
         if now != size {
@@ -425,6 +466,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         var rect = cursorRect()
         if wide { rect.size.width *= 2 }
         let focused = window?.isKeyWindow == true && window?.firstResponder === self
+        if screen.cursor.blinking && focused && !blinkOn { return }
 
         ctx.setFillColor(color(screen.cursorColor))
         switch screen.cursor.shape {
@@ -463,6 +505,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     // MARK: - 入力
 
     private func send(_ key: Key, _ mods: Modifiers = Modifiers(shift: false, ctrl: false, alt: false)) {
+        // 打っている間は点滅させずに見せる
+        blinkOn = true
         if screen.scrollToBottom() { scrollChanged() }
         session?.key(key: key, mods: mods)
     }

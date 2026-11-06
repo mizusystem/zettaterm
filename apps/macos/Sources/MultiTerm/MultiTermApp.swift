@@ -47,6 +47,13 @@ struct TerminalWindow: View {
                 // スクロールバーにかからないように
                 .padding(.trailing, NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
             }
+            .overlay(alignment: .bottomTrailing) {
+                if let lines = controller.modemLines {
+                    SerialLinesBar(lines: lines, controller: controller)
+                        .padding(.trailing, NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy) + 6)
+                        .padding(.bottom, 6)
+                }
+            }
             .background(WindowAccessor { window in
                 WindowTabs.attach(window, asTab: request?.asTab ?? false)
                 if let sheet = controller.sheet {
@@ -76,6 +83,10 @@ struct TerminalWindow: View {
                 case .drop: DropView(controller: controller)
                 case .copyPasteSettings: CopyPasteSettingsView()
                 case .pasteConfirm: PasteConfirmView(controller: controller)
+                case .logSettings: LogSettingsView(controller: controller)
+                case .logComment: LogCommentView(controller: controller)
+                case .windowSettings: WindowSettingsView()
+                case .fontSettings: FontSettingsView()
                 }
             }
             .alert(
@@ -168,6 +179,15 @@ struct TerminalCommands: Commands {
                 .disabled(controller?.isConnected != true)
             Button(TT.text("MENU_FILE_STOPLOG", "ログを終了")) { controller?.stopLog() }
                 .disabled(controller?.isLogging != true)
+            Toggle(TT.text("MENU_FILE_PAUSELOG", "ログを中断"), isOn: Binding(
+                get: { controller?.isLogPaused == true },
+                set: { _ in controller?.toggleLogPause() }
+            ))
+            .disabled(controller?.isLogging != true)
+            Button(TT.text("MENU_FILE_COMMENTLOG", "ログにコメントを付加...")) { controller?.sheet = .logComment }
+                .disabled(controller?.isLogging != true)
+            Button(TT.text("MENU_FILE_VIEWLOG", "ログを表示")) { controller?.viewLog() }
+                .disabled(controller?.isLogging != true)
 
             Button(TT.text("MENU_FILE_SENDFILE", "ファイル送信...")) { controller?.beginSendFile() }
                 .disabled(controller?.isConnected != true || controller?.transfer != nil)
@@ -223,10 +243,29 @@ struct TerminalCommands: Commands {
         CommandMenu(TT.text("MENU_SETUP", "設定")) {
             Button(TT.text("MENU_SETUP_TERMINAL", "端末...")) { controller?.sheet = .terminalSettings }
                 .disabled(controller == nil)
+            Button(TT.text("MENU_SETUP_WINDOW", "ウィンドウ...")) { controller?.sheet = .windowSettings }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_SETUP_FONT", "フォント...")) { controller?.sheet = .fontSettings }
+                .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_SERIALPORT", "シリアルポート...")) { controller?.sheet = .serialSettings }
                 .disabled(controller == nil)
             Button(TT.text("DLG_TABSHEET_TITLE_COPYPASTE", "コピーと貼り付け") + "...") {
                 controller?.sheet = .copyPasteSettings
+            }
+            .disabled(controller == nil)
+            Button(TT.text("DLG_FOPT_TITLE", "ログ") + "...") { controller?.sheet = .logSettings }
+                .disabled(controller == nil)
+
+            Divider()
+
+            // 文字コードのクイック切り替え（Tera Term の TTXKanjiMenu）。受信と送信をまとめて変える
+            Menu(L("エンコーディング")) {
+                ForEach(TerminalConfig.CharsetChoice.allCases, id: \.self) { choice in
+                    Toggle(choice.label, isOn: Binding(
+                        get: { controller?.charset == choice },
+                        set: { _ in controller?.setCharset(choice) }
+                    ))
+                }
             }
             .disabled(controller == nil)
         }
@@ -256,6 +295,17 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_CONTROL_SENDBREAK", "ブレーク送信")) { controller?.sendBreak() }
                 .keyboardShortcut("b")
                 .disabled(controller?.isSerialConnected != true)
+            // 出す信号線。ESP32 などは DTR / RTS でリセットや書き込みモードに入るので、押したときだけ変える
+            Toggle("DTR", isOn: Binding(
+                get: { controller?.modemLines?.dtr == true },
+                set: { controller?.setLine(dtr: $0) }
+            ))
+            .disabled(controller?.modemLines == nil)
+            Toggle("RTS", isOn: Binding(
+                get: { controller?.modemLines?.rts == true },
+                set: { controller?.setLine(rts: $0) }
+            ))
+            .disabled(controller?.modemLines == nil)
 
             Divider()
 
@@ -283,6 +333,39 @@ private struct SearchOverlay: View {
     var body: some View {
         if search.visible {
             SearchBar(search: search, view: view)
+        }
+    }
+}
+
+/// シリアルの信号線の表示（右下）。CTS・DSR・CD・RI は相手の状態、DTR・RTS は押すと切り替わる。
+private struct SerialLinesBar: View {
+    let lines: ModemLines
+    @ObservedObject var controller: TerminalController
+
+    var body: some View {
+        HStack(spacing: 10) {
+            lamp("CTS", lines.cts)
+            lamp("DSR", lines.dsr)
+            lamp("CD", lines.cd)
+            lamp("RI", lines.ri)
+            Divider().frame(height: 12)
+            Button { controller.setLine(dtr: !lines.dtr) } label: { lamp("DTR", lines.dtr) }
+                .help(L("DTR を切り替える"))
+            Button { controller.setLine(rts: !lines.rts) } label: { lamp("RTS", lines.rts) }
+                .help(L("RTS を切り替える"))
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 10, design: .monospaced))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.regularMaterial, in: Capsule())
+        .opacity(0.9)
+    }
+
+    private func lamp(_ name: String, _ on: Bool) -> some View {
+        HStack(spacing: 3) {
+            Circle().fill(on ? Color.green : Color.gray.opacity(0.5)).frame(width: 7, height: 7)
+            Text(name)
         }
     }
 }

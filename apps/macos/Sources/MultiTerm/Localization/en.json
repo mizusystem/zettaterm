@@ -74,5 +74,19 @@
   "見つかりません": "Not found",
   "貼り付け": "Paste",
   "閉じる": "Close",
-  "空なら ~/.ssh/config の User か、この Mac のユーザー名": "If empty, User in ~/.ssh/config or your Mac user name"
+  "空なら ~/.ssh/config の User か、この Mac のユーザー名": "If empty, User in ~/.ssh/config or your Mac user name",
+  "&h はホスト名、&p はポート、&u はユーザー名。例：%@": "&h is the host, &p the port, &u your user name. Example: %@",
+  "DTR を切り替える": "Toggle DTR",
+  "RTS を切り替える": "Toggle RTS",
+  "スクロールバックを含めて、今画面に出ている内容を先に書きます。": "Writes what is on the screen now, including the scrollback, first.",
+  "%@ pt": "%@ pt",
+  "カーソルの形:": "Cursor shape:",
+  "カーソルを点滅させる": "Blink the cursor",
+  "カーソル色:": "Cursor color:",
+  "ブロック": "Block",
+  "下線": "Underline",
+  "文字色:": "Text color:",
+  "縦線": "Bar",
+  "背景色:": "Background:",
+  "配色:": "Theme:"
 }

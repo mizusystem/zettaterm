@@ -13,7 +13,7 @@ use alacritty_terminal::vte::ansi::{self, Color, Processor, Rgb};
 use crate::keys::{self, Key, KeyMode, Modifiers};
 use crate::palette;
 use crate::select::{self, Point, Selection, UrlMatch};
-use crate::types::{Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row};
+use crate::types::{Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row};
 
 /// VT 解釈の結果、Session が処理すべき出来事。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,6 +66,7 @@ pub struct Terminal {
     line_gens: Vec<u64>,
     /// 最後にリサイズした世代。これより前の `since` には全行を返す。
     resize_gen: u64,
+    scrollback_limit: usize,
 }
 
 impl Terminal {
@@ -89,6 +90,7 @@ impl Terminal {
             generation: 1,
             line_gens: vec![1; size.rows],
             resize_gen: 1,
+            scrollback_limit: scrollback,
         }
     }
 
@@ -243,6 +245,29 @@ impl Terminal {
         self.resize_gen = self.generation;
     }
 
+    /// 色とカーソル形状の既定を変える（「設定 > ウィンドウ」）。相手が OSC 4/10/11 で変えた色はそのまま。
+    pub fn set_appearance(&mut self, a: &Appearance) {
+        self.palette = palette::palette_for(a);
+        let shape = match a.cursor_shape {
+            CursorShape::Underline => ansi::CursorShape::Underline,
+            CursorShape::Beam => ansi::CursorShape::Beam,
+            CursorShape::Block | CursorShape::Hidden => ansi::CursorShape::Block,
+        };
+        let mut options = Config {
+            scrolling_history: self.scrollback_limit,
+            ..Config::default()
+        };
+        options.default_cursor_style = ansi::CursorStyle {
+            shape,
+            blinking: a.cursor_blink,
+        };
+        self.term.set_options(options);
+        // 色が変わるので全行を描き直させる
+        self.generation += 1;
+        self.resize_gen = self.generation;
+        let _ = self.drain_events();
+    }
+
     /// 端末の状態を初期化する（「コントロール > 端末リセット」、RIS）。
     pub fn reset(&mut self) {
         self.feed(b"\x1bc");
@@ -342,10 +367,11 @@ impl Terminal {
         if point.column.0 > 0 && grid[point].flags.contains(Flags::WIDE_CHAR_SPACER) {
             point.column -= 1;
         }
+        let style = self.term.cursor_style();
         let shape = if !self.term.mode().contains(TermMode::SHOW_CURSOR) {
             CursorShape::Hidden
         } else {
-            match self.term.cursor_style().shape {
+            match style.shape {
                 ansi::CursorShape::Underline => CursorShape::Underline,
                 ansi::CursorShape::Beam => CursorShape::Beam,
                 ansi::CursorShape::Hidden => CursorShape::Hidden,
@@ -356,6 +382,7 @@ impl Terminal {
             row: point.line.0.max(0) as u16,
             col: point.column.0 as u16,
             shape,
+            blinking: style.blinking,
         }
     }
 
@@ -581,6 +608,35 @@ mod tests {
         t.feed(b"\x1b[?1h");
         t.reset();
         assert_eq!(t.encode_key(&Key::Up, Modifiers::default()), b"\x1b[A");
+    }
+
+    #[test]
+    fn appearance_changes_colors_and_default_cursor() {
+        let mut t = Terminal::new(10, 2, 0);
+        t.feed(b"\x1b[31mR");
+        let mut a = Appearance {
+            foreground: 0x112233,
+            background: 0xFFFFFF,
+            cursor_shape: CursorShape::Beam,
+            cursor_blink: true,
+            ..Default::default()
+        };
+        a.ansi[1] = 0xAA0000;
+        let g = t.snapshot(0).generation;
+        t.set_appearance(&a);
+        let s = t.snapshot(g);
+        assert!(s.full);
+        assert_eq!((s.default_fg, s.default_bg), (0x112233, 0xFFFFFF));
+        assert_eq!(s.lines[0].cells[0].fg, 0xAA0000);
+        assert_eq!(
+            (s.cursor.shape, s.cursor.blinking),
+            (CursorShape::Beam, true)
+        );
+        // 相手が DECSCUSR で指定すればそちらが優先
+        t.feed(b"\x1b[2 q");
+        let c = t.snapshot(0).cursor;
+        assert_eq!((c.shape, c.blinking), (CursorShape::Block, false));
+        assert!(crate::themes().len() >= 4);
     }
 
     #[test]

@@ -3,6 +3,8 @@
 //! - バイナリ：受信バイトをそのまま書く
 //! - テキスト：エスケープシーケンスと制御文字を除き、改行は LF に揃える（Tera Term の「プレーンテキスト」）
 //! - タイムスタンプ：テキストのとき、各行の先頭に `[YYYY-MM-DD HH:MM:SS.mmm] ` を付ける
+//! - 中断・再開、コメントの書き込み、開始時に画面の内容を先に書く（LogIncludeScreenBuffer）
+//! - ファイル名のテンプレート（LogDefaultName。`&h` などと strftime）の展開
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};
@@ -33,6 +35,9 @@ pub struct LogOptions {
     pub format: LogFormat,
     /// 行頭のタイムスタンプ。テキストのときだけ効く
     pub timestamp: Option<TimestampKind>,
+    /// 始めるときに、スクロールバックを含む今の画面の内容を先に書く（Tera Term の
+    /// 「現在のバッファを最初に書き込む」）。問題が起きてからログを取り始めるときに使う
+    pub include_screen: bool,
 }
 
 impl LogOptions {
@@ -42,6 +47,7 @@ impl LogOptions {
             append: true,
             format: LogFormat::Text,
             timestamp: None,
+            include_screen: false,
         }
     }
 }
@@ -62,8 +68,20 @@ enum Strip {
     StringEscape,
 }
 
+/// 記録中のログの様子（Tera Term の loginfo、「ログ記録中」の表示）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LogStatus {
+    pub path: PathBuf,
+    /// このログで書いたバイト数（追記の前からあった分は含まない）
+    pub bytes: u64,
+    pub paused: bool,
+}
+
 pub(crate) struct Logger {
     out: BufWriter<File>,
+    path: PathBuf,
+    bytes: u64,
+    paused: bool,
     format: LogFormat,
     timestamp: Option<TimestampKind>,
     strip: Strip,
@@ -80,6 +98,9 @@ impl Logger {
             .open(&options.path)?;
         Ok(Self {
             out: BufWriter::new(file),
+            path: options.path.clone(),
+            bytes: 0,
+            paused: false,
             format: options.format,
             timestamp: options.timestamp,
             strip: Strip::Ground,
@@ -90,12 +111,18 @@ impl Logger {
     /// `raw` は受信したバイト列そのまま、`decoded` は文字コード変換後（UTF-8）。
     /// バイナリは `raw` を、テキストは `decoded` を書く（JIS の ESC $ B などをエスケープとして消さないように）。
     pub(crate) fn write(&mut self, raw: &[u8], decoded: &[u8]) -> io::Result<()> {
+        if self.paused {
+            return Ok(());
+        }
         let bytes = match self.format {
             LogFormat::Binary => raw,
             LogFormat::Text => decoded,
         };
         match self.format {
-            LogFormat::Binary => self.out.write_all(bytes)?,
+            LogFormat::Binary => {
+                self.out.write_all(bytes)?;
+                self.bytes += bytes.len() as u64;
+            }
             LogFormat::Text => {
                 let mut text = Vec::with_capacity(bytes.len());
                 for &b in bytes {
@@ -113,10 +140,43 @@ impl Logger {
                     }
                 }
                 self.out.write_all(&text)?;
+                self.bytes += text.len() as u64;
             }
         }
         // ログは途中で落ちても残っていてほしいので、受信のたびに書き出す
         self.out.flush()
+    }
+
+    /// 文字列をそのまま書く（コメント、開始時の画面の内容）。中断中でも書く。
+    /// 受信の途中の行に割り込まないよう、行の途中なら先に改行する。
+    pub(crate) fn write_text(&mut self, text: &str) -> io::Result<()> {
+        let mut out = String::new();
+        if !self.at_line_start {
+            out.push('\n');
+        }
+        for line in text.lines() {
+            if let (LogFormat::Text, Some(kind)) = (self.format, self.timestamp) {
+                out.push_str(&timestamp(kind));
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        self.out.write_all(out.as_bytes())?;
+        self.bytes += out.len() as u64;
+        self.at_line_start = true;
+        self.out.flush()
+    }
+
+    pub(crate) fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+    }
+
+    pub(crate) fn status(&self) -> LogStatus {
+        LogStatus {
+            path: self.path.clone(),
+            bytes: self.bytes,
+            paused: self.paused,
+        }
     }
 
     /// テキストとして残すバイトなら返す。
@@ -180,6 +240,67 @@ fn timestamp(kind: TimestampKind) -> String {
         TimestampKind::Utc => chrono::Utc::now().format(FMT).to_string(),
     }
 }
+
+/// ファイル名のテンプレートに入れる値。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LogNameVars {
+    /// `&h`：接続先のホスト名（シリアルならポート名）
+    pub host: String,
+    /// `&p`：TCP のポート番号か、シリアルのポート名
+    pub port: String,
+    /// `&u`：このコンピュータのユーザー名
+    pub user: String,
+}
+
+/// ファイル名に使えない文字を `_` にする（シリアルの `/dev/cu.x` など）。
+fn file_safe(s: &str) -> String {
+    let s = s.rsplit('/').next().unwrap_or(s);
+    s.chars()
+        .map(|c| {
+            if c.is_control() || "/\\:*?\"<>|".contains(c) {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// Tera Term の LogDefaultName を展開する。`&h` `&p` `&u` を置き換え、`%Y%m%d_%H%M%S` などの
+/// strftime の書式を `now` で埋める。書式が誤っていれば `%` の部分はそのまま残す。
+pub fn expand_log_name<Tz: chrono::TimeZone>(
+    template: &str,
+    vars: &LogNameVars,
+    now: &chrono::DateTime<Tz>,
+) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    use chrono::format::{Item, StrftimeItems};
+    let replaced = template
+        .replace("&h", &file_safe(&vars.host))
+        .replace("&p", &file_safe(&vars.port))
+        .replace("&u", &file_safe(&vars.user));
+    let items: Vec<Item> = StrftimeItems::new(&replaced).collect();
+    if items.iter().any(|i| matches!(i, Item::Error)) {
+        return replaced;
+    }
+    now.format_with_items(items.into_iter()).to_string()
+}
+
+/// 今の時刻（ローカル時刻）で展開する。`vars.user` が空なら環境変数のユーザー名を入れる。
+pub fn expand_log_name_now(template: &str, vars: &LogNameVars) -> String {
+    let mut vars = vars.clone();
+    if vars.user.is_empty() {
+        vars.user = std::env::var("USER")
+            .or_else(|_| std::env::var("USERNAME"))
+            .unwrap_or_default();
+    }
+    expand_log_name(template, &vars, &chrono::Local::now())
+}
+
+/// Tera Term の LogDefaultName の既定に近い形（ホスト名と日時）。
+pub const DEFAULT_LOG_NAME: &str = "&h_%Y%m%d_%H%M%S.log";
 
 #[cfg(test)]
 mod tests {
@@ -246,5 +367,45 @@ mod tests {
             "{out}"
         );
         assert!(lines[1].ends_with("] c"), "{out}");
+    }
+
+    #[test]
+    fn pause_comment_and_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = LogOptions::new(dir.path().join("e.log"));
+        let mut logger = Logger::open(&opts).unwrap();
+        logger.write(b"one\r\npart", b"one\r\npart").unwrap();
+        logger.write_text("-- comment --").unwrap();
+        logger.set_paused(true);
+        logger.write(b"hidden\n", b"hidden\n").unwrap();
+        assert!(logger.status().paused);
+        logger.set_paused(false);
+        logger.write(b"two\n", b"two\n").unwrap();
+        let st = logger.status();
+        drop(logger);
+        let out = std::fs::read_to_string(&opts.path).unwrap();
+        assert_eq!(out, "one\npart\n-- comment --\ntwo\n");
+        assert_eq!(st.bytes, out.len() as u64);
+    }
+
+    #[test]
+    fn log_name_template() {
+        use chrono::TimeZone;
+        let now = chrono::Utc.with_ymd_and_hms(2026, 11, 6, 9, 5, 3).unwrap();
+        let vars = LogNameVars {
+            host: "192.168.1.1".into(),
+            port: "/dev/cu.usbserial-10".into(),
+            user: "kt".into(),
+        };
+        assert_eq!(
+            expand_log_name(DEFAULT_LOG_NAME, &vars, &now),
+            "192.168.1.1_20261106_090503.log"
+        );
+        assert_eq!(
+            expand_log_name("&u-&p-%H%M.txt", &vars, &now),
+            "kt-cu.usbserial-10-0905.txt"
+        );
+        // 誤った書式は展開しない（落ちない）
+        assert_eq!(expand_log_name("a%Q&h", &vars, &now), "a%Q192.168.1.1");
     }
 }

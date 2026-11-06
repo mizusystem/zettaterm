@@ -9,7 +9,7 @@ final class ScreenBufferTests: XCTestCase {
     }
 
     private func snapshot(gen: UInt64, rows: UInt16, full: Bool, lines: [Row], history: UInt32 = 0,
-                          cursor: Cursor = Cursor(row: 0, col: 0, shape: .block)) -> GridSnapshot {
+                          cursor: Cursor = Cursor(row: 0, col: 0, shape: .block, blinking: false)) -> GridSnapshot {
         GridSnapshot(generation: gen, cols: 10, rows: rows, full: full, lines: lines, cursor: cursor,
                      history: history, altScreen: false, defaultFg: 0xFFFFFF, defaultBg: 0, cursorColor: 0xCCCCCC)
     }
@@ -27,7 +27,7 @@ final class ScreenBufferTests: XCTestCase {
         var s = ScreenBuffer()
         s.apply(snapshot(gen: 1, rows: 3, full: true, lines: [row(0, "a"), row(1, "b"), row(2, "c")]))
         let changed = s.apply(snapshot(gen: 2, rows: 3, full: false, lines: [row(2, "z")],
-                                       cursor: Cursor(row: 1, col: 0, shape: .block)))
+                                       cursor: Cursor(row: 1, col: 0, shape: .block, blinking: false)))
         XCTAssertEqual(changed, [0, 1, 2])
         XCTAssertEqual(s.lines[2].cells.first?.text, "z")
         XCTAssertEqual(s.lines[0].cells.first?.text, "a")
