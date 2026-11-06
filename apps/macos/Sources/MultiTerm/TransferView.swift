@@ -31,14 +31,20 @@ struct ActiveTransfer {
     let send: Bool
     let poll: () -> TransferProgress
     let cancel: () -> Void
+    /// リトライ数を出すか（SCP は TCP の上なので出さない）
+    let showsRetries: Bool
     let started = Date()
     /// 終わった時刻（経過時間をそこで止める）
     var finished: Date?
     var progress: TransferProgress
 
-    init(title: String, send: Bool, poll: @escaping () -> TransferProgress, cancel: @escaping () -> Void) {
+    init(
+        title: String, send: Bool, showsRetries: Bool = true,
+        poll: @escaping () -> TransferProgress, cancel: @escaping () -> Void
+    ) {
         self.title = title
         self.send = send
+        self.showsRetries = showsRetries
         self.poll = poll
         self.cancel = cancel
         progress = poll()
@@ -53,8 +59,12 @@ extension TerminalController {
         panel.allowsMultipleSelection = kind.batch
         panel.canChooseDirectories = false
         panel.message = "\(kind.rawValue) で送るファイルを選んでください"
+        // XMODEM はブロックの大きさ（128 / 1K）とチェックサム / CRC を選べる（Tera Term の「オプション」）
+        let popup = kind == .xmodem ? Self.xmodemOptions(send: true) : nil
+        if let popup { panel.accessoryView = Self.accessory(popup); panel.isAccessoryViewDisclosed = true }
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
-        startTransfer(kind, send: true, files: panel.urls.map(\.path), destination: nil)
+        let proto = popup.map { Self.xmodemProtocol(send: true, index: $0.indexOfSelectedItem) }
+        startTransfer(kind, send: true, files: panel.urls.map(\.path), destination: nil, protocol: proto)
     }
 
     /// 「転送 > ○○ > 受信...」。保存先を選んで受け取る。
@@ -65,8 +75,11 @@ extension TerminalController {
             let panel = NSSavePanel()
             panel.directoryURL = Self.downloads
             panel.message = "XMODEM で受け取るファイルの保存先"
+            let popup = Self.xmodemOptions(send: false)
+            panel.accessoryView = Self.accessory(popup)
             guard panel.runModal() == .OK, let url = panel.url else { return }
-            startTransfer(kind, send: false, files: [], destination: url.path)
+            let proto = Self.xmodemProtocol(send: false, index: popup.indexOfSelectedItem)
+            startTransfer(kind, send: false, files: [], destination: url.path, protocol: proto)
         } else {
             let panel = NSOpenPanel()
             panel.canChooseFiles = false
@@ -77,6 +90,72 @@ extension TerminalController {
             panel.message = "\(kind.rawValue) で受け取るファイルの保存先フォルダ"
             guard panel.runModal() == .OK, let url = panel.url else { return }
             startTransfer(kind, send: false, files: [], destination: url.path)
+        }
+    }
+
+    // MARK: XMODEM のオプション
+
+    /// 送信はチェックサム / CRC / 1K、受信はチェックサム / CRC。前回の選択を覚えておく。
+    private static func xmodemOptions(send: Bool) -> NSPopUpButton {
+        let popup = NSPopUpButton(frame: .zero, pullsDown: false)
+        var titles = [TT.text("DLG_XOPT_CHECKSUM", "チェックサム"), TT.text("DLG_XOPT_CRC", "CRC")]
+        if send { titles.append(TT.text("DLG_XOPT_1K", "1K")) }
+        popup.addItems(withTitles: titles)
+        let key = send ? "xmodem.sendOption" : "xmodem.receiveOption"
+        let saved = UserDefaults.standard.object(forKey: key) as? Int ?? 1
+        popup.selectItem(at: min(saved, titles.count - 1))
+        return popup
+    }
+
+    static func xmodemProtocol(send: Bool, index: Int) -> TransferProtocol {
+        UserDefaults.standard.set(index, forKey: send ? "xmodem.sendOption" : "xmodem.receiveOption")
+        switch index {
+        case 0: return .xModem(crc: false, oneK: false)
+        case 2: return .xModem(crc: true, oneK: true)
+        default: return .xModem(crc: true, oneK: false)
+        }
+    }
+
+    private static func accessory(_ popup: NSPopUpButton) -> NSView {
+        let label = NSTextField(labelWithString: TT.text("DLG_XOPT", "オプション") + ":")
+        let stack = NSStackView(views: [label, popup])
+        stack.orientation = .horizontal
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        return stack
+    }
+
+    /// XON/XOFF のシリアルで XMODEM / YMODEM を始めようとしたら確かめる。
+    /// 0x11 / 0x13 がフロー制御として OS に消され、転送が壊れるため（ZMODEM と Kermit は制御文字を逃がすので大丈夫）。
+    private func confirmFlowControl(_ kind: TransferKind) -> Bool {
+        guard kind == .xmodem || kind == .ymodem, isSerialConnected, serialConfig.flow == .xonXoff else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "フロー制御が XON/XOFF になっています"
+        alert.informativeText = "\(kind.rawValue) はデータをそのまま送るので、ファイルの中の 0x11 / 0x13 がフロー制御として扱われ、転送が失敗します。"
+            + "「設定 > シリアルポート」でフロー制御を「なし」か「RTS/CTS」にしてから転送してください。"
+        alert.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
+        alert.addButton(withTitle: "このまま転送")
+        return alert.runModal() == .alertSecondButtonReturn
+    }
+
+    /// 「ファイル > ファイル送信...」。プロトコルを使わず中身をそのまま流す（バイナリなら一切変換しない）。
+    func beginSendFile() {
+        guard isConnected, let session = view.session else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.message = TT.text("MENU_FILE_SENDFILE", "ファイル送信")
+        let binary = NSButton(checkboxWithTitle: TT.text("DLG_SENDFILE_BINARY", "バイナリ"), target: nil, action: nil)
+        binary.state = UserDefaults.standard.bool(forKey: "sendFile.binary") ? .on : .off
+        let box = NSStackView(views: [binary])
+        box.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        panel.accessoryView = box
+        panel.isAccessoryViewDisclosed = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        UserDefaults.standard.set(binary.state == .on, forKey: "sendFile.binary")
+        do {
+            try session.sendFile(path: url.path, binary: binary.state == .on)
+        } catch {
+            errorMessage = Self.describe(error)
         }
     }
 
@@ -98,10 +177,13 @@ extension TerminalController {
         }
     }
 
-    func startTransfer(_ kind: TransferKind, send: Bool, files: [String], destination: String?) {
-        guard let session = view.session else { return }
+    func startTransfer(
+        _ kind: TransferKind, send: Bool, files: [String], destination: String?, protocol proto: TransferProtocol? = nil
+    ) {
+        guard let session = view.session, confirmFlowControl(kind) else { return }
         do {
-            let handle = try session.startTransfer(protocol: kind.core, send: send, files: files, destination: destination)
+            let handle = try session.startTransfer(
+                protocol: proto ?? kind.core, send: send, files: files, destination: destination)
             let title = "\(send ? TT.text("DLG_FILETRANS_TITLE", "ファイル送信") : "ファイル受信")（\(kind.rawValue)）"
             show(ActiveTransfer(
                 title: title, send: send,
@@ -165,6 +247,20 @@ struct TransferView: View {
                             Text(elapsed(t.started, until: t.finished ?? context.date)).monospacedDigit()
                         }
                     }
+                    GridRow {
+                        Text("速度:")
+                        TimelineView(.periodic(from: t.started, by: 1)) { context in
+                            Text(rateText(t, now: t.finished ?? context.date)).monospacedDigit()
+                        }
+                    }
+                    if t.showsRetries {
+                        GridRow {
+                            Text("リトライ:")
+                            Text("\(t.progress.retries) 回")
+                                .monospacedDigit()
+                                .foregroundStyle(t.progress.retries > 0 ? .orange : .primary)
+                        }
+                    }
                     if t.progress.filesDone > 0 {
                         GridRow {
                             Text("完了:")
@@ -217,6 +313,22 @@ struct TransferView: View {
         let done = f.string(fromByteCount: Int64(p.bytes))
         guard let total = p.total else { return done }
         return "\(done) / \(f.string(fromByteCount: Int64(total)))"
+    }
+
+    /// 「12.3 KB/s（残り 0:42）」。残りは大きさがわかっていて、転送中のときだけ
+    private func rateText(_ t: ActiveTransfer, now: Date) -> String {
+        let secs = now.timeIntervalSince(t.started)
+        // 転送中は 1 秒たつまで出さない（ぶれるので）。終わったら実際の時間で平均を出す
+        guard t.progress.bytes > 0, secs > 0, secs >= 1 || t.finished != nil else { return "—" }
+        let rate = Double(t.progress.bytes) / secs
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        var text = "\(f.string(fromByteCount: Int64(rate)))/s"
+        if t.progress.status == .running, let total = t.progress.total, total > t.progress.bytes, rate > 0 {
+            let left = Int(Double(total - t.progress.bytes) / rate)
+            text += String(format: "（残り %d:%02d）", left / 60, left % 60)
+        }
+        return text
     }
 
     private func elapsed(_ start: Date, until end: Date) -> String {

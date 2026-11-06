@@ -481,6 +481,7 @@ impl Receiver {
             Event::BadCrc => match self.state {
                 RState::Receiving | RState::WaitData => {
                     self.state = RState::Garbage;
+                    self.progress.retries += 1;
                     hex_header(ZRPOS, pos_bytes(self.written))
                 }
                 RState::FileInfo => {
@@ -515,6 +516,7 @@ impl Receiver {
                 if pos != self.written {
                     // 位置が合わない：こちらの位置から送り直してもらう
                     self.state = RState::Garbage;
+                    self.progress.retries += 1;
                     return hex_header(ZRPOS, pos_bytes(self.written));
                 }
                 self.state = RState::Receiving;
@@ -639,6 +641,7 @@ impl Transfer for Receiver {
             return Vec::new();
         }
         self.retries += 1;
+        self.progress.retries += 1;
         if self.retries > RETRIES {
             return self.fail("timed out");
         }
@@ -842,6 +845,10 @@ impl Sender {
                 self.next_file(now)
             }
             (ZRPOS, SState::WaitRpos | SState::Streaming | SState::WaitEofAck) => {
+                // 送っている途中の ZRPOS は、相手が誤りを見つけて送り直しを求めたもの
+                if !matches!(self.state, SState::WaitRpos) {
+                    self.progress.retries += 1;
+                }
                 self.retries = 0;
                 self.resume(pos, now)
             }
@@ -910,6 +917,7 @@ impl Transfer for Sender {
             return Vec::new();
         }
         self.retries += 1;
+        self.progress.retries += 1;
         if self.retries > RETRIES {
             return self.fail("timed out");
         }

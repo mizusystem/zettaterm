@@ -465,3 +465,45 @@ fn zmodem_start_is_detected() {
     assert!(wait_until(|| screen_text(&session).contains("$ sz file")));
     assert!(!screen_text(&session).contains("B0000"));
 }
+
+/// ファイル送信：バイナリは 1 バイトも変えずに送り、テキストは改行を「送信」の改行コードに揃える。
+#[test]
+fn send_file_binary_is_untouched_and_text_follows_newline_setting() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let options = SessionOptions {
+        size: WindowSize::new(20, 4),
+        terminal: mt_core::TerminalSettings {
+            newline_send: mt_core::NewlineSend::CrLf,
+            charset_send: mt_core::Charset::ShiftJis,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let session = Session::open(Box::new(transport), options, rec.clone()).unwrap();
+
+    let firmware: Vec<u8> = (0..=255u8)
+        .chain(b"\r\n\n\x11\x13".iter().copied())
+        .collect();
+    session.send_file(firmware.clone(), true);
+    let mut got = Vec::new();
+    assert!(wait_until(|| {
+        while let Some(b) = remote.recv(Duration::from_millis(10)) {
+            got.extend(b);
+        }
+        got.len() >= firmware.len()
+    }));
+    assert_eq!(got, firmware);
+
+    session.send_file("a\nb\r\n日本".as_bytes().to_vec(), false);
+    let mut got = Vec::new();
+    let want = [&b"a\r\nb\r\n"[..], &[0x93, 0xfa, 0x96, 0x7b]].concat();
+    assert!(wait_until(|| {
+        while let Some(b) = remote.recv(Duration::from_millis(10)) {
+            got.extend(b);
+        }
+        got.len() >= want.len()
+    }));
+    assert_eq!(got, want);
+    session.close();
+}

@@ -28,6 +28,7 @@ impl ScpHandle {
             bytes: p.bytes,
             total: p.total,
             files_done: p.files_done as u32,
+            retries: 0,
             saved: p
                 .saved
                 .into_iter()

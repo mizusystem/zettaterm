@@ -97,6 +97,54 @@ impl ByteDivert for Divert {
 
 /// 転送を始めて、進み具合のダイアログを出す。
 pub fn start(parent: &gtk::Window, session: &Arc<Session>, kind: Kind, direction: Direction) {
+    start_with(parent, session, kind, kind.protocol(), direction);
+}
+
+/// XMODEM のオプション（送信はチェックサム / CRC / 1K、受信はチェックサム / CRC）を尋ねる。
+pub fn xmodem_options(parent: &gtk::Window, send: bool, done: impl FnOnce(Protocol) + 'static) {
+    use gtk::prelude::*;
+    let (win, content, row) = crate::dialogs::modal(parent, &tt("DLG_XOPT", "オプション"));
+    let sum = gtk::CheckButton::with_label(&tt("DLG_XOPT_CHECKSUM", "チェックサム"));
+    let crc = gtk::CheckButton::with_label(&tt("DLG_XOPT_CRC", "CRC"));
+    let one_k = gtk::CheckButton::with_label(&tt("DLG_XOPT_1K", "1K"));
+    crc.set_group(Some(&sum));
+    one_k.set_group(Some(&sum));
+    crc.set_active(true);
+    content.append(&sum);
+    content.append(&crc);
+    if send {
+        content.append(&one_k);
+    }
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let ok = gtk::Button::with_label(&tt("BTN_OK", "OK"));
+    ok.add_css_class("suggested-action");
+    row.append(&cancel);
+    row.append(&ok);
+    let w = win.clone();
+    cancel.connect_clicked(move |_| w.close());
+    let w = win.clone();
+    let done = std::cell::RefCell::new(Some(done));
+    ok.connect_clicked(move |_| {
+        let p = Protocol::XModem {
+            crc: !sum.is_active(),
+            one_k: one_k.is_active(),
+        };
+        w.close();
+        if let Some(f) = done.borrow_mut().take() {
+            f(p);
+        }
+    });
+    win.set_default_widget(Some(&ok));
+    win.present();
+}
+
+pub fn start_with(
+    parent: &gtk::Window,
+    session: &Arc<Session>,
+    kind: Kind,
+    protocol: Protocol,
+    direction: Direction,
+) {
     let send = matches!(direction, Direction::Send(_));
     let title = format!(
         "{}（{}）",
@@ -107,7 +155,7 @@ pub fn start(parent: &gtk::Window, session: &Arc<Session>, kind: Kind, direction
         },
         kind.name()
     );
-    let transfer = match mt_xfer::new_transfer(kind.protocol(), direction) {
+    let transfer = match mt_xfer::new_transfer(protocol, direction) {
         Ok(t) => t,
         Err(e) => {
             crate::dialogs::message(parent, &title, &e.to_string(), || {});
@@ -138,6 +186,7 @@ pub fn start(parent: &gtk::Window, session: &Arc<Session>, kind: Kind, direction
                 file: p.file,
                 bytes: p.bytes,
                 total: p.total,
+                retries: Some(p.retries),
                 state,
             }
         },

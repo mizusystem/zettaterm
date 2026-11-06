@@ -39,6 +39,10 @@ fn menu() -> gio::Menu {
         Some(&tt("MENU_FILE_STOPLOG", "ログを終了")),
         Some("win.log-stop"),
     );
+    file.append(
+        Some(&tt("MENU_FILE_SENDFILE", "ファイル送信...")),
+        Some("win.send-file"),
+    );
     file.append(Some("SSH SCP..."), Some("win.scp"));
     file.append(
         Some(&tt("MENU_FILE_DISCONNECT", "接続断")),

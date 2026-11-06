@@ -190,15 +190,15 @@ Windows には Tera Term 本体があるので、ネイティブの Windows 版�
 
 ### ネットワーク機器向けの追加予定（2026-11-06 追加）
 
-シリアルコンソールから機器のファームウェアを入れ替える用途を重視する。マクロの転送コマンドは Phase 4 の TTL サブセットに含め、それ以外は Phase 4 の後、Phase 5 の前に入れる。
+シリアルコンソールから機器のファームウェアを入れ替える用途を重視する。マクロの転送コマンドは Phase 4 の TTL サブセットに含め、それ以外は Phase 4 の後、Phase 5 の前に入れた（2026-11-06。macOS と GTK の両方）。ドラッグ＆ドロップは Tera Term の選択肢（SCP / ファイル送信 / ファイル名の貼り付け）に、プロトコル転送と .ttl のマクロ実行を足した。
 
 | 項目 | 今の状態 | 追加するもの | 時期 |
 | --- | --- | --- | --- |
-| マクロからファイル転送 | なし | TTL の `xmodemsend` / `xmodemrecv` / `ymodemsend` / `ymodemrecv` / `zmodemsend` / `zmodemrecv` / `kermitsend` / `kermitrecv` / `sendfile`（結果は `result`） | Phase 4 |
-| シリアルから XMODEM でファーム送信 | 動く（128 バイト CRC 固定、実機は未確認） | 128 / 1K とチェックサム / CRC の選択、XON/XOFF のまま転送するときの警告、実機（ROMMON など）での確認 | Phase 4 の後 |
-| 進捗・速度・リトライ数 | ファイル名、転送済み / 全体、経過時間、バー | 速度、残り時間、累計リトライ数（`mt_xfer::Progress` と ffi の `TransferProgress` に足す） | Phase 4 の後 |
-| バイナリを改変せずに送信 | プロトコル転送と SCP は変換・遅延なしで送る | Tera Term の「ファイル送信」（プロトコルなし。バイナリ指定で文字コード・改行変換を通さない。テキストは行ごとの遅延つき） | Phase 4 の後 |
-| ドラッグ＆ドロップ送信 | SCP ダイアログの中だけ | 端末ウィンドウへのドロップで送り方を選ぶダイアログ（`DLG_DANDD_*`：SCP / ファイル送信 / 各プロトコル / ファイル名の貼り付け） | Phase 4 の後 |
+| マクロからファイル転送 | なし | TTL の `xmodemsend` / `xmodemrecv` / `ymodemsend` / `ymodemrecv` / `zmodemsend` / `zmodemrecv` / `kermitsend` / `kermitrecv` / `sendfile`（結果は `result`） | 済（Phase 4） |
+| シリアルから XMODEM でファーム送信 | 動く（128 バイト CRC 固定、実機は未確認） | 128 / 1K とチェックサム / CRC の選択、XON/XOFF のまま転送するときの警告、実機（ROMMON など）での確認 | 済（実機での確認は未） |
+| 進捗・速度・リトライ数 | ファイル名、転送済み / 全体、経過時間、バー | 速度、残り時間、累計リトライ数（`mt_xfer::Progress` と ffi の `TransferProgress` に足す） | 済 |
+| バイナリを改変せずに送信 | プロトコル転送と SCP は変換・遅延なしで送る | Tera Term の「ファイル送信」（プロトコルなし。バイナリ指定で文字コード・改行変換を通さない。テキストは行ごとの遅延つき） | 済 |
+| ドラッグ＆ドロップ送信 | SCP ダイアログの中だけ | 端末ウィンドウへのドロップで送り方を選ぶダイアログ（`DLG_DANDD_*`：SCP / ファイル送信 / 各プロトコル / ファイル名の貼り付け） | 済 |
 
 ## Claude Code サブエージェント割り振り
 

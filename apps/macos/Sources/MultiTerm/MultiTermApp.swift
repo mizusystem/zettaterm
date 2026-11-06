@@ -68,6 +68,7 @@ struct TerminalWindow: View {
                 case .auth: AuthPromptView(controller: controller)
                 case .transfer: TransferView(controller: controller)
                 case .scp: ScpView(controller: controller)
+                case .drop: DropView(controller: controller)
                 }
             }
             .alert(
@@ -159,6 +160,9 @@ struct TerminalCommands: Commands {
                 .disabled(controller?.isConnected != true)
             Button(TT.text("MENU_FILE_STOPLOG", "ログを終了")) { controller?.stopLog() }
                 .disabled(controller?.isLogging != true)
+
+            Button(TT.text("MENU_FILE_SENDFILE", "ファイル送信...")) { controller?.beginSendFile() }
+                .disabled(controller?.isConnected != true || controller?.transfer != nil)
 
             // TTSSH が「ファイル」メニューに足す項目
             Button("SSH SCP...") { controller?.sheet = .scp }

@@ -902,21 +902,7 @@ impl<'h> Interp<'h> {
                 };
                 let data = std::fs::read(self.path(&file))
                     .map_err(|e| format!("sendfile: {file}: {e}"))?;
-                let s = self.session_ref()?;
-                if binary {
-                    s.write(data);
-                } else {
-                    let text = String::from_utf8_lossy(&data);
-                    let mut lines = text.split('\n').peekable();
-                    while let Some(l) = lines.next() {
-                        let l = l.strip_suffix('\r').unwrap_or(l);
-                        if lines.peek().is_some() {
-                            s.send_line(l);
-                        } else if !l.is_empty() {
-                            s.send_text(l);
-                        }
-                    }
-                }
+                self.session_ref()?.send_file(data, binary);
             }
 
             // ---- ファイル転送

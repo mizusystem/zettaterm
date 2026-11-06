@@ -237,6 +237,21 @@ impl Session {
         self.send_user(bytes);
     }
 
+    /// ファイルの中身を送る（Tera Term の「ファイル送信」、TTL の sendfile）。
+    /// `binary` なら一切変換せずにそのまま送る（ファームウェアなど）。テキストなら改行を「送信」の
+    /// 改行コードに揃え、送信の文字コードに変換する。どちらも送信遅延は効く。
+    pub fn send_file(&self, data: Vec<u8>, binary: bool) {
+        if binary {
+            self.write(data);
+            return;
+        }
+        let text = String::from_utf8_lossy(&data)
+            .replace("\r\n", "\r")
+            .replace('\n', "\r");
+        let bytes = self.inner.newline_send().apply(text.into_bytes());
+        self.send_user(bytes);
+    }
+
     /// 相手には送らず、自分の画面にだけ文字を出す（TTL の dispstr）。
     pub fn display_local(&self, text: &str) {
         self.inner.echo(text.as_bytes());

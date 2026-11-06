@@ -21,6 +21,8 @@ pub struct Snapshot {
     pub file: Option<String>,
     pub bytes: u64,
     pub total: Option<u64>,
+    /// 再送の累計（SCP のように数えないものは None）
+    pub retries: Option<u32>,
     pub state: State,
 }
 
@@ -36,8 +38,10 @@ pub fn show(
     let file = gtk::Label::new(None);
     let bytes = gtk::Label::new(None);
     let elapsed = gtk::Label::new(None);
+    let rate = gtk::Label::new(None);
+    let retries = gtk::Label::new(None);
     let status = gtk::Label::new(Some(if send { "送信中…" } else { "受信中…" }));
-    for l in [&file, &bytes, &elapsed, &status] {
+    for l in [&file, &bytes, &elapsed, &rate, &retries, &status] {
         l.set_xalign(0.0);
         l.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     }
@@ -46,6 +50,8 @@ pub fn show(
         file.upcast_ref::<gtk::Widget>(),
         bytes.upcast_ref(),
         elapsed.upcast_ref(),
+        rate.upcast_ref(),
+        retries.upcast_ref(),
         bar.upcast_ref(),
         status.upcast_ref(),
     ] {
@@ -101,6 +107,25 @@ pub fn show(
             secs / 60,
             secs % 60
         ));
+        // 速度と残り時間（大きさがわかっていて、転送中のときだけ）
+        let secs_f = started.elapsed().as_secs_f64();
+        // 転送中は 1 秒たつまで出さない（ぶれるので）。終わったら実際の時間で平均を出す
+        let finished_now = !matches!(p.state, State::Running);
+        if p.bytes > 0 && secs_f > 0.0 && (secs_f >= 1.0 || finished_now) {
+            let per_sec = p.bytes as f64 / secs_f;
+            let mut t = format!("速度: {}/s", fmt(per_sec as u64));
+            if matches!(p.state, State::Running)
+                && let Some(total) = p.total.filter(|&t| t > p.bytes)
+            {
+                let left = ((total - p.bytes) as f64 / per_sec) as u64;
+                t.push_str(&format!("（残り {}:{:02}）", left / 60, left % 60));
+            }
+            rate.set_text(&t);
+        }
+        retries.set_visible(p.retries.is_some());
+        if let Some(n) = p.retries {
+            retries.set_text(&format!("リトライ: {n} 回"));
+        }
         match p.total {
             Some(t) if t > 0 => bar.set_fraction((p.bytes as f64 / t as f64).min(1.0)),
             _ => bar.pulse(),

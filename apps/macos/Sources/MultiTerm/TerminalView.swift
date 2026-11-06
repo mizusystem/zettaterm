@@ -9,6 +9,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var onState: ((SessionState) -> Void)?
     var onError: ((Error) -> Void)?
     var onTransferRequest: ((TransferRequest) -> Void)?
+    /// ファイルがドロップされた（Tera Term の「ファイル ドラッグ&ドロップ」）
+    var onDropFiles: (([URL]) -> Void)?
 
     private(set) var session: Session?
     /// 次に接続するときの改行コードとローカルエコー
@@ -47,6 +49,26 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         let height = ascent + ceil(CTFontGetDescent(font)) + ceil(CTFontGetLeading(font))
         geometry = GridGeometry(cellWidth: Double(ceil(advance.width * 2) / 2), cellHeight: Double(height), padding: 4)
         super.init(frame: .zero)
+        registerForDraggedTypes([.fileURL])
+    }
+
+    // MARK: ドラッグ＆ドロップ
+
+    private func droppedFiles(_ info: NSDraggingInfo) -> [URL] {
+        let urls = info.draggingPasteboard.readObjects(
+            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
+        return urls.filter { !$0.hasDirectoryPath }
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        droppedFiles(sender).isEmpty || onDropFiles == nil ? [] : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let files = droppedFiles(sender)
+        guard !files.isEmpty, let onDropFiles else { return false }
+        onDropFiles(files)
+        return true
     }
 
     @available(*, unavailable)

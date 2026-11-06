@@ -510,6 +510,15 @@ impl Session {
         self.inner.is_transferring()
     }
 
+    /// ファイルの中身を送る（Tera Term の「ファイル送信」）。`binary` なら一切変換しない。
+    pub fn send_file(&self, path: String, binary: bool) -> Result<(), MtError> {
+        let data = std::fs::read(&path).map_err(|e| MtError::Io {
+            message: format!("{path}: {e}"),
+        })?;
+        self.inner.send_file(data, binary);
+        Ok(())
+    }
+
     /// SSH SCP が使えるか（内蔵の SSH で接続しているときだけ）。
     pub fn can_scp(&self) -> bool {
         self.files.is_some()

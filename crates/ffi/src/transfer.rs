@@ -37,6 +37,8 @@ pub struct TransferProgress {
     pub files_done: u32,
     /// 受け取ったファイルの保存先
     pub saved: Vec<String>,
+    /// 再送・再要求の累計
+    pub retries: u32,
 }
 
 type Shared = Arc<Mutex<Box<dyn Transfer>>>;
@@ -65,6 +67,7 @@ impl TransferHandle {
             bytes: p.bytes,
             total: p.total,
             files_done: p.files_done as u32,
+            retries: p.retries,
             saved: p
                 .saved
                 .into_iter()

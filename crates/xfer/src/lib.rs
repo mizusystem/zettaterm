@@ -65,6 +65,8 @@ pub struct Progress {
     pub files_done: usize,
     /// 受け取ったファイルの保存先（受信のとき）
     pub saved: Vec<PathBuf>,
+    /// 再送・再要求の累計（誤りや時間切れで送り直した回数）
+    pub retries: u32,
 }
 
 /// 1 回の転送。
@@ -154,6 +156,37 @@ pub(crate) mod testutil {
         panic!("did not finish: {:?} / {:?}", a.status(), b.status());
     }
 
+    /// `pump` と同じだが、a から b への `n` 回目の送信を `corrupt` で壊せる（雑音のある回線）。
+    pub fn pump_noisy(
+        a: &mut dyn Transfer,
+        b: &mut dyn Transfer,
+        mut corrupt: impl FnMut(usize, &mut Vec<u8>),
+    ) {
+        let mut now = Instant::now();
+        let mut to_b = a.start(now);
+        let mut to_a = b.start(now);
+        let mut n = 0;
+        for _ in 0..200_000 {
+            if a.status().is_finished() && b.status().is_finished() {
+                return;
+            }
+            if !to_b.is_empty() {
+                n += 1;
+                corrupt(n, &mut to_b);
+            }
+            let ra = a.receive(&std::mem::take(&mut to_a), now);
+            let rb = b.receive(&std::mem::take(&mut to_b), now);
+            to_b.extend(ra);
+            to_a.extend(rb);
+            if to_a.is_empty() && to_b.is_empty() {
+                now += Duration::from_millis(100);
+                to_b.extend(a.tick(now));
+                to_a.extend(b.tick(now));
+            }
+        }
+        panic!("did not finish: {:?} / {:?}", a.status(), b.status());
+    }
+
     pub fn sample(len: usize, seed: u8) -> Vec<u8> {
         // 制御文字や 0x18（CAN / ZDLE）、0xff も混ざるように
         (0..len)
@@ -165,6 +198,48 @@ pub(crate) mod testutil {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 回線の誤りで送り直したら、累計のリトライ数に出る（壊れていても最後は正しく届く）。
+    #[test]
+    fn retries_are_counted_on_a_noisy_line() {
+        for protocol in [
+            Protocol::XModem {
+                crc: true,
+                one_k: false,
+            },
+            Protocol::YModem,
+            Protocol::ZModem,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let src = dir.path().join("fw.bin");
+            let data = testutil::sample(20_000, 7);
+            std::fs::write(&src, &data).unwrap();
+            let out = dir.path().join("out");
+            std::fs::create_dir(&out).unwrap();
+            let target = match protocol {
+                Protocol::XModem { .. } => out.join("fw.bin"),
+                _ => out.clone(),
+            };
+            let mut tx = new_transfer(protocol, Direction::Send(vec![src])).unwrap();
+            let mut rx = new_transfer(protocol, Direction::Receive(target)).unwrap();
+            // データの塊（ブロックやサブパケット）を 1 回だけ、真ん中の 1 バイトを化けさせる
+            let mut hit = false;
+            testutil::pump_noisy(tx.as_mut(), rx.as_mut(), |n, buf| {
+                if !hit && n > 2 && buf.len() > 100 {
+                    hit = true;
+                    let i = buf.len() / 2;
+                    buf[i] ^= 0x55;
+                }
+            });
+            assert!(hit, "{protocol:?}: nothing was corrupted");
+            assert_eq!(tx.status(), Status::Done, "{protocol:?}");
+            assert_eq!(rx.status(), Status::Done, "{protocol:?}");
+            let got = std::fs::read(out.join("fw.bin")).unwrap();
+            assert_eq!(&got[..data.len()], &data[..], "{protocol:?}");
+            let retries = tx.progress().retries + rx.progress().retries;
+            assert!(retries >= 1, "{protocol:?}: no retries counted");
+        }
+    }
 
     #[test]
     fn unique_names_and_no_path_escape() {

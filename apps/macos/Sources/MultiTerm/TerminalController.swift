@@ -8,7 +8,7 @@ final class TerminalController: ObservableObject {
     enum Status { case disconnected, connecting, connected, reconnecting }
 
     enum Sheet: String, Identifiable {
-        case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp
+        case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
         var id: String { rawValue }
     }
 
@@ -22,6 +22,8 @@ final class TerminalController: ObservableObject {
     @Published var transfer: ActiveTransfer?
     /// 実行中のマクロ
     @Published var macro: ActiveMacro?
+    /// ドロップされたファイル（sheet == .drop のときに使う）
+    @Published var dropped: [URL] = []
     /// マクロの `settitle`
     @Published var macroTitle: String?
 
@@ -43,6 +45,7 @@ final class TerminalController: ObservableObject {
         view.onTitle = { [weak self] title in self?.remoteTitle = title }
         view.onError = { [weak self] error in self?.report(error) }
         view.onTransferRequest = { [weak self] request in self?.handleTransferRequest(request) }
+        view.onDropFiles = { [weak self] urls in self?.handleDrop(urls) }
         view.prompter = prompter
         prompter.controller = self
         SessionRegistry.shared.register(self)

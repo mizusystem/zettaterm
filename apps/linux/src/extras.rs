@@ -134,7 +134,7 @@ fn chrono_like_now() -> String {
         .unwrap_or_default()
 }
 
-fn scp_progress(parent: &gtk::Window, send: bool, job: mt_net::ScpJob) {
+pub fn scp_progress(parent: &gtk::Window, send: bool, job: mt_net::ScpJob) {
     let title = if send {
         ssh("DLG_SCP_PROGRESS_TITLE_SENDFILE", "SCP ファイル送信中")
     } else {
@@ -157,6 +157,7 @@ fn scp_progress(parent: &gtk::Window, send: bool, job: mt_net::ScpJob) {
                 file: p.file,
                 bytes: p.bytes,
                 total: p.total,
+                retries: None,
                 state,
             }
         },
@@ -281,5 +282,177 @@ pub fn scp_dialog(parent: &gtk::Window, files: SshFiles) {
     let w = win.clone();
     cancel.connect_clicked(move |_| w.close());
     row.append(&cancel);
+    win.present();
+}
+
+/// 「ファイル送信」のオプション（バイナリ）。OK で `done(バイナリか)`。
+pub fn send_file_options(parent: &gtk::Window, done: impl FnOnce(bool) + 'static) {
+    let (win, content, row) = modal(parent, &tt("MENU_FILE_SENDFILE", "ファイル送信"));
+    let binary = gtk::CheckButton::with_label(&tt("DLG_SENDFILE_BINARY", "バイナリ"));
+    let note = gtk::Label::new(Some(
+        "バイナリ：中身を一切変えずに送る（ファームウェアなど）\nテキスト：改行コードと文字コードを「設定 > 端末」の送信に合わせる",
+    ));
+    note.set_xalign(0.0);
+    note.add_css_class("dim-label");
+    content.append(&binary);
+    content.append(&note);
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let ok = gtk::Button::with_label(&tt("BTN_OK", "OK"));
+    ok.add_css_class("suggested-action");
+    row.append(&cancel);
+    row.append(&ok);
+    let w = win.clone();
+    cancel.connect_clicked(move |_| w.close());
+    let w = win.clone();
+    let done = std::cell::RefCell::new(Some(done));
+    ok.connect_clicked(move |_| {
+        w.close();
+        if let Some(f) = done.borrow_mut().take() {
+            f(binary.is_active());
+        }
+    });
+    win.set_default_widget(Some(&ok));
+    win.present();
+}
+
+/// ドロップしたファイルをどう送るか。
+pub enum DropChoice {
+    Macro,
+    Scp(String),
+    SendFile { binary: bool },
+    Transfer(crate::transfer::Kind),
+    Paste { escape: bool, newline: bool },
+}
+
+/// シェルで使える形（空白や記号の前に \）
+pub fn escaped(path: &str) -> String {
+    let special = " \t\\'\"()[]{}&;|<>*?!$`#~";
+    path.chars()
+        .flat_map(|c| {
+            if special.contains(c) {
+                vec!['\\', c]
+            } else {
+                vec![c]
+            }
+        })
+        .collect()
+}
+
+/// 「ファイル ドラッグ&ドロップ」。SCP / ファイル送信 / ファイル名の貼り付けに加え、
+/// プロトコル転送と、.ttl のマクロ実行も選べる。
+pub fn drop_dialog(
+    parent: &gtk::Window,
+    files: &[PathBuf],
+    connected: bool,
+    can_scp: bool,
+    done: impl FnOnce(DropChoice) + 'static,
+) {
+    use crate::transfer::Kind;
+    let (win, content, row) = modal(parent, &tt("DLG_DANDD_TITLE", "ファイル ドラッグ&ドロップ"));
+    let names: Vec<String> = files
+        .iter()
+        .map(|f| {
+            f.file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        })
+        .collect();
+    let list = gtk::Label::new(Some(&names.join(", ")));
+    list.set_xalign(0.0);
+    list.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    list.add_css_class("dim-label");
+    content.append(&list);
+    content.append(&gtk::Label::new(Some(&tt(
+        "DLG_DANDD_TEXT",
+        "ファイル転送を行いますか？",
+    ))));
+
+    let is_macro = files.len() == 1
+        && files[0]
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("ttl"));
+    let r_macro = gtk::CheckButton::with_label("マクロとして実行");
+    let r_scp = gtk::CheckButton::with_label(&tt("DLG_DANDD_SCP_RADIO", "SCP"));
+    let r_send = gtk::CheckButton::with_label(&tt(
+        "DLG_DANDD_SENDFILE_RADIO",
+        "ファイル送信（ファイルの内容を貼り付け）",
+    ));
+    let r_proto = gtk::CheckButton::with_label("プロトコルで送る");
+    let r_paste =
+        gtk::CheckButton::with_label(&tt("DLG_DANDD_PASTE_RADIO", "ファイル名を貼り付け"));
+    for r in [&r_scp, &r_send, &r_proto, &r_paste] {
+        r.set_group(Some(&r_macro));
+        r.set_sensitive(connected);
+    }
+    r_scp.set_sensitive(connected && can_scp);
+    let dest = gtk::Entry::new();
+    dest.set_placeholder_text(Some(&tt(
+        "DLG_DANDD_SCP_DEST_NOTE",
+        "空のときはホームディレクトリに送信されます",
+    )));
+    let binary = gtk::CheckButton::with_label(&tt("DLG_DANDD_SEND_BINARY_CHECK", "バイナリ"));
+    binary.set_active(true);
+    let kinds: Vec<&str> = Kind::ALL.iter().map(|k| k.name()).collect();
+    let kind = gtk::DropDown::from_strings(&kinds);
+    let escape = gtk::CheckButton::with_label(&tt("DLG_DANDD_PASTE_ESCAPE_CHECK", "エスケープ"));
+    escape.set_active(true);
+    let by_newline =
+        gtk::CheckButton::with_label(&tt("DLG_DANDD_PASTE_NEWLINE_RADIO", "改行で区切る"));
+    fn indent(w: &gtk::Widget) -> &gtk::Widget {
+        w.set_margin_start(24);
+        w
+    }
+    if is_macro {
+        content.append(&r_macro);
+    }
+    content.append(&r_scp);
+    content.append(indent(dest.upcast_ref()));
+    content.append(&r_send);
+    content.append(indent(binary.upcast_ref()));
+    content.append(&r_proto);
+    content.append(indent(kind.upcast_ref()));
+    content.append(&r_paste);
+    let paste_opts = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    paste_opts.append(&escape);
+    paste_opts.append(&by_newline);
+    content.append(indent(paste_opts.upcast_ref()));
+    if is_macro {
+        r_macro.set_active(true);
+    } else {
+        r_send.set_active(true);
+    }
+
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let ok = gtk::Button::with_label(&tt("BTN_OK", "OK"));
+    ok.add_css_class("suggested-action");
+    row.append(&cancel);
+    row.append(&ok);
+    let w = win.clone();
+    cancel.connect_clicked(move |_| w.close());
+    let w = win.clone();
+    let done = std::cell::RefCell::new(Some(done));
+    ok.connect_clicked(move |_| {
+        let choice = if r_macro.is_active() {
+            DropChoice::Macro
+        } else if r_scp.is_active() {
+            DropChoice::Scp(dest.text().to_string())
+        } else if r_proto.is_active() {
+            DropChoice::Transfer(Kind::ALL[(kind.selected() as usize).min(3)])
+        } else if r_paste.is_active() {
+            DropChoice::Paste {
+                escape: escape.is_active(),
+                newline: by_newline.is_active(),
+            }
+        } else {
+            DropChoice::SendFile {
+                binary: binary.is_active(),
+            }
+        };
+        w.close();
+        if let Some(f) = done.borrow_mut().take() {
+            f(choice);
+        }
+    });
+    win.set_default_widget(Some(&ok));
     win.present();
 }

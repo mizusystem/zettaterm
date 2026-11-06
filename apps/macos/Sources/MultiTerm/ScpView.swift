@@ -14,7 +14,7 @@ extension TerminalController {
             let handle = try session.scpUpload(files: files, remoteDir: remoteDir)
             show(ActiveTransfer(
                 title: TT.text("DLG_SCP_PROGRESS_TITLE_SENDFILE", "SCP ファイル送信中", section: "TTSSH"),
-                send: true, poll: { handle.progress() }, cancel: { handle.cancel() }
+                send: true, showsRetries: false, poll: { handle.progress() }, cancel: { handle.cancel() }
             ))
         } catch {
             errorMessage = Self.describe(error)
@@ -28,7 +28,7 @@ extension TerminalController {
             let handle = try session.scpDownload(remotePath: remotePath, localDir: localDir)
             show(ActiveTransfer(
                 title: TT.text("DLG_SCP_PROGRESS_TITLE_RECEIVEFILE", "SCP ファイル受信中", section: "TTSSH"),
-                send: false, poll: { handle.progress() }, cancel: { handle.cancel() }
+                send: false, showsRetries: false, poll: { handle.progress() }, cancel: { handle.cancel() }
             ))
         } catch {
             errorMessage = Self.describe(error)

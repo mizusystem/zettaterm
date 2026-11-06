@@ -461,6 +461,7 @@ impl Transfer for Sender {
                 b'N' if p.seq == (self.seq + 1) & 63 => out.extend(self.advance(&p, now)),
                 b'N' => {
                     self.retries += 1;
+                    self.progress.retries += 1;
                     if self.retries > RETRIES {
                         out.extend(self.fail("too many retries", now));
                     } else {
@@ -484,6 +485,7 @@ impl Transfer for Sender {
             return Vec::new();
         }
         self.retries += 1;
+        self.progress.retries += 1;
         if self.retries > RETRIES {
             return self.fail("timed out", now);
         }
@@ -700,6 +702,7 @@ impl Transfer for Receiver {
             return Vec::new();
         }
         self.retries += 1;
+        self.progress.retries += 1;
         if self.retries > RETRIES {
             return self.fail("timed out");
         }

@@ -266,6 +266,7 @@ impl Transfer for Sender {
                     NAK,
                 ) => {
                     self.retries += 1;
+                    self.progress.retries += 1;
                     if self.retries > RETRIES {
                         out.extend(self.fail("too many retries"));
                     } else {
@@ -289,6 +290,7 @@ impl Transfer for Sender {
                     return self.fail("receiver did not start");
                 }
                 self.retries += 1;
+                self.progress.retries += 1;
                 if self.retries > RETRIES {
                     return self.fail("timed out");
                 }
@@ -443,6 +445,7 @@ impl Receiver {
         self.deadline = now + TIMEOUT;
         if !ok {
             self.retries += 1;
+            self.progress.retries += 1;
             return Some(if self.retries > RETRIES {
                 self.fail("too many errors")
             } else {
@@ -587,6 +590,7 @@ impl Transfer for Receiver {
             return vec![self.start_byte()];
         }
         self.retries += 1;
+        self.progress.retries += 1;
         if self.retries > RETRIES {
             return self.fail("timed out");
         }

@@ -126,6 +126,7 @@ impl TermWindow {
             logging: Cell::new(false),
         });
         me.install_actions();
+        me.install_drop();
         me.listen(events_rx, prompts_rx, macro_rx);
         {
             let me = Rc::clone(&me);
@@ -318,6 +319,129 @@ impl TermWindow {
         });
     }
 
+    /// 端末にファイルを落としたら、送り方を尋ねる（Tera Term の「ファイル ドラッグ&ドロップ」）。
+    fn install_drop(self: &Rc<Self>) {
+        let target = gtk::DropTarget::new(
+            gtk::gdk::FileList::static_type(),
+            gtk::gdk::DragAction::COPY,
+        );
+        let me = Rc::downgrade(self);
+        target.connect_drop(move |_, value, _, _| {
+            let (Some(me), Ok(list)) = (me.upgrade(), value.get::<gtk::gdk::FileList>()) else {
+                return false;
+            };
+            let files: Vec<std::path::PathBuf> = list
+                .files()
+                .iter()
+                .filter_map(|f| f.path())
+                .filter(|p| p.is_file())
+                .collect();
+            if files.is_empty() {
+                return false;
+            }
+            me.handle_drop(files);
+            true
+        });
+        self.view.area.add_controller(target);
+    }
+
+    fn handle_drop(self: &Rc<Self>, files: Vec<std::path::PathBuf>) {
+        let connected = self.connected();
+        let is_macro = files.len() == 1
+            && files[0]
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("ttl"));
+        if !connected && !is_macro {
+            return;
+        }
+        let can_scp = self.files.borrow().is_some();
+        let me = Rc::clone(self);
+        let list = files.clone();
+        crate::extras::drop_dialog(&self.parent(), &files, connected, can_scp, move |choice| {
+            use crate::extras::DropChoice;
+            let session = me.view.session();
+            match choice {
+                DropChoice::Macro => me.run_macro(list[0].clone()),
+                DropChoice::Scp(dest) => {
+                    if let Some(f) = me.files.borrow().clone() {
+                        let job = f.upload(list, &dest);
+                        crate::extras::scp_progress(&me.parent(), true, job);
+                    }
+                }
+                DropChoice::SendFile { binary } => {
+                    let Some(s) = session else { return };
+                    for p in &list {
+                        match std::fs::read(p) {
+                            Ok(data) => s.send_file(data, binary),
+                            Err(e) => {
+                                dialogs::message(
+                                    &me.parent(),
+                                    "Multi-Term",
+                                    &format!("{}: {e}", p.display()),
+                                    || {},
+                                );
+                                return;
+                            }
+                        }
+                    }
+                }
+                DropChoice::Transfer(kind) => {
+                    let Some(s) = session else { return };
+                    let files = if kind.batch() {
+                        list
+                    } else {
+                        list.into_iter().take(1).collect()
+                    };
+                    me.start_transfer(&s, kind, Direction::Send(files));
+                }
+                DropChoice::Paste { escape, newline } => {
+                    let Some(s) = session else { return };
+                    let names: Vec<String> = list
+                        .iter()
+                        .map(|p| {
+                            let t = p.to_string_lossy();
+                            if escape {
+                                crate::extras::escaped(&t)
+                            } else {
+                                t.into_owned()
+                            }
+                        })
+                        .collect();
+                    s.paste(names.join(if newline { "\n" } else { " " }));
+                }
+            }
+        });
+    }
+
+    /// 「ファイル > ファイル送信...」。プロトコルを使わず中身をそのまま流す（バイナリなら一切変換しない）。
+    fn begin_send_file(self: &Rc<Self>) {
+        let Some(session) = self.view.session() else {
+            return;
+        };
+        let me = Rc::clone(self);
+        gtk::FileDialog::builder()
+            .title(tt("MENU_FILE_SENDFILE", "ファイル送信"))
+            .build()
+            .open(Some(&self.win), None::<&gio::Cancellable>, move |r| {
+                let Some(path) = r.ok().and_then(|f| f.path()) else {
+                    return;
+                };
+                let session = Arc::clone(&session);
+                let parent = me.parent();
+                crate::extras::send_file_options(&me.parent(), move |binary| {
+                    match std::fs::read(&path) {
+                        Ok(data) => session.send_file(data, binary),
+                        Err(e) => dialogs::message(
+                            &parent,
+                            "Multi-Term",
+                            &format!("{}: {e}", path.display()),
+                            || {},
+                        ),
+                    }
+                });
+            });
+    }
+
     /// 「ファイル > SSH SCP...」（内蔵 SSH のときだけ）。
     fn show_scp(self: &Rc<Self>) {
         let Some(files) = self.files.borrow().clone().filter(|_| self.connected()) else {
@@ -388,6 +512,7 @@ impl TermWindow {
             }),
         );
         add("scp", Box::new(|me| me.show_scp()));
+        add("send-file", Box::new(|me| me.begin_send_file()));
 
         // 転送 > 種類 > 送信 / 受信（引数は種類の id）
         for (name, send) in [("transfer-send", true), ("transfer-receive", false)] {
@@ -422,7 +547,7 @@ impl TermWindow {
             .build();
         let done = move |files: Vec<std::path::PathBuf>| {
             if !files.is_empty() {
-                transfer::start(&me.parent(), &session, kind, Direction::Send(files));
+                me.start_transfer(&session, kind, Direction::Send(files));
             }
         };
         if kind.batch() {
@@ -456,15 +581,59 @@ impl TermWindow {
             // XMODEM はファイル名が送られてこないので、保存するファイルを選ぶ
             dialog.save(Some(&self.win), None::<&gio::Cancellable>, move |r| {
                 if let Some(p) = r.ok().and_then(|f| f.path()) {
-                    transfer::start(&me.parent(), &session, kind, Direction::Receive(p));
+                    me.start_transfer(&session, kind, Direction::Receive(p));
                 }
             });
         } else {
             dialog.select_folder(Some(&self.win), None::<&gio::Cancellable>, move |r| {
                 if let Some(p) = r.ok().and_then(|f| f.path()) {
-                    transfer::start(&me.parent(), &session, kind, Direction::Receive(p));
+                    me.start_transfer(&session, kind, Direction::Receive(p));
                 }
             });
+        }
+    }
+
+    /// 転送を始める。XON/XOFF のシリアルで XMODEM / YMODEM なら確かめ、XMODEM はオプションを尋ねる。
+    fn start_transfer(
+        self: &Rc<Self>,
+        session: &Arc<mt_core::Session>,
+        kind: Kind,
+        direction: Direction,
+    ) {
+        let xon = matches!(
+            &*self.profile.borrow(),
+            Some(ConnectionProfile::Serial { settings, .. }) if settings.flow == mt_core::FlowControl::XonXoff
+        );
+        let me = Rc::clone(self);
+        let session = Arc::clone(session);
+        let go = move || {
+            let send = matches!(direction, Direction::Send(_));
+            if kind == Kind::XModem {
+                let me2 = Rc::clone(&me);
+                transfer::xmodem_options(&me.parent(), send, move |p| {
+                    transfer::start_with(&me2.parent(), &session, kind, p, direction);
+                });
+            } else {
+                transfer::start(&me.parent(), &session, kind, direction);
+            }
+        };
+        if xon && matches!(kind, Kind::XModem | Kind::YModem) {
+            // 0x11 / 0x13 が OS にフロー制御として消され、転送が壊れる（ZMODEM と Kermit は制御文字を逃がす）
+            dialogs::yes_no(
+                &self.parent(),
+                "フロー制御が XON/XOFF になっています",
+                &format!(
+                    "{} はデータをそのまま送るので、ファイルの中の 0x11 / 0x13 がフロー制御として扱われ、転送が失敗します。\n「設定 > シリアルポート」でフロー制御を「NONE」か「RTS/CTS」にしてから転送してください。\n\nこのまま転送しますか？",
+                    kind.name()
+                ),
+                move |yes| {
+                    if yes {
+                        go();
+                    }
+                },
+            );
+        } else {
+            go();
         }
     }
 
