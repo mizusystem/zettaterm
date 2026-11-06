@@ -258,6 +258,50 @@ fn connect_host(
     depth: usize,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<Handle<Client>>> + Send>> {
     Box::pin(async move {
+        let mut params = params;
+        // 認証ダイアログでユーザー名を変えたときの答え（つなぎ直して最初に使う）
+        let mut pending: Option<AuthResponse> = None;
+        for _ in 0..=MAX_USER_CHANGES {
+            let (mut handle, banner) =
+                open_transport(&params, config_path.clone(), Arc::clone(&prompter), depth).await?;
+            match authenticate(&mut handle, &params, &prompter, &banner, pending.take()).await {
+                Ok(()) => return Ok(handle),
+                Err(AuthFail::Io(e)) => return Err(e),
+                Err(AuthFail::UserChanged(response)) => {
+                    // OpenSSH は認証の途中でユーザー名を変えると切断する。新しい名前でつなぎ直す
+                    let _ = handle
+                        .disconnect(russh::Disconnect::ByApplication, "", "en")
+                        .await;
+                    params.user = response_user(&response).map(str::to_owned);
+                    pending = Some(response);
+                }
+            }
+        }
+        Err(io::Error::other("the user name was changed too many times"))
+    })
+}
+
+/// 認証の途中でユーザー名を変えられる回数
+const MAX_USER_CHANGES: usize = 3;
+
+fn response_user(r: &AuthResponse) -> Option<&str> {
+    match r {
+        AuthResponse::Cancel => None,
+        AuthResponse::Password { user, .. }
+        | AuthResponse::PublicKey { user, .. }
+        | AuthResponse::KeyboardInteractive { user }
+        | AuthResponse::Agent { user } => Some(user),
+    }
+}
+
+/// TCP（または ProxyCommand / ProxyJump）でつないで鍵交換まで済ませる。
+async fn open_transport(
+    params: &SshParams,
+    config_path: Option<PathBuf>,
+    prompter: Arc<dyn AuthPrompter>,
+    depth: usize,
+) -> io::Result<(Handle<Client>, Arc<Mutex<Option<String>>>)> {
+    {
         let config = Arc::new(client::Config {
             keepalive_interval: params.server_alive_interval,
             keepalive_max: 3,
@@ -277,7 +321,7 @@ fn connect_host(
         };
         let timeout = params.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
 
-        let mut handle = if let Some(command) = &params.proxy_command {
+        let handle = if let Some(command) = &params.proxy_command {
             let (child, stream) = spawn_proxy_command(command)?;
             handler.proxy = Some(child);
             client::connect_stream(config, stream, handler)
@@ -327,9 +371,8 @@ fn connect_host(
                 .map_err(other)?
         };
 
-        authenticate(&mut handle, &params, &prompter, &banner).await?;
-        Ok(handle)
-    })
+        Ok((handle, banner))
+    }
 }
 
 #[cfg(unix)]
@@ -423,6 +466,16 @@ impl client::Handler for Client {
         let Some(status) = status else {
             return Ok(true);
         };
+        // 「今回だけ受け入れる」とした鍵は、アプリを終えるまで尋ね直さない（つなぎ直しのたびに出さない）
+        let once_key = format!(
+            "[{}]:{} {}",
+            self.host,
+            self.port,
+            key.fingerprint(HashAlg::Sha256)
+        );
+        if accepted_once().lock().is_ok_and(|s| s.contains(&once_key)) {
+            return Ok(true);
+        }
         let decision = match (self.strict, status) {
             (StrictHostKeyChecking::No, _) => HostKeyDecision::AcceptOnce,
             (StrictHostKeyChecking::Yes, _) => HostKeyDecision::Reject,
@@ -444,7 +497,12 @@ impl client::Handler for Client {
         };
         match decision {
             HostKeyDecision::Reject => Ok(false),
-            HostKeyDecision::AcceptOnce => Ok(true),
+            HostKeyDecision::AcceptOnce => {
+                if let Ok(mut s) = accepted_once().lock() {
+                    s.insert(once_key);
+                }
+                Ok(true)
+            }
             HostKeyDecision::AcceptAndSave => {
                 if let Some(file) = self.known_hosts.first() {
                     if status == HostKeyStatus::Changed {
@@ -551,12 +609,25 @@ impl From<AuthResult> for Outcome {
     }
 }
 
+enum AuthFail {
+    Io(io::Error),
+    /// 認証ダイアログでユーザー名が変わった（この接続では続けられない）
+    UserChanged(AuthResponse),
+}
+
+impl From<io::Error> for AuthFail {
+    fn from(e: io::Error) -> Self {
+        AuthFail::Io(e)
+    }
+}
+
 async fn authenticate(
     handle: &mut Handle<Client>,
     params: &SshParams,
     prompter: &Arc<dyn AuthPrompter>,
     banner: &Arc<Mutex<Option<String>>>,
-) -> io::Result<()> {
+    mut pending: Option<AuthResponse>,
+) -> Result<(), AuthFail> {
     let mut user = params.user_or_local();
     let mut methods = match Outcome::from(handle.authenticate_none(&user).await.map_err(other)?) {
         Outcome::Success => return Ok(()),
@@ -601,16 +672,24 @@ async fn authenticate(
             further,
             banner: banner.lock().ok().and_then(|b| b.clone()),
         };
-        let p = Arc::clone(prompter);
-        let response = tokio::task::spawn_blocking(move || p.credentials(request))
-            .await
-            .unwrap_or(AuthResponse::Cancel);
+        let response = match pending.take() {
+            Some(r) => r,
+            None => {
+                let p = Arc::clone(prompter);
+                tokio::task::spawn_blocking(move || p.credentials(request))
+                    .await
+                    .unwrap_or(AuthResponse::Cancel)
+            }
+        };
+        if response_user(&response).is_some_and(|u| u != user) {
+            return Err(AuthFail::UserChanged(response));
+        }
         let outcome = match response {
             AuthResponse::Cancel => {
-                return Err(io::Error::new(
+                return Err(AuthFail::Io(io::Error::new(
                     io::ErrorKind::PermissionDenied,
                     "authentication canceled",
-                ));
+                )));
             }
             AuthResponse::Password { user: u, password } => {
                 user = u;
@@ -813,4 +892,11 @@ async fn keyboard_interactive(
             }
         }
     }
+}
+
+/// 「今回だけ受け入れる」としたホスト鍵（`[host]:port 指紋`）。
+fn accepted_once() -> &'static Mutex<std::collections::HashSet<String>> {
+    static S: std::sync::OnceLock<Mutex<std::collections::HashSet<String>>> =
+        std::sync::OnceLock::new();
+    S.get_or_init(Default::default)
 }

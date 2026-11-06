@@ -17,7 +17,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 | `crates/cli` | `mt-cli`（bin: `mt`） | ヘッドレス端末と TTL 実行 |
 | `apps/macos` | — | SwiftUI + AppKit |
 | `apps/linux` | — | GTK4（ワークスペース外） |
-| `apps/windows` | — | 後回し |
+| `apps/windows` | — | 必要になるまで作らない（GTK 版と `mt` で代用。docs/design.md） |
 | `tools/extract-tt-ui`, `spec/` | — | Tera Term の `.rc` / `.lng` / INI から JSON と文言カタログを生成 |
 
 パッケージ名の `mt-` は仮。`core` は Rust 組み込みの `core` クレートと衝突するため、ディレクトリ名とは別に接頭辞を付けている。アプリ名が決まったら置き換える。

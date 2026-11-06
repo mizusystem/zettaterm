@@ -31,7 +31,7 @@ flowchart TB
     subgraph UI["UI（OS ごと）"]
         mac["macOS アプリ<br/>SwiftUI + AppKit<br/>Core Text で描画"]
         linux["Linux アプリ<br/>GTK4（gtk-rs）<br/>Pango で描画"]
-        win["Windows アプリ<br/>WinUI 3 / Win32<br/>後回し"]
+        win["Windows アプリ<br/>必要になるまで作らない<br/>（GTK 版で代用）"]
         cli["cli<br/>ヘッドレス端末<br/>TTL 実行"]
     end
     ffi["ffi（UniFFI）"]
@@ -79,7 +79,7 @@ Cargo ワークスペース 1 つに Rust クレートを並べ、OS ごとの U
 | `crates/cli` | ヘッドレス端末と TTL 実行 | clap | 全 OS |
 | `apps/macos` | SwiftUI + AppKit、ffi を XCFramework で取り込み | — | macOS |
 | `apps/linux` | GTK4（gtk-rs）、core を直接利用 | gtk4 | Linux |
-| `apps/windows` | WinUI 3 か Win32（windows-rs） | — | Windows（後回し） |
+| `apps/windows` | 必要になるまで作らない（GTK 版で代用） | — | Windows（保留） |
 
 共通ルール
 
@@ -175,11 +175,18 @@ Phase 1 を終えた時点で、Mac のシリアル端末として日常的に�
 | 2 | SSH / Telnet | 外部 ssh・Telnet・プロファイル／ネイティブタブ・一斉送信 | ssh_config がそのまま効く |
 | 3 | 転送・文字コード | XMODEM / YMODEM / ZMODEM / Kermit／Shift_JIS・EUC-JP の送受信 | lrzsz と相互に転送できる |
 | 4 | TTL・Linux | TTL 頻出サブセットと cli／GTK4 版の同等画面 | 既存マクロが Mac と Linux で動く |
-| 5 | 配布 | 署名・公証・自動更新／Windows 版に着手 | 公証済み dmg を配布 |
+| 5 | 配布 | 署名・公証・自動更新／Windows には `mt` コマンドを配る | 公証済み dmg を配布 |
 
 （元の設計書 Artifact の図をテキスト化したもの）
 
 各 Phase は完了条件を満たすまで次に進まない。日程は置かず、順序だけを決めている。
+
+### Windows の扱い（2026-11-07 決定）
+
+Windows には Tera Term 本体があるので、ネイティブの Windows 版（`apps/windows`）は必要になるまで作らない。
+- `crates/` の Windows 対応は続ける（GitHub Actions で `cargo test` を回す）
+- `mt` コマンド（TTL のヘッドレス実行）は Windows でも配る
+- 画面が要るときは、まず GTK 版（`apps/linux`）を Windows でビルドして試す
 
 ### ネットワーク機器向けの追加予定（2026-11-06 追加）
 

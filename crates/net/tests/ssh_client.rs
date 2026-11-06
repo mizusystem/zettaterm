@@ -38,6 +38,8 @@ struct Server {
     /// Some なら、scp は偽物ではなくこのフォルダで本物の scp を動かす
     scp_root: Option<PathBuf>,
     execs: exec::Execs,
+    /// この接続で最初に名乗ったユーザー（OpenSSH と同じく、途中で変えたら切る）
+    first_user: Arc<Mutex<Option<String>>>,
 }
 
 /// テストサーバーの `scp -t` / `scp -f` の状態。
@@ -52,6 +54,25 @@ enum Scp {
 }
 
 impl Server {
+    /// OpenSSH は認証の途中でユーザー名を変えると切断する（"Change of username ... not allowed"）。
+    fn check_user(&self, user: &str) -> Result<(), russh::Error> {
+        let mut first = self.first_user.lock().unwrap();
+        match first.as_deref() {
+            None => {
+                *first = Some(user.to_owned());
+                Ok(())
+            }
+            Some(u) if u == user => Ok(()),
+            Some(u) => {
+                self.log
+                    .lock()
+                    .unwrap()
+                    .push(format!("user change {u} -> {user}"));
+                Err(russh::Error::Disconnect)
+            }
+        }
+    }
+
     fn scp_data(
         &self,
         channel: ChannelId,
@@ -129,7 +150,8 @@ impl Server {
 impl server::Handler for Server {
     type Error = russh::Error;
 
-    async fn auth_none(&mut self, _user: &str) -> Result<Auth, Self::Error> {
+    async fn auth_none(&mut self, user: &str) -> Result<Auth, Self::Error> {
+        self.check_user(user)?;
         let methods: &[MethodKind] = &[
             MethodKind::PublicKey,
             MethodKind::Password,
@@ -142,6 +164,7 @@ impl server::Handler for Server {
     }
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        self.check_user(user)?;
         self.log.lock().unwrap().push(format!("password {user}"));
         Ok(if user == "kt" && password == "secret" {
             Auth::Accept
@@ -152,9 +175,10 @@ impl server::Handler for Server {
 
     async fn auth_publickey_offered(
         &mut self,
-        _user: &str,
+        user: &str,
         offer: server::PublicKeyOffer<'_>,
     ) -> Result<Auth, Self::Error> {
+        self.check_user(user)?;
         Ok(if self.authorized.contains(offer.public_key) {
             Auth::Accept
         } else {
@@ -391,6 +415,7 @@ fn start_server_with(
         scp: Arc::default(),
         scp_root,
         execs: exec::Execs::default(),
+        first_user: Arc::default(),
     };
     let public = host_key.public_key().clone();
     let config = Arc::new(server::Config {
@@ -419,6 +444,7 @@ fn start_server_with(
                     sessions: Arc::default(),
                     scp: Arc::default(),
                     execs: exec::Execs::default(),
+                    first_user: Arc::default(),
                     ..handler.clone()
                 };
                 tokio::spawn(async move {
@@ -1049,5 +1075,39 @@ fn scp_interoperates_with_openssh_scp() {
         "{:?}",
         job.progress()
     );
+    session.close();
+}
+
+/// 認証ダイアログでユーザー名を変えたら、つなぎ直して新しい名前で認証する（OpenSSH は途中の変更を認めない）。
+#[test]
+fn changing_the_user_in_the_dialog_reconnects() {
+    let server = start_server(random_key(), vec![]);
+    let env = Env::new();
+    env.trust(&server);
+    let config = env.config(&server, None, "");
+    // ssh_config の User を別の名前にする（自動の試行はこの名前で行われる）
+    let text = std::fs::read_to_string(&config)
+        .unwrap()
+        .replace("User kt", "User someone");
+    std::fs::write(&config, text).unwrap();
+
+    let prompter = Arc::new(Scripted::default());
+    prompter
+        .credentials
+        .lock()
+        .unwrap()
+        .push_back(AuthResponse::Password {
+            user: "kt".into(),
+            password: "secret".into(),
+        });
+    let session = open(connect(&config, "test", &prompter).unwrap());
+    wait_for(&session, "welcome");
+    // ダイアログは 1 回だけ（つなぎ直した後は、同じ答えをそのまま使う）
+    let requests = prompter.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].user, "someone");
+    let log = server.log.lock().unwrap();
+    assert!(!log.iter().any(|l| l.starts_with("user change")), "{log:?}");
+    assert!(log.iter().any(|l| l == "password kt"), "{log:?}");
     session.close();
 }
