@@ -113,7 +113,7 @@ struct Inner {
     decoder: Mutex<ReceiveDecoder>,
     charset_send: Mutex<Charset>,
     /// ファイル転送中の受信の行き先
-    divert: Mutex<Option<Box<dyn ByteDivert>>>,
+    divert: Mutex<Route>,
     zmodem: Mutex<ZmodemDetector>,
     local_echo: AtomicBool,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -128,6 +128,25 @@ struct Taps {
 
 /// `tap_with_history` で渡す最近の受信の上限
 const TAP_HISTORY: usize = 64 * 1024;
+
+/// ファイル転送中の受信の行き先。
+#[derive(Default)]
+struct Route {
+    /// 転送中
+    divert: Option<Box<dyn ByteDivert>>,
+    /// 相手の ZMODEM の開始を見つけて、UI の返事（start_transfer / decline_transfer）を待っている間の受信。
+    /// 端末には出さず、転送が始まったら最初に渡す
+    held: Option<Vec<u8>>,
+    held_since: Option<std::time::Instant>,
+}
+
+/// プロトコルなしで送るファイルの大きさの上限
+pub const SEND_FILE_LIMIT: u64 = 64 << 20;
+
+/// 返事を待つ間にとっておく受信の上限。超えたら転送は始まらないものとして端末に出す
+const HELD_LIMIT: usize = 256 * 1024;
+/// 返事が無いまま、これより長く待ったら端末に出す（応じない UI や CLI のため）
+const HELD_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// 受信した文字の写し（`Session::tap`）。文字コード変換の後、改行コード変換の前の文字列で届く。
 /// 捨てると写しも止まる。ファイル転送中の受信は届かない。
@@ -178,7 +197,7 @@ impl Session {
             newline_send: Mutex::new(options.terminal.newline_send),
             decoder: Mutex::new(ReceiveDecoder::new(options.terminal.charset_receive)),
             charset_send: Mutex::new(options.terminal.charset_send),
-            divert: Mutex::new(None),
+            divert: Mutex::new(Route::default()),
             zmodem: Mutex::new(ZmodemDetector::default()),
             local_echo: AtomicBool::new(options.terminal.local_echo),
             taps: Mutex::new(Taps::default()),
@@ -189,12 +208,13 @@ impl Session {
             .name("mt-session-writer".into())
             .spawn(move || write_loop(rx, writer, delay))?;
 
+        // 受信スレッドより先に「接続済み」にする（すぐ切れたときに Closed を Connected で上書きしないように）
+        inner.set_state(SessionState::Connected);
         let reader_inner = Arc::clone(&inner);
         thread::Builder::new()
             .name("mt-session-reader".into())
             .spawn(move || reader_inner.read_loop(reader))?;
 
-        inner.set_state(SessionState::Connected);
         inner.notify_damage();
         Ok(Arc::new(Self { inner }))
     }
@@ -221,7 +241,12 @@ impl Session {
     pub fn paste(&self, text: String) {
         let bytes = self.inner.vt().encode_paste(&text);
         let bytes = self.inner.newline_send().apply(bytes);
-        self.send_user(bytes);
+        // ローカルエコーには貼り付けた文字だけを出す（ブラケットペーストの ESC[200~ などは出さない）
+        if self.inner.local_echo.load(Ordering::SeqCst) {
+            let plain = text.replace("\r\n", "\r").replace('\n', "\r");
+            self.inner.echo(plain.as_bytes());
+        }
+        self.send_wire(bytes);
     }
 
     /// 文字列を送る（TTL の send）。送信の文字コードに変換し、ローカルエコーなら画面にも出す。
@@ -235,6 +260,23 @@ impl Session {
         let mut bytes = text.as_bytes().to_vec();
         bytes.extend(self.inner.newline_send().apply(b"\r".to_vec()));
         self.send_user(bytes);
+    }
+
+    /// 「ファイル送信」で送るファイルを読む。プロトコルなしの送信は送信遅延どおりに少しずつ流すので、
+    /// 大きなファイル（`SEND_FILE_LIMIT` 超）は断る（XMODEM などのプロトコルや SCP を使ってもらう）。
+    pub fn read_file_for_send(path: &std::path::Path) -> io::Result<Vec<u8>> {
+        let len = std::fs::metadata(path)?.len();
+        if len > SEND_FILE_LIMIT {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "{}: too large to send without a protocol ({} MiB max); use XMODEM / ZMODEM or SCP",
+                    path.display(),
+                    SEND_FILE_LIMIT >> 20
+                ),
+            ));
+        }
+        std::fs::read(path)
     }
 
     /// ファイルの中身を送る（Tera Term の「ファイル送信」、TTL の sendfile）。
@@ -286,6 +328,11 @@ impl Session {
         if self.inner.local_echo.load(Ordering::SeqCst) {
             self.inner.echo(&bytes);
         }
+        self.send_wire(bytes);
+    }
+
+    /// 送信の文字コードに変換して送る（ローカルエコーはしない）。
+    fn send_wire(&self, bytes: Vec<u8>) {
         let cs = *self
             .inner
             .charset_send
@@ -378,13 +425,18 @@ impl Session {
     /// ファイル転送を始める。終わるまで受信は端末ではなく `divert` へ回る。
     pub fn start_transfer(self: &Arc<Self>, mut divert: Box<dyn ByteDivert>) -> io::Result<()> {
         {
-            let mut slot = self.inner.divert();
-            if slot.is_some() {
+            let mut route = self.inner.divert();
+            if route.divert.is_some() {
                 return Err(io::Error::other("a transfer is already running"));
             }
             let first = divert.start();
             self.inner.raw(first);
-            *slot = Some(divert);
+            // 返事を待つ間に届いていた分（ZMODEM のヘッダから後ろ）を先に渡す
+            if let Some(held) = route.held.take() {
+                let out = divert.receive(&held);
+                self.inner.raw(out);
+            }
+            route.divert = Some(divert);
         }
         // 時間切れの再送と、送信の続きのための見回り
         let inner = Arc::clone(&self.inner);
@@ -393,12 +445,14 @@ impl Session {
             .spawn(move || {
                 loop {
                     thread::sleep(Duration::from_millis(20));
-                    let mut slot = inner.divert();
-                    let Some(d) = slot.as_mut() else { break };
+                    let mut route = inner.divert();
+                    let Some(d) = route.divert.as_mut() else {
+                        break;
+                    };
                     let out = d.tick();
                     inner.raw(out);
                     if d.finished() {
-                        *slot = None;
+                        route.divert = None;
                         inner
                             .zmodem
                             .lock()
@@ -413,15 +467,23 @@ impl Session {
 
     /// ファイル転送を中止する。
     pub fn cancel_transfer(&self) {
-        let mut slot = self.inner.divert();
-        if let Some(mut d) = slot.take() {
+        let mut route = self.inner.divert();
+        if let Some(mut d) = route.divert.take() {
             let out = d.cancel();
             self.inner.raw(out);
         }
     }
 
+    /// 相手の ZMODEM の開始（`on_transfer_request`）に応じないとき。とっておいた受信を端末に出す。
+    pub fn decline_transfer(&self) {
+        let held = self.inner.divert().held.take();
+        if let Some(bytes) = held {
+            self.inner.display(&bytes);
+        }
+    }
+
     pub fn is_transferring(&self) -> bool {
-        self.inner.divert().is_some()
+        self.inner.divert().divert.is_some()
     }
 
     pub fn state(&self) -> SessionState {
@@ -490,7 +552,7 @@ impl Inner {
         self.vt.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    fn divert(&self) -> MutexGuard<'_, Option<Box<dyn ByteDivert>>> {
+    fn divert(&self) -> MutexGuard<'_, Route> {
         self.divert.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -556,51 +618,73 @@ impl Inner {
     }
 
     fn receive(&self, bytes: &[u8]) {
-        {
-            let mut slot = self.divert();
-            if let Some(d) = slot.as_mut() {
+        let flush = {
+            let mut route = self.divert();
+            if let Some(d) = route.divert.as_mut() {
                 let out = d.receive(bytes);
                 self.raw(out);
                 if d.finished() {
-                    *slot = None;
+                    route.divert = None;
+                    self.zmodem
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .reset();
                 }
                 return;
             }
+            // UI の返事を待っている間は、端末に出さずにとっておく
+            let waited = route.held_since.is_some_and(|t| t.elapsed() > HELD_TIMEOUT);
+            if let Some(held) = route.held.as_mut() {
+                held.extend_from_slice(bytes);
+                if held.len() <= HELD_LIMIT && !waited {
+                    return;
+                }
+                // 返事が来ないまま溜まりすぎた。転送は始まらないものとして端末に出す
+                route.held.take()
+            } else {
+                None
+            }
+        };
+        if let Some(bytes) = flush {
+            self.display(&bytes);
+            return;
         }
-        // 相手の ZMODEM の開始を探す。見つかったら、その手前までを端末に出して知らせる
+        // 相手の ZMODEM の開始を探す。見つかったら、その手前までを端末に出し、後ろはとっておいて知らせる
         let detected = self
             .zmodem
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .find(bytes);
-        let bytes = match detected {
-            Some((at, request)) => {
+        match detected {
+            Some((at, rest, request)) => {
                 self.display(&bytes[..at]);
+                let mut route = self.divert();
+                route.held = Some(rest);
+                route.held_since = Some(std::time::Instant::now());
+                drop(route);
                 self.listener.on_transfer_request(request);
-                return;
             }
-            None => bytes,
-        };
-        self.display(bytes);
+            None => self.display(bytes),
+        }
     }
 
     /// 受信を端末に出す（ログ、文字コード、改行コード、VT）。
     fn display(&self, bytes: &[u8]) {
-        {
-            let mut log = self.log();
-            if let Some(logger) = log.as_mut()
-                && logger.write(bytes).is_err()
-            {
-                // ディスクがいっぱいなど。ログだけ止めて受信は続ける
-                *log = None;
-            }
-        }
         let decoded = self
             .decoder
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .decode(bytes)
             .into_owned();
+        {
+            let mut log = self.log();
+            if let Some(logger) = log.as_mut()
+                && logger.write(bytes, &decoded).is_err()
+            {
+                // ディスクがいっぱいなど。ログだけ止めて受信は続ける
+                *log = None;
+            }
+        }
         {
             let mut taps = self.taps.lock().unwrap_or_else(|e| e.into_inner());
             let text = String::from_utf8_lossy(&decoded);

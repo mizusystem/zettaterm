@@ -419,3 +419,56 @@ fn stop_interrupts_a_wait() {
     t.join().unwrap();
     session.close();
 }
+
+/// 外部レビュー B-1：1 行の if を重ねた break、i32 の端の for、切断後の無期限 wait。
+#[test]
+fn nested_one_line_if_break_and_for_at_the_edge() {
+    let src = r#"
+n = 0
+while 1
+  n = n + 1
+  if n > 2 if n < 100 break
+endwhile
+int2str s n
+messagebox s
+c = 0
+for i 2147483645 2147483647
+  c = c + 1
+next
+int2str s c
+messagebox s
+c = 0
+lo = -2147483646
+hi = -2147483647 - 1
+for i lo hi
+  c = c + 1
+next
+int2str s c
+messagebox s
+"#;
+    let mut host = TestHost::default();
+    assert_eq!(run(src, &mut host, None), ["3", "3", "3"]);
+}
+
+#[test]
+fn wait_ends_when_the_peer_goes_away() {
+    let (session, remote) = open_mock();
+    let t = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(200));
+        remote.hang_up();
+    });
+    let mut host = TestHost::default();
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut it = Interp::new(&mut host, Some(Arc::clone(&session)), stop);
+    let started = Instant::now();
+    // timeout = 0（無期限）でも、切れたら result = 0 で次へ進む
+    it.run_source(
+        "wait 'never'\nint2str s result\nmessagebox s",
+        Path::new("."),
+    )
+    .unwrap();
+    drop(it);
+    assert!(started.elapsed() < Duration::from_secs(3));
+    assert_eq!(*host.out.lock().unwrap(), ["0"]);
+    t.join().unwrap();
+}

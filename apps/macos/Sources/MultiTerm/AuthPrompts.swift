@@ -105,8 +105,30 @@ final class SshPrompterBridge: SshPrompter, @unchecked Sendable {
         }
     }
 
+    /// マクロの `/passwd=`。次の接続の最初のパスワード認証で 1 回だけ使い、接続が終わったら消す
+    private let oneTimeLock = NSLock()
+    private var oneTimePassword: String?
+
+    func setOneTimePassword(_ password: String?) {
+        oneTimeLock.lock()
+        oneTimePassword = password
+        oneTimeLock.unlock()
+    }
+
+    private func takeOneTimePassword() -> String? {
+        oneTimeLock.lock()
+        defer { oneTimeLock.unlock() }
+        let p = oneTimePassword
+        oneTimePassword = nil
+        return p
+    }
+
     func credentials(request: AuthRequest) -> AuthResponse {
-        ask(.cancel, { deliver in
+        if !request.failed, !request.further, request.methods.contains(.password),
+           let password = takeOneTimePassword() {
+            return .password(user: request.user, password: password)
+        }
+        return ask(.cancel, { deliver in
             // 記憶したパスワードがあれば、最初の 1 回はダイアログを出さずに使う
             let key = PasswordMemory.key(user: request.user, host: request.host, port: request.port)
             if !request.failed, !request.further, request.methods.contains(.password),

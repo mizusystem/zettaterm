@@ -601,6 +601,16 @@ pub fn parse(src: &str) -> Result<Program, ParseError> {
     Ok(prog)
 }
 
+/// 1 行の if を重ねたときの、いちばん内側の文。
+fn innermost(stmt: &Stmt) -> &Stmt {
+    match stmt {
+        Stmt::If {
+            then: Some(inner), ..
+        } => innermost(inner),
+        s => s,
+    }
+}
+
 /// ブロックの対応を解く。
 fn link_blocks(prog: &mut Program) -> Result<(), ParseError> {
     let n = prog.lines.len();
@@ -680,9 +690,10 @@ fn link_blocks(prog: &mut Program) -> Result<(), ParseError> {
                     .ok_or_else(|| err(no, "break or continue outside a loop"))?;
                 prog.owner[i] = owner.0;
             }
+            // 1 行の if（重ねてもよい：if a if b break）の中の break / continue
             Stmt::If {
                 then: Some(inner), ..
-            } if matches!(**inner, Stmt::Break | Stmt::Continue) => {
+            } if matches!(innermost(inner), Stmt::Break | Stmt::Continue) => {
                 let owner = stack
                     .iter()
                     .rev()

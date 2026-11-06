@@ -30,6 +30,9 @@
 - 正規表現は Rust の regex（鬼車ではない）。後方参照と先読みは使えない
 - 文字列の長さと位置（`strlen` `strcopy` など）はバイト単位（Tera Term 5 の UTF-8 と同じ）
 - `sendbreak` は 300 ms
+- `sendfile` は 64 MiB まで（それより大きいファイルは XMODEM などのプロトコルか SCP で）
+- `timeout` が 0（無期限）でも、相手が切れたら `wait` 系は `result = 0` で次へ進む
+- `filereadln` の 1 行は 64 KiB まで（続きは次の `filereadln`）
 - `wait` は、前回の一致より後に届いた受信のすべてから探す（`flushrecv` で捨てられる）
 
 ## 実行

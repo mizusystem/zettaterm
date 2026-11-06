@@ -490,12 +490,12 @@ impl Receiver {
                 }
                 _ => Vec::new(),
             },
-            Event::Header { typ, data, crc32 } => self.on_header(typ, data, crc32),
+            Event::Header { typ, data, crc32 } => self.on_header(typ, data, crc32, now),
             Event::Data { data, end } => self.on_data(data, end),
         }
     }
 
-    fn on_header(&mut self, typ: u8, data: [u8; 4], crc32: bool) -> Vec<u8> {
+    fn on_header(&mut self, typ: u8, data: [u8; 4], crc32: bool, now: Instant) -> Vec<u8> {
         let pos = u32::from_le_bytes(data);
         match typ {
             ZRQINIT => Self::zrinit(),
@@ -536,7 +536,7 @@ impl Receiver {
             ZFIN => {
                 self.state = RState::WaitOO {
                     count: 0,
-                    until: Instant::now() + Duration::from_millis(500),
+                    until: now + Duration::from_millis(500),
                 };
                 hex_header(ZFIN, [0; 4])
             }

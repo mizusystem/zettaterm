@@ -95,6 +95,7 @@ fn menu() -> gio::Menu {
         m.append_item(&item);
         trans.append_submenu(Some(kind.name()), &m);
     }
+    trans.append(Some(&l("ZMODEM の自動受信")), Some("win.zmodem-auto"));
     bar.append_submenu(Some(&tt("MENU_TRANS", "転送")), &trans);
 
     let control = gio::Menu::new();

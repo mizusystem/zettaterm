@@ -35,5 +35,8 @@
   "送り先": "Send to",
   "接続中のセッションがありません。": "No sessions are connected.",
   "{} 件に送信しました": "Sent to {} sessions",
-  "フォルダ...": "Folder..."
+  "フォルダ...": "Folder...",
+  "ZMODEM の自動受信": "Receive ZMODEM Automatically",
+  "相手が ZMODEM でファイルを送ろうとしています": "The remote side wants to send files with ZMODEM",
+  "ダウンロードフォルダに受け取りますか？": "Receive them into the Downloads folder?"
 }

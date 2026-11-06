@@ -506,14 +506,21 @@ impl Session {
         self.inner.cancel_transfer();
     }
 
+    /// 相手の ZMODEM の開始（on_transfer_request）に応じないとき。とっておいた受信を端末に出す。
+    pub fn decline_transfer(&self) {
+        self.inner.decline_transfer();
+    }
+
     pub fn is_transferring(&self) -> bool {
         self.inner.is_transferring()
     }
 
     /// ファイルの中身を送る（Tera Term の「ファイル送信」）。`binary` なら一切変換しない。
     pub fn send_file(&self, path: String, binary: bool) -> Result<(), MtError> {
-        let data = std::fs::read(&path).map_err(|e| MtError::Io {
-            message: format!("{path}: {e}"),
+        let data = core::Session::read_file_for_send(std::path::Path::new(&path)).map_err(|e| {
+            MtError::Io {
+                message: format!("{path}: {e}"),
+            }
         })?;
         self.inner.send_file(data, binary);
         Ok(())

@@ -134,6 +134,13 @@ pub fn resolve(
         .filter(|u| !u.is_empty())
         .or(input_user)
         .or(p.user.clone());
+    // ProxyCommand の %h / %n / %r はシェルに渡すので、シェルの記号を含む名前は断る
+    // （OpenSSH 9.6 と同じ。入力元は接続ダイアログ・TTL の connect・ssh_config）
+    check_name("host name", &alias)?;
+    check_name("host name", &host_name)?;
+    if let Some(u) = &user {
+        check_name("user name", u)?;
+    }
     let tokens = Tokens {
         host: host_name.clone(),
         port,
@@ -200,6 +207,21 @@ pub fn resolve(
         strict,
         known_hosts,
     })
+}
+
+/// ホスト名・ユーザー名に使えない文字（制御文字、空白、シェルの記号）が無いか。
+fn check_name(what: &str, name: &str) -> io::Result<()> {
+    const BAD: &str = "'\"`$;&|<>(){}\\*?!~#^";
+    if let Some(c) = name
+        .chars()
+        .find(|c| c.is_control() || c.is_whitespace() || BAD.contains(*c))
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{what} contains an invalid character {c:?}: {name}"),
+        ));
+    }
+    Ok(())
 }
 
 /// OpenSSH が既定で試す鍵ファイル（存在するかは呼び出し側で確かめる）。
@@ -281,6 +303,30 @@ impl Tokens {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// シェルの記号を含むホスト名・ユーザー名は ProxyCommand に渡す前に断る
+    #[test]
+    fn names_with_shell_metacharacters_are_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = write(dir.path(), "config", "Host *\n  ProxyCommand nc %h %p\n");
+        for bad in ["evil;touch /tmp/x", "a$(id)", "b`id`", "c|d", "e f", "g\nh"] {
+            let e = resolve(bad, None, None, Some(&cfg)).unwrap_err();
+            assert_eq!(e.kind(), io::ErrorKind::InvalidInput, "{bad}");
+        }
+        assert!(resolve("host", None, Some("u;rm"), Some(&cfg)).is_err());
+        assert!(resolve("x$(id)@host", None, None, Some(&cfg)).is_err());
+        // 普通の名前、IPv6、スコープ付きは通る
+        for ok in [
+            "router-1.example.com",
+            "192.0.2.10",
+            "[2001:db8::1]",
+            "fe80::1%en0",
+            "kt@host",
+        ] {
+            let p = resolve(ok, None, None, Some(&cfg)).unwrap();
+            assert!(p.proxy_command.is_some(), "{ok}");
+        }
+    }
 
     fn write(dir: &Path, name: &str, text: &str) -> PathBuf {
         let p = dir.join(name);

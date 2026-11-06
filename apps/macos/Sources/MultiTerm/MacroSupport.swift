@@ -72,11 +72,8 @@ extension TerminalController {
         case let .tcp(host, port):
             return .tcp(host: host, port: port, ip: .auto)
         case let .ssh(host, port, user, password):
-            if let password {
-                // 最初の認証ダイアログを出さずに使う（「パスワードをメモリ上に記憶する」と同じ仕組み）
-                let key = PasswordMemory.key(user: user ?? NSUserName(), host: host, port: port ?? 22)
-                PasswordMemory.set(key, password)
-            }
+            // この接続の最初の認証ダイアログの代わりに使う。ほかの接続には渡さず、接続が終わったら消す
+            prompter.setOneTimePassword(password)
             return .ssh(host: host, port: port, user: user)
         }
     }
@@ -151,6 +148,7 @@ final class MacroBridge: MacroHost, @unchecked Sendable {
         return result.value
     }
 
+    @MainActor
     private static func make(_ title: String, _ text: String) -> NSAlert {
         let a = NSAlert()
         a.messageText = title.isEmpty ? "MACRO" : title

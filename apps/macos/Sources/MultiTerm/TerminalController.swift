@@ -97,12 +97,15 @@ final class TerminalController: ObservableObject {
         Task {
             do {
                 try await view.connect(target.profile)
+                prompter.setOneTimePassword(nil)
                 guard current == attempt else { return }
                 status = .connected
                 if remember { HostStore.shared.add(target) }
             } catch is CancellationError {
+                prompter.setOneTimePassword(nil)
                 return
             } catch {
+                prompter.setOneTimePassword(nil)
                 guard current == attempt else { return }
                 status = .disconnected
                 report(error)

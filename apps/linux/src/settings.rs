@@ -37,7 +37,7 @@ impl TermConf {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     /// SSH / Telnet / ローカルシェル
@@ -47,6 +47,21 @@ pub struct Settings {
     pub serial: SerialSettings,
     pub delay: SendDelay,
     pub serial_port: Option<String>,
+    /// 相手の sz で尋ねずに受け取るか（既定は Tera Term と同じくオン）
+    pub zmodem_auto_receive: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            terminal: TermConf::default(),
+            terminal_serial: TermConf::default(),
+            serial: SerialSettings::default(),
+            delay: SendDelay::default(),
+            serial_port: None,
+            zmodem_auto_receive: true,
+        }
+    }
 }
 
 fn path() -> std::path::PathBuf {

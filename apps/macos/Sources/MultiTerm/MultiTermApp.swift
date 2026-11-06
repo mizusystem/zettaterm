@@ -126,6 +126,7 @@ private func receiveKey(_ k: TransferKind) -> String {
 /// メニュー。項目名は Tera Term の文言、ショートカットは Alt を Cmd に読み替えたもの。
 struct TerminalCommands: Commands {
     @FocusedObject private var controller: TerminalController?
+    @AppStorage("zmodem.autoReceive") private var autoZmodem = true
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -193,6 +194,9 @@ struct TerminalCommands: Commands {
                 }
                 .disabled(controller?.isConnected != true || controller?.transfer != nil)
             }
+            Divider()
+            // 相手の sz で自動的に受け取るか（切ると、受け取る前に確かめる）
+            Toggle(L("ZMODEM の自動受信"), isOn: $autoZmodem)
         }
 
         CommandMenu(TT.text("MENU_CONTROL", "コントロール")) {

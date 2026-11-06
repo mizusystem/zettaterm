@@ -7,7 +7,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 | パス | パッケージ名 | 責務 |
 | --- | --- | --- |
-| `crates/core` | `mt-core` | Session、Transport の抽象、文字コード・改行変換、ログ、プロファイル、INI インポート |
+| `crates/core` | `mt-core` | Session、Transport の抽象、文字コード・改行変換、ログ、プロファイル（INI インポートは未実装） |
 | `crates/vt` | `mt-vt` | VT エミュレーション、画面グリッド、変更行の追跡、スクロールバック |
 | `crates/serial` | `mt-serial` | ポート制御、任意ボーレート、デバイス列挙とホットプラグ、自動再接続 |
 | `crates/net` | `mt-net` | SSH（外部 ssh を PTY 起動 → 後で russh）、Telnet、ローカル PTY |
@@ -33,7 +33,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 - UI に依存するコードは `crates/` に入れない
 - OS 固有コード（`cfg(target_os)`）は `crates/serial` と `crates/net` の中に閉じる。他のクレートには書かない
 - `crates/` 配下は macOS・Linux・Windows の 3 環境で `cargo test` を通す。Linux と Windows は GitHub Actions（`.github/workflows/ci.yml`）、macOS はこの Mac で `scripts/ci-macos.sh`（push 前に回す。GitHub で回すときは `macos.yml` を手動実行）
-- 設定ファイルは TOML。`TERATERM.INI` のインポートは `core` が持つ
+- 設定ファイルは TOML。`TERATERM.INI` のインポートは `core` に置く予定（未実装）
 - Tera Term のコードは持ってこない。仕様・UI 文言・設定キーは参照してよい（BSD-3-Clause、`THIRD_PARTY.md` に表示）
 
 ## API 契約（メインセッションの持ち物）
@@ -111,7 +111,7 @@ cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用�
 cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
 ```
 
-ファイル転送（XMODEM / YMODEM / ZMODEM / Kermit）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `mt_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
+ファイル転送（XMODEM / YMODEM / ZMODEM / Kermit）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `mt_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。ヘッダから後ろの受信は端末に出さずにとっておき、UI が `start_transfer` で転送に渡すか `decline_transfer` で端末に出す（応じない UI のため 5 秒で端末に出る）。UI は転送を始めないときは必ず `decline_transfer` を呼ぶ。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
 
 ```bash
 cargo test -p mt-xfer --test lrzsz -- --nocapture

@@ -36,8 +36,9 @@ pub(crate) struct ZmodemDetector {
 const PREFIX: &[u8] = b"**\x18B0";
 
 impl ZmodemDetector {
-    /// 見つかったら、その開始位置（`bytes` の中の位置。前のチャンクから続く場合は 0）と種類を返す。
-    pub(crate) fn find(&mut self, bytes: &[u8]) -> Option<(usize, TransferRequest)> {
+    /// 見つかったら、`bytes` のうち端末に出してよい長さと、ヘッダから後ろのバイト列（前のチャンクから
+    /// 続いていればその分も含む。転送に渡す）と、種類を返す。
+    pub(crate) fn find(&mut self, bytes: &[u8]) -> Option<(usize, Vec<u8>, TransferRequest)> {
         let mut joined = std::mem::take(&mut self.tail);
         let carried = joined.len();
         joined.extend_from_slice(bytes);
@@ -53,13 +54,16 @@ impl ZmodemDetector {
                     b'1' => TransferRequest::ZmodemSend,
                     _ => return None,
                 };
-                Some((i.saturating_sub(carried), kind))
+                Some((i, kind))
             });
-        if found.is_none() {
-            let keep = joined.len().min(PREFIX.len());
-            self.tail = joined[joined.len() - keep..].to_vec();
+        match found {
+            Some((i, kind)) => Some((i.saturating_sub(carried), joined[i..].to_vec(), kind)),
+            None => {
+                let keep = joined.len().min(PREFIX.len());
+                self.tail = joined[joined.len() - keep..].to_vec();
+                None
+            }
         }
-        found
     }
 
     pub(crate) fn reset(&mut self) {
@@ -76,12 +80,20 @@ mod tests {
         let mut d = ZmodemDetector::default();
         assert_eq!(
             d.find(b"$ sz a.txt\r\nrz\r**\x18B00000000000000\r\n"),
-            Some((15, TransferRequest::ZmodemReceive))
+            Some((
+                15,
+                b"**\x18B00000000000000\r\n".to_vec(),
+                TransferRequest::ZmodemReceive
+            ))
         );
         let mut d = ZmodemDetector::default();
         assert_eq!(
             d.find(b"**\x18B0100000023be50\r\n"),
-            Some((0, TransferRequest::ZmodemSend))
+            Some((
+                0,
+                b"**\x18B0100000023be50\r\n".to_vec(),
+                TransferRequest::ZmodemSend
+            ))
         );
         let mut d = ZmodemDetector::default();
         assert_eq!(d.find(b"ordinary output ** B00"), None);
@@ -91,6 +103,10 @@ mod tests {
     fn finds_across_chunks() {
         let mut d = ZmodemDetector::default();
         assert_eq!(d.find(b"rz\r**\x18"), None);
-        assert_eq!(d.find(b"B00000"), Some((0, TransferRequest::ZmodemReceive)));
+        // 前のチャンクに入っていたヘッダの頭も、転送に渡す側に入る
+        assert_eq!(
+            d.find(b"B00000"),
+            Some((0, b"**\x18B00000".to_vec(), TransferRequest::ZmodemReceive))
+        );
     }
 }

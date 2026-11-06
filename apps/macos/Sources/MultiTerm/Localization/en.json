@@ -53,5 +53,9 @@
   "完了しました": "Completed",
   "中止しました": "Canceled",
   "失敗しました：%@": "Failed: %@",
-  "（残り %@）": " (%@ left)"
+  "（残り %@）": " (%@ left)",
+  "ZMODEM の自動受信": "Receive ZMODEM Automatically",
+  "相手が ZMODEM でファイルを送ろうとしています": "The remote side wants to send files with ZMODEM",
+  "ダウンロードフォルダに受け取りますか？": "Receive them into the Downloads folder?",
+  "受け取る": "Receive"
 }

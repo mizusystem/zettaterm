@@ -62,7 +62,11 @@ extension TerminalController {
         // XMODEM はブロックの大きさ（128 / 1K）とチェックサム / CRC を選べる（Tera Term の「オプション」）
         let popup = kind == .xmodem ? Self.xmodemOptions(send: true) : nil
         if let popup { panel.accessoryView = Self.accessory(popup); panel.isAccessoryViewDisclosed = true }
-        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else {
+            // 相手の rz に応じなかった。とっておいた受信を画面に出す
+            view.session?.declineTransfer()
+            return
+        }
         let proto = popup.map { Self.xmodemProtocol(send: true, index: $0.indexOfSelectedItem) }
         startTransfer(kind, send: true, files: panel.urls.map(\.path), destination: nil, protocol: proto)
     }
@@ -160,6 +164,11 @@ extension TerminalController {
         }
     }
 
+    /// 「転送 > ZMODEM の自動受信」（既定はオン）
+    static var autoZmodemReceive: Bool {
+        UserDefaults.standard.object(forKey: "zmodem.autoReceive") as? Bool ?? true
+    }
+
     static var downloads: URL {
         FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
@@ -168,10 +177,27 @@ extension TerminalController {
     /// 相手で sz / rz が動いたとき（Tera Term の ZMODEM 自動切り替え）。
     func handleTransferRequest(_ request: TransferRequest) {
         // マクロの実行中は、マクロが転送を始める（zmodemsend など）ので自動では動かない
-        guard sheet == nil, macro == nil, view.session?.isTransferring() == false else { return }
+        guard sheet == nil, macro == nil, view.session?.isTransferring() == false else {
+            view.session?.declineTransfer()
+            return
+        }
         switch request {
         case .zmodemReceive:
-            // Tera Term と同じく、尋ねずにダウンロードフォルダへ受け取る
+            // 既定は Tera Term と同じく、尋ねずにダウンロードフォルダへ受け取る。
+            // 「転送 > ZMODEM の自動受信」を切ると、受け取る前に確かめる
+            if !Self.autoZmodemReceive {
+                let alert = NSAlert()
+                alert.messageText = L("相手が ZMODEM でファイルを送ろうとしています")
+                alert.informativeText = L("ダウンロードフォルダに受け取りますか？")
+                alert.addButton(withTitle: L("受け取る"))
+                alert.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
+                guard alert.runModal() == .alertFirstButtonReturn else {
+                    // 相手の sz を止める（CAN を 8 つと BS を 8 つ。ZMODEM の中止の合図）
+                    view.session?.write(bytes: Data(repeating: 0x18, count: 8) + Data(repeating: 0x08, count: 8))
+                    view.session?.declineTransfer()
+                    return
+                }
+            }
             startTransfer(.zmodem, send: false, files: [], destination: Self.downloads.path)
         case .zmodemSend:
             beginSend(.zmodem)
@@ -181,7 +207,10 @@ extension TerminalController {
     func startTransfer(
         _ kind: TransferKind, send: Bool, files: [String], destination: String?, protocol proto: TransferProtocol? = nil
     ) {
-        guard let session = view.session, confirmFlowControl(kind) else { return }
+        guard let session = view.session, confirmFlowControl(kind) else {
+            view.session?.declineTransfer()
+            return
+        }
         do {
             let handle = try session.startTransfer(
                 protocol: proto ?? kind.core, send: send, files: files, destination: destination)
@@ -192,6 +221,7 @@ extension TerminalController {
                 cancel: { [weak session] in session?.cancelTransfer() }
             ))
         } catch {
+            session.declineTransfer()
             errorMessage = Self.describe(error)
         }
     }

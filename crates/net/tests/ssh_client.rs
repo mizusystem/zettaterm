@@ -1104,6 +1104,27 @@ fn scp_interoperates_with_openssh_scp() {
         b"C"
     );
 
+    // フォルダの中に、親を指すシンボリックリンクの輪があっても止まる
+    #[cfg(unix)]
+    {
+        let looped = env.path().join("loop");
+        std::fs::create_dir_all(looped.join("inner")).unwrap();
+        std::fs::write(looped.join("inner/f.txt"), b"F").unwrap();
+        std::os::unix::fs::symlink(&looped, looped.join("inner/back")).unwrap();
+        let job = files.upload(vec![looped], "in");
+        wait_job(&job);
+        assert_eq!(
+            job.progress().status,
+            mt_net::ScpStatus::Done,
+            "{:?}",
+            job.progress()
+        );
+        assert_eq!(
+            std::fs::read(remote.path().join("in/loop/inner/f.txt")).unwrap(),
+            b"F"
+        );
+    }
+
     // フォルダを中身ごと受け取る。同じ名前があれば別の名前にする
     std::fs::create_dir(out.join("cfg")).unwrap();
     let job = files.download("in/cfg", out.clone());

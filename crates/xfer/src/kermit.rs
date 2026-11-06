@@ -309,8 +309,9 @@ pub struct Sender {
     chkt: u8,
     state: SState,
     seq: u8,
-    data: Vec<u8>,
-    offset: usize,
+    /// 今送っているファイル（少しずつ読む）
+    src: Option<crate::FileSource>,
+    offset: u64,
     last: Vec<u8>,
     deadline: Instant,
     retries: u32,
@@ -338,7 +339,7 @@ impl Sender {
             chkt: 0,
             state: SState::Init,
             seq: 0,
-            data: Vec::new(),
+            src: None,
             offset: 0,
             last: Vec::new(),
             deadline: Instant::now(),
@@ -367,8 +368,8 @@ impl Sender {
             self.state = SState::Break;
             return self.send(b'B', &[], now);
         };
-        match std::fs::read(&path) {
-            Ok(d) => self.data = d,
+        match crate::FileSource::open(&path) {
+            Ok(src) => self.src = Some(src),
             Err(e) => return self.fail(&e.to_string(), now),
         }
         self.offset = 0;
@@ -378,7 +379,7 @@ impl Sender {
             .unwrap_or_default();
         self.progress.file = Some(name.clone());
         self.progress.bytes = 0;
-        self.progress.total = Some(self.data.len() as u64);
+        self.progress.total = Some(self.src.as_ref().map_or(0, |s| s.len));
         self.state = SState::FileHeader;
         let mut encoded = Vec::new();
         for b in name.bytes() {
@@ -388,25 +389,32 @@ impl Sender {
     }
 
     fn next_data(&mut self, now: Instant) -> Vec<u8> {
-        if self.offset >= self.data.len() {
+        let len = self.src.as_ref().map_or(0, |s| s.len);
+        if self.offset >= len {
             self.state = SState::Eof;
             return self.send(b'Z', &[], now);
         }
         let room = usize::from(self.params.maxl) - 2 - check_len(self.chkt);
+        // 1 バイトは 1 文字以上になるので、room バイト読めば足りる
+        let chunk = match self.src.as_mut().map(|s| s.read_at(self.offset, room)) {
+            Some(Ok(c)) => c,
+            Some(Err(e)) => return self.fail(&e.to_string(), now),
+            None => return self.fail("no file", now),
+        };
         let mut encoded = Vec::with_capacity(room);
         let mut unit = Vec::with_capacity(4);
         let mut taken = 0;
-        while self.offset + taken < self.data.len() {
+        while taken < chunk.len() {
             unit.clear();
-            encode_byte(self.data[self.offset + taken], self.params.qbin, &mut unit);
+            encode_byte(chunk[taken], self.params.qbin, &mut unit);
             if encoded.len() + unit.len() > room {
                 break;
             }
             encoded.extend_from_slice(&unit);
             taken += 1;
         }
-        self.offset += taken;
-        self.progress.bytes = self.offset as u64;
+        self.offset += taken as u64;
+        self.progress.bytes = self.offset;
         self.state = SState::Data;
         self.send(b'D', &encoded, now)
     }
@@ -584,6 +592,9 @@ impl Receiver {
                 let qbin_reply = theirs.qbin.unwrap_or(b'N');
                 self.params = Params { chkt, ..theirs };
                 self.expected = p.seq;
+                // S への ACK はいつも 1 バイトのチェック。S が再送されたとき（ACK が失われたとき）に
+                // 交渉後のチェックで返して相手が受け取れなくならないよう、いったん未交渉に戻す
+                self.chkt = 0;
                 let reply = self.ack(
                     p.seq,
                     &our_init(

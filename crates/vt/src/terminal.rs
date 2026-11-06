@@ -176,8 +176,12 @@ impl Terminal {
     pub fn encode_paste(&self, text: &str) -> Vec<u8> {
         let body = text.replace("\r\n", "\r").replace('\n', "\r");
         if self.term.mode().contains(TermMode::BRACKETED_PASTE) {
-            // 貼り付け内容に終端シーケンスを紛れ込ませられないよう ESC を除く
-            let body = body.replace('\x1b', "");
+            // 貼り付け内容に終端シーケンスや制御を紛れ込ませられないよう、タブと改行以外の制御文字
+            // （ESC、Ctrl-C などの C0 と、CSI 0x9b などの C1）を除く
+            let body: String = body
+                .chars()
+                .filter(|&c| !c.is_control() || c == '\t' || c == '\r')
+                .collect();
             format!("\x1b[200~{body}\x1b[201~").into_bytes()
         } else {
             body.into_bytes()
@@ -460,5 +464,10 @@ mod tests {
         assert_eq!(t.encode_paste("a\nb"), b"a\rb");
         t.feed(b"\x1b[?2004h");
         assert_eq!(t.encode_paste("a\r\nb\x1b"), b"\x1b[200~a\rb\x1b[201~");
+        // C1 の CSI や Ctrl-C などの制御文字も除く（タブと改行は残す）
+        assert_eq!(
+            t.encode_paste("x\u{9b}201~\x03\ty"),
+            b"\x1b[200~x201~\ty\x1b[201~"
+        );
     }
 }

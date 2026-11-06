@@ -142,6 +142,8 @@ struct Handle {
 /// 受信バッファの上限（超えたら古い方を捨てる）
 const RECV_LIMIT: usize = 1 << 20;
 const MAX_INCLUDE: usize = 9;
+/// filereadln で読む 1 行の上限
+const MAX_READ_LINE: usize = 64 * 1024;
 
 pub struct Interp<'h> {
     host: &'h mut dyn Host,
@@ -429,7 +431,10 @@ impl<'h> Interp<'h> {
                     unreachable!()
                 };
                 let (e, step) = *self.frame().fors.get(&start).ok_or("next without for")?;
-                let v = self.get_int(var)?.wrapping_add(step);
+                // 終わりの値が i32 の端でも止まるよう、あふれたら終わる
+                let Some(v) = self.get_int(var)?.checked_add(step) else {
+                    return Ok(Flow::Next);
+                };
                 self.assign(var, Value::Int(v))?;
                 if (step > 0 && v <= e) || (step < 0 && v >= e) {
                     Flow::Jump(start + 1)
@@ -648,6 +653,17 @@ impl<'h> Interp<'h> {
             }
             if self.stop.load(Ordering::SeqCst) {
                 return Err(Fail::Stopped);
+            }
+            // 相手が切れたら、時間切れと同じく result = 0 で抜ける（無期限の wait が終わらなくならないように）
+            if self
+                .session
+                .as_ref()
+                .is_some_and(|s| s.state() == SessionState::Closed)
+            {
+                if let Some(tap) = &self.tap {
+                    self.recv.push_str(&tap.drain());
+                }
+                return Ok(check(&mut self.recv));
             }
             let mut step = Duration::from_millis(100);
             if let Some(d) = deadline {
@@ -900,7 +916,7 @@ impl<'h> Interp<'h> {
                     Some(a) => self.int(a)? != 0,
                     None => false,
                 };
-                let data = std::fs::read(self.path(&file))
+                let data = mt_core::Session::read_file_for_send(&self.path(&file))
                     .map_err(|e| format!("sendfile: {file}: {e}"))?;
                 self.session_ref()?.send_file(data, binary);
             }
@@ -1231,12 +1247,16 @@ impl<'h> Interp<'h> {
                 let mut line = Vec::new();
                 let mut byte = [0u8];
                 let mut eof = true;
+                // 1 行の長さに上限（改行の無い巨大なファイルでメモリを使い切らないように）。続きは次の filereadln
                 while let Ok(1) = f.file.read(&mut byte) {
                     eof = false;
                     if byte[0] == b'\n' {
                         break;
                     }
                     line.push(byte[0]);
+                    if line.len() >= MAX_READ_LINE {
+                        break;
+                    }
                 }
                 if line.last() == Some(&b'\r') {
                     line.pop();

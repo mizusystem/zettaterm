@@ -86,8 +86,9 @@ pub struct Sender {
     block_size: usize,
     crc: bool,
     state: SendState,
-    data: Vec<u8>,
-    offset: usize,
+    /// 今送っているファイル（少しずつ読む）
+    src: Option<crate::FileSource>,
+    offset: u64,
     block_no: u8,
     last_sent: Vec<u8>,
     deadline: Option<Instant>,
@@ -115,7 +116,7 @@ impl Sender {
             block_size: if one_k { 1024 } else { 128 },
             crc: true,
             state: SendState::WaitStart,
-            data: Vec::new(),
+            src: None,
             offset: 0,
             block_no: 1,
             last_sent: Vec::new(),
@@ -143,19 +144,19 @@ impl Sender {
         let Some(path) = self.files.pop_front() else {
             return Ok(None);
         };
-        self.data = std::fs::read(&path)?;
+        self.src = Some(crate::FileSource::open(&path)?);
         self.offset = 0;
         self.block_no = 1;
         self.progress.file = path.file_name().map(|n| n.to_string_lossy().into_owned());
         self.progress.bytes = 0;
-        self.progress.total = Some(self.data.len() as u64);
+        self.progress.total = Some(self.len());
         Ok(Some(path))
     }
 
     fn header_block(&mut self, now: Instant) -> Vec<u8> {
         match self.load_next() {
             Ok(Some(path)) => {
-                let payload = header_payload(&path, self.data.len() as u64);
+                let payload = header_payload(&path, self.len());
                 let size = if payload.len() > 128 { 1024 } else { 128 };
                 self.state = SendState::WaitHeaderAck { last: false };
                 let b = make_block(0, &payload, size, true);
@@ -171,20 +172,28 @@ impl Sender {
         }
     }
 
+    fn len(&self) -> u64 {
+        self.src.as_ref().map_or(0, |s| s.len)
+    }
+
     fn data_block(&mut self, now: Instant) -> Vec<u8> {
-        if self.offset >= self.data.len() {
+        if self.offset >= self.len() {
             self.state = SendState::WaitEotAck;
             return self.send(vec![EOT], now);
         }
         // 残りが少なければ 128 バイトのブロックにする（1K でも末尾の詰め物を減らす）
-        let remaining = self.data.len() - self.offset;
+        let remaining = self.len() - self.offset;
         let size = if self.block_size == 1024 && remaining > 128 {
             1024
         } else {
             128
         };
-        let end = (self.offset + size).min(self.data.len());
-        let b = make_block(self.block_no, &self.data[self.offset..end], size, self.crc);
+        let chunk = match self.src.as_mut().map(|s| s.read_at(self.offset, size)) {
+            Some(Ok(c)) => c,
+            Some(Err(e)) => return self.fail(&e.to_string()),
+            None => return self.fail("no file"),
+        };
+        let b = make_block(self.block_no, &chunk, size, self.crc);
         self.state = SendState::WaitDataAck;
         self.send(b, now)
     }
@@ -243,8 +252,8 @@ impl Transfer for Sender {
                         .last_sent
                         .len()
                         .saturating_sub(if self.crc { 5 } else { 4 });
-                    self.offset = (self.offset + sent).min(self.data.len());
-                    self.progress.bytes = self.offset as u64;
+                    self.offset = (self.offset + sent as u64).min(self.len());
+                    self.progress.bytes = self.offset;
                     self.block_no = self.block_no.wrapping_add(1);
                     out.extend(self.data_block(now));
                 }

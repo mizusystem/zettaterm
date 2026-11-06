@@ -87,7 +87,13 @@ impl Logger {
         })
     }
 
-    pub(crate) fn write(&mut self, bytes: &[u8]) -> io::Result<()> {
+    /// `raw` は受信したバイト列そのまま、`decoded` は文字コード変換後（UTF-8）。
+    /// バイナリは `raw` を、テキストは `decoded` を書く（JIS の ESC $ B などをエスケープとして消さないように）。
+    pub(crate) fn write(&mut self, raw: &[u8], decoded: &[u8]) -> io::Result<()> {
+        let bytes = match self.format {
+            LogFormat::Binary => raw,
+            LogFormat::Text => decoded,
+        };
         match self.format {
             LogFormat::Binary => self.out.write_all(bytes)?,
             LogFormat::Text => {
@@ -182,7 +188,7 @@ mod tests {
     fn log(options: LogOptions, chunks: &[&[u8]]) -> String {
         let mut logger = Logger::open(&options).unwrap();
         for c in chunks {
-            logger.write(c).unwrap();
+            logger.write(c, c).unwrap();
         }
         drop(logger);
         std::fs::read_to_string(&options.path).unwrap()

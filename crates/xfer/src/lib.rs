@@ -110,9 +110,10 @@ pub fn new_transfer(protocol: Protocol, direction: Direction) -> io::Result<Box<
 /// 受信フォルダの中で、既存のファイルと重ならない名前を選ぶ（`a.txt` → `a.1.txt` …）。
 /// 相手から来た名前のフォルダ部分は捨てる（`../` などで外へ書かせない）。
 pub(crate) fn unique_path(dir: &std::path::Path, name: &str) -> PathBuf {
-    let base = std::path::Path::new(name)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+    // 相手から来た名前は `/` と `\\` のどちらでも区切り、最後の要素だけを使う（制御文字は除く）
+    let last = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let base: String = last.chars().filter(|c| !c.is_control()).collect();
+    let base = Some(base)
         .filter(|n| !n.is_empty() && n != "." && n != "..")
         .unwrap_or_else(|| "received".to_owned());
     let candidate = dir.join(&base);
@@ -127,6 +128,30 @@ pub(crate) fn unique_path(dir: &std::path::Path, name: &str) -> PathBuf {
         .map(|n| dir.join(format!("{stem}.{n}{ext}")))
         .find(|p| !p.exists())
         .unwrap_or(candidate)
+}
+
+/// 送るファイルを少しずつ読む（巨大なファイルを丸ごとメモリに載せない）。
+pub(crate) struct FileSource {
+    file: std::fs::File,
+    pub len: u64,
+}
+
+impl FileSource {
+    pub fn open(path: &std::path::Path) -> io::Result<Self> {
+        let file = std::fs::File::open(path)?;
+        let len = file.metadata()?.len();
+        Ok(Self { file, len })
+    }
+
+    /// `offset` から最大 `max` バイト。ファイルの終わりなら短くなる。
+    pub fn read_at(&mut self, offset: u64, max: usize) -> io::Result<Vec<u8>> {
+        use std::io::{Read, Seek, SeekFrom};
+        let want = (self.len.saturating_sub(offset)).min(max as u64) as usize;
+        let mut buf = vec![0u8; want];
+        self.file.seek(SeekFrom::Start(offset))?;
+        self.file.read_exact(&mut buf)?;
+        Ok(buf)
+    }
 }
 
 #[cfg(test)]

@@ -21,6 +21,8 @@ use tokio::runtime;
 use crate::ssh_client::Client;
 
 const CHUNK: usize = 32 * 1024;
+/// 制御行の長さの上限
+const MAX_LINE: usize = 8 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ScpStatus {
@@ -189,6 +191,10 @@ impl ChannelIn {
                 let line: Vec<u8> = self.buf.drain(..=i).collect();
                 return Ok(String::from_utf8_lossy(&line[..line.len() - 1]).into_owned());
             }
+            // 制御行（C… / D… / エラー文）は短い。改行が来ないまま長くなったら壊れた相手とみなす
+            if self.buf.len() > MAX_LINE {
+                return Err(other("scp: control line too long"));
+            }
             self.fill().await?;
         }
     }
@@ -239,8 +245,9 @@ async fn upload(
         eof: false,
     };
     input.ack().await?;
+    let mut visited = std::collections::HashSet::new();
     for path in files {
-        send_entry(&mut input, path, job).await?;
+        send_entry(&mut input, path, job, &mut visited).await?;
     }
     let _ = input.channel.eof().await;
     let _ = input.channel.close().await;
@@ -254,13 +261,19 @@ fn entry_name(path: &Path) -> String {
 }
 
 /// ファイルか、フォルダを中身ごと送る（D … / 中身 / E）。
+/// `visited` は送ったフォルダ（実体のパス）。シンボリックリンクの輪で同じフォルダを二度たどらない。
 fn send_entry<'a>(
     input: &'a mut ChannelIn,
     path: &'a Path,
     job: &'a ScpJob,
+    visited: &'a mut std::collections::HashSet<PathBuf>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + 'a>> {
     Box::pin(async move {
         if path.is_dir() {
+            let real = std::fs::canonicalize(path).map_err(|e| with_path(e, path))?;
+            if !visited.insert(real) {
+                return Ok(());
+            }
             let header = format!("D0755 0 {}\n", entry_name(path));
             input.channel.data(header.as_bytes()).await.map_err(other)?;
             input.ack().await?;
@@ -270,28 +283,37 @@ fn send_entry<'a>(
                 .collect();
             entries.sort();
             for entry in entries {
-                send_entry(input, &entry, job).await?;
+                send_entry(input, &entry, job, visited).await?;
             }
             input.channel.data(&b"E\n"[..]).await.map_err(other)?;
             return input.ack().await;
         }
-        let data = std::fs::read(path).map_err(|e| with_path(e, path))?;
+        // 少しずつ読んで送る（巨大なファイルを丸ごとメモリに載せない）
+        use std::io::Read;
+        let mut file = std::fs::File::open(path).map_err(|e| with_path(e, path))?;
+        let size = file.metadata().map_err(|e| with_path(e, path))?.len();
         let name = entry_name(path);
         job.update(|p| {
             p.file = Some(name.clone());
             p.bytes = 0;
-            p.total = Some(data.len() as u64);
+            p.total = Some(size);
         });
-        let header = format!("C0644 {} {}\n", data.len(), name);
+        let header = format!("C0644 {size} {name}\n");
         input.channel.data(header.as_bytes()).await.map_err(other)?;
         input.ack().await?;
-        for chunk in data.chunks(CHUNK) {
+        let mut left = size;
+        let mut buf = vec![0u8; CHUNK];
+        while left > 0 {
             if job.canceled() {
                 let _ = input.channel.close().await;
                 return Err(io::Error::new(io::ErrorKind::Interrupted, "canceled"));
             }
-            input.channel.data(chunk).await.map_err(other)?;
-            job.update(|p| p.bytes += chunk.len() as u64);
+            let want = (left as usize).min(CHUNK);
+            file.read_exact(&mut buf[..want])
+                .map_err(|e| with_path(e, path))?;
+            input.channel.data(&buf[..want]).await.map_err(other)?;
+            left -= want as u64;
+            job.update(|p| p.bytes += want as u64);
         }
         input.channel.data(&[0u8][..]).await.map_err(other)?;
         input.ack().await?;
@@ -302,10 +324,10 @@ fn send_entry<'a>(
 
 /// 相手から来た名前のうち、フォルダの中に置ける部分（`a/../b` などは使わない）。
 fn safe_name(name: &str) -> Option<String> {
-    Path::new(name)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .filter(|n| !n.is_empty() && n != "." && n != "..")
+    // `/` と `\` のどちらでも区切り、最後の要素だけを使う。制御文字は除く
+    let last = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let clean: String = last.chars().filter(|c| !c.is_control()).collect();
+    Some(clean).filter(|n| !n.is_empty() && n != "." && n != "..")
 }
 
 async fn download(
@@ -425,9 +447,10 @@ async fn download(
 
 /// 既存のファイルと重ならない名前（`a.txt` → `a.1.txt`）。相手から来た名前のフォルダ部分は捨てる。
 fn unique_path(dir: &Path, name: &str) -> PathBuf {
-    let base = Path::new(name)
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+    // 相手から来た名前は `/` と `\\` のどちらでも区切り、最後の要素だけを使う（制御文字は除く）
+    let last = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let base: String = last.chars().filter(|c| !c.is_control()).collect();
+    let base = Some(base)
         .filter(|n| !n.is_empty() && n != "." && n != "..")
         .unwrap_or_else(|| "received".to_owned());
     let candidate = dir.join(&base);
@@ -453,5 +476,11 @@ mod tests {
         assert_eq!(shell_quote("my file's.txt"), r"'my file'\''s.txt'");
         let dir = tempfile::tempdir().unwrap();
         assert_eq!(unique_path(dir.path(), "../x"), dir.path().join("x"));
+        // 相手から来た名前は、`/` と `\` のどちらでも区切った最後だけを使う
+        assert_eq!(safe_name("..\\..\\evil.txt").as_deref(), Some("evil.txt"));
+        assert_eq!(safe_name("a/b/../c").as_deref(), Some("c"));
+        assert_eq!(safe_name("bad\u{7}name").as_deref(), Some("badname"));
+        assert_eq!(safe_name(".."), None);
+        assert_eq!(safe_name(""), None);
     }
 }

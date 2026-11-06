@@ -459,8 +459,9 @@ impl client::Handler for Client {
     ) -> Result<bool, Self::Error> {
         let key = match key {
             PublicKeyOrCertificate::PublicKey { key, .. } => key.clone(),
-            // 証明書のホスト鍵は当面、その公開鍵として照合する
-            PublicKeyOrCertificate::Certificate(cert) => PublicKey::from(cert.public_key().clone()),
+            // 証明書のホスト鍵（CA・有効期限・プリンシパルの検証）には対応していない。russh の既定では
+            // 証明書の方式をサーバーに求めないので届かないはずだが、届いたら受け入れない
+            PublicKeyOrCertificate::Certificate(_) => return Ok(false),
         };
         let status = known_status(&self.known_hosts, &self.host, self.port, &key);
         let Some(status) = status else {

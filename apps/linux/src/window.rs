@@ -184,8 +184,11 @@ impl Tabs {
         add(
             "send-break",
             Box::new(|_, me| {
+                // ブレークの間（300 ms）画面を止めないよう、別スレッドで送る
                 if let Some(s) = me.view.session() {
-                    let _ = s.send_break(300);
+                    std::thread::spawn(move || {
+                        let _ = s.send_break(300);
+                    });
                 }
             }),
         );
@@ -205,6 +208,21 @@ impl Tabs {
         );
         add("scp", Box::new(|_, me| me.show_scp()));
         add("send-file", Box::new(|_, me| me.begin_send_file()));
+        {
+            let auto = gio::SimpleAction::new_stateful(
+                "zmodem-auto",
+                None,
+                &Settings::load().zmodem_auto_receive.to_variant(),
+            );
+            auto.connect_activate(|a, _| {
+                let on = !a.state().and_then(|v| v.get::<bool>()).unwrap_or(true);
+                a.set_state(&on.to_variant());
+                let mut s = Settings::load();
+                s.zmodem_auto_receive = on;
+                s.save();
+            });
+            self.win.add_action(&auto);
+        }
         add(
             "broadcast",
             Box::new(|t, _| crate::extras::broadcast_dialog(&t.win.clone().upcast())),
@@ -257,6 +275,8 @@ pub struct TermWindow {
     /// 内蔵 SSH のときだけ。SSH SCP に使う
     files: RefCell<Option<mt_net::SshFiles>>,
     logging: Cell<bool>,
+    /// 次の接続だけで使うパスワード（マクロの /passwd=）
+    next_password: RefCell<Option<String>>,
 }
 
 impl TermWindow {
@@ -333,6 +353,7 @@ impl TermWindow {
             waiters: RefCell::new(Vec::new()),
             files: RefCell::new(None),
             logging: Cell::new(false),
+            next_password: RefCell::new(None),
         });
         me.install_drop();
         me.listen(events_rx, prompts_rx, macro_rx);
@@ -430,9 +451,11 @@ impl TermWindow {
             dirty: self.view.dirty_flag(),
             tx: self.events.clone(),
         });
-        let prompter = Arc::new(Prompter {
-            tx: self.prompts.clone(),
-        });
+        let prompter = Arc::new(Prompter::new(
+            self.prompts.clone(),
+            self.next_password.borrow_mut().take(),
+        ));
+        let prompter_done = Arc::clone(&prompter);
         let (tx, rx) = async_channel::bounded(1);
         let p = profile.clone();
         let terminal = Settings::load().terminal_for(Some(&profile)).core();
@@ -454,6 +477,8 @@ impl TermWindow {
         let me = Rc::clone(self);
         glib::spawn_future_local(async move {
             let Ok(result) = rx.recv().await else { return };
+            // 使われなかった /passwd= は、ここで消す（後の接続に持ち越さない）
+            prompter_done.forget_password();
             if me.attempt.get() != attempt {
                 if let Ok((s, _)) = result {
                     s.close();
@@ -604,7 +629,7 @@ impl TermWindow {
                 DropChoice::SendFile { binary } => {
                     let Some(s) = session else { return };
                     for p in &list {
-                        match std::fs::read(p) {
+                        match mt_core::Session::read_file_for_send(p) {
                             Ok(data) => s.send_file(data, binary),
                             Err(e) => {
                                 dialogs::message(
@@ -662,7 +687,7 @@ impl TermWindow {
                 let session = Arc::clone(&session);
                 let parent = me.parent();
                 crate::extras::send_file_options(&me.parent(), move |binary| {
-                    match std::fs::read(&path) {
+                    match mt_core::Session::read_file_for_send(&path) {
                         Ok(data) => session.send_file(data, binary),
                         Err(e) => dialogs::message(
                             &parent,
@@ -714,7 +739,10 @@ impl TermWindow {
             .title(lf("{} で送るファイル", &[&kind.name()]))
             .build();
         let done = move |files: Vec<std::path::PathBuf>| {
-            if !files.is_empty() {
+            if files.is_empty() {
+                // 相手の rz に応じなかった。とっておいた受信を画面に出す
+                session.decline_transfer();
+            } else {
                 me.start_transfer(&session, kind, Direction::Send(files));
             }
         };
@@ -807,19 +835,50 @@ impl TermWindow {
 
     /// 相手で sz / rz が動いたとき（Tera Term の ZMODEM 自動切り替え）。
     fn transfer_request(self: &Rc<Self>, request: TransferRequest) {
-        if self.macro_stop.borrow().is_some() {
-            return; // マクロが自分で zmodemrecv などを呼ぶ
-        }
-        let Some(session) = self.view.session().filter(|s| !s.is_transferring()) else {
+        let Some(session) = self.view.session() else {
             return;
         };
+        // マクロの実行中（マクロが自分で zmodemrecv などを呼ぶ）や転送中は応じない
+        if self.macro_stop.borrow().is_some() || session.is_transferring() {
+            session.decline_transfer();
+            return;
+        }
         match request {
-            TransferRequest::ZmodemReceive => transfer::start(
-                &self.parent(),
-                &session,
-                Kind::ZModem,
-                Direction::Receive(transfer::downloads_dir()),
-            ),
+            TransferRequest::ZmodemReceive => {
+                let start = {
+                    let me = Rc::clone(self);
+                    let session = Arc::clone(&session);
+                    move || {
+                        transfer::start(
+                            &me.parent(),
+                            &session,
+                            Kind::ZModem,
+                            Direction::Receive(transfer::downloads_dir()),
+                        )
+                    }
+                };
+                // 既定は Tera Term と同じく尋ねずに受け取る。「転送 > ZMODEM の自動受信」を切ると確かめる
+                if Settings::load().zmodem_auto_receive {
+                    start();
+                } else {
+                    dialogs::yes_no(
+                        &self.parent(),
+                        &l("相手が ZMODEM でファイルを送ろうとしています"),
+                        &l("ダウンロードフォルダに受け取りますか？"),
+                        move |yes| {
+                            if yes {
+                                start();
+                            } else {
+                                // 相手の sz を止める（CAN を 8 つと BS を 8 つ）
+                                let mut abort = vec![0x18u8; 8];
+                                abort.extend([0x08u8; 8]);
+                                session.write(abort);
+                                session.decline_transfer();
+                            }
+                        },
+                    );
+                }
+            }
             TransferRequest::ZmodemSend => self.begin_send(Kind::ZModem),
         }
     }
@@ -930,10 +989,9 @@ impl TermWindow {
         let parent = self.parent();
         match req {
             MacroReq::Connect(spec, reply) => {
-                // /passwd= は最初の認証ダイアログの代わりに使う
+                // /passwd= はこの接続の最初の認証ダイアログの代わりに使う（ほかの接続には渡さない）
                 if let ConnectSpec::Ssh(s) = &spec {
-                    *PENDING_PASSWORD.lock().unwrap_or_else(|e| e.into_inner()) =
-                        s.password.clone();
+                    *self.next_password.borrow_mut() = s.password.clone();
                 }
                 self.waiters.borrow_mut().push(Box::new(move |s| {
                     let _ = reply.send(s);
@@ -1061,19 +1119,6 @@ impl TermWindow {
                         let _ = reply.send(d);
                     }),
                     Prompt::Credentials(req, reply) => {
-                        if !req.failed
-                            && req.methods.contains(&mt_core::AuthMethod::Password)
-                            && let Some(pw) = PENDING_PASSWORD
-                                .lock()
-                                .unwrap_or_else(|e| e.into_inner())
-                                .take()
-                        {
-                            let _ = reply.send(mt_core::AuthResponse::Password {
-                                user: req.user,
-                                password: pw,
-                            });
-                            continue;
-                        }
                         dialogs::credentials(&parent, req, move |a| {
                             let _ = reply.send(a);
                         })
@@ -1105,6 +1150,3 @@ impl TermWindow {
         });
     }
 }
-
-/// マクロの `connect ... /passwd=` で渡されたパスワード（次の認証で 1 回だけ使う）
-static PENDING_PASSWORD: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);

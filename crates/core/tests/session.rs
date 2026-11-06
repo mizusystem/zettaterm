@@ -507,3 +507,98 @@ fn send_file_binary_is_untouched_and_text_follows_newline_setting() {
     assert_eq!(got, want);
     session.close();
 }
+
+/// 外部レビュー S-3：ZMODEM のヘッダから後ろ（同じ受信の塊と、返事までに届いた分）を取りこぼさない。
+#[test]
+fn zmodem_bytes_after_the_header_go_to_the_transfer_or_back_to_the_screen() {
+    struct Recording(Arc<Mutex<Vec<u8>>>);
+    impl mt_core::ByteDivert for Recording {
+        fn start(&mut self) -> Vec<u8> {
+            Vec::new()
+        }
+        fn receive(&mut self, data: &[u8]) -> Vec<u8> {
+            self.0.lock().unwrap().extend_from_slice(data);
+            Vec::new()
+        }
+        fn tick(&mut self) -> Vec<u8> {
+            Vec::new()
+        }
+        fn cancel(&mut self) -> Vec<u8> {
+            Vec::new()
+        }
+        fn finished(&self) -> bool {
+            false
+        }
+    }
+    let rec = Arc::new(Recorder::default());
+    let (transport, remote) = MockTransport::pair();
+    let session = open(transport, &rec);
+    remote.send(b"before**\x18B00000000000000\r\x8a\x11");
+    remote.send(b"MORE");
+    assert!(wait_until(|| screen_text(&session).contains("before")));
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(!screen_text(&session).contains("MORE"));
+    let got = Arc::new(Mutex::new(Vec::new()));
+    session
+        .start_transfer(Box::new(Recording(Arc::clone(&got))))
+        .unwrap();
+    remote.send(b"AFTER");
+    assert!(wait_until(|| got.lock().unwrap().ends_with(b"AFTER")));
+    assert_eq!(
+        *got.lock().unwrap(),
+        [&b"**\x18B00000000000000\r\x8a\x11"[..], b"MORE", b"AFTER"].concat()
+    );
+    session.cancel_transfer();
+
+    // 応じない（decline）ときは、とっておいた分を画面に出す
+    let rec = Arc::new(Recorder::default());
+    let (transport, remote) = MockTransport::pair();
+    let session = open(transport, &rec);
+    remote.send(b"x**\x18B00000000000000\r\x8a\x11 tail");
+    assert!(wait_until(|| screen_text(&session).starts_with('x')));
+    session.decline_transfer();
+    assert!(wait_until(|| screen_text(&session).contains("tail")));
+}
+
+/// 外部レビュー B-2：JIS（ISO-2022-JP）でも、テキストのログは UTF-8 で読める形になる。
+#[test]
+fn text_log_is_utf8_even_with_jis() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("jis.log");
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let options = SessionOptions {
+        size: WindowSize::new(20, 4),
+        terminal: mt_core::TerminalSettings {
+            charset_receive: mt_core::Charset::Jis,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let session = Session::open(Box::new(transport), options, rec.clone()).unwrap();
+    session.log_start(&LogOptions::new(&path)).unwrap();
+    // 「日本」を JIS で
+    remote.send(b"A\x1b$BF|K\\\x1b(B\r\n");
+    assert!(wait_until(|| screen_text(&session).contains("日本")));
+    session.log_stop();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "A日本\n");
+    session.close();
+}
+
+/// 外部レビュー B-5：ローカルエコーとブラケットペーストが両方有効でも、画面には貼り付けた文字だけが出る。
+#[test]
+fn paste_echo_does_not_show_bracketed_paste_markers() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_terminal_settings(mt_core::TerminalSettings {
+        local_echo: true,
+        ..Default::default()
+    });
+    remote.send(b"\x1b[?2004h");
+    std::thread::sleep(Duration::from_millis(100));
+    session.paste("hi".into());
+    assert_eq!(remote.recv(WAIT).unwrap(), b"\x1b[200~hi\x1b[201~");
+    assert!(wait_until(|| screen_text(&session).starts_with("hi")));
+    assert!(!screen_text(&session).contains("200~"));
+}
