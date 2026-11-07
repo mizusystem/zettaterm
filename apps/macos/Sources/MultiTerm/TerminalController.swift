@@ -54,6 +54,21 @@ final class TerminalController: ObservableObject {
     @Published private(set) var target: ConnectTarget?
     @Published var sheet: Sheet?
     @Published var errorMessage: String?
+    /// しばらく右上に出す短い知らせ（相手がクリップボードに書いたときなど）
+    @Published var notice: String?
+    private var noticeGen = 0
+
+    func showNotice(_ text: String) {
+        noticeGen += 1
+        let gen = noticeGen
+        withAnimation { notice = text }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.noticeGen == gen else { return }
+                withAnimation { self.notice = nil }
+            }
+        }
+    }
 
     @Published private(set) var serialConfig = SerialConfig.saved
     /// 今の接続先（シリアルか、それ以外か）の端末設定
@@ -128,6 +143,10 @@ final class TerminalController: ObservableObject {
         }
         view.terminalSettings = TerminalConfig.saved(TerminalConfig.scope(for: target)).settings
         view.answerback = TerminalConfig.saved(TerminalConfig.scope(for: target)).answerback
+        view.terminalId = TerminalConfig.saved(TerminalConfig.scope(for: target)).terminalId
+        view.onClipboardWritten = { [weak self] text in
+            self?.showNotice(L("相手がクリップボードに書き込みました（%@ 文字）", String(text.count)))
+        }
         Task {
             do {
                 try await view.connect(target.profile)
@@ -217,6 +236,8 @@ final class TerminalController: ObservableObject {
         view.session?.setTerminalSettings(settings: config.settings)
         view.answerback = config.answerback
         view.session?.setAnswerback(text: config.answerback)
+        view.terminalId = config.terminalId
+        view.session?.setTerminalId(id: config.terminalId)
     }
 
     func disconnect() {

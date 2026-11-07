@@ -121,5 +121,6 @@
   "ミリ秒": "ms",
   "元に戻す - 並べて表示": "Undo - Arrange",
   "送り先の設定": "Session setting",
-  "打った文字をその場で送ります。": "Each key you type is sent right away."
+  "打った文字をその場で送ります。": "Each key you type is sent right away.",
+  "相手がクリップボードに書き込みました（%@ 文字）": "The remote host wrote to the clipboard (%@ characters)"
 }

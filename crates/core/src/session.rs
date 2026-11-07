@@ -50,6 +50,8 @@ pub trait SessionListener: Send + Sync {
     fn on_title(&self, title: String);
     /// 相手で ZMODEM の sz / rz が動いた（Tera Term の自動切り替え）。転送中は呼ばない。
     fn on_transfer_request(&self, _request: TransferRequest) {}
+    /// 相手がクリップボードに書いた（OSC 52）。`set_clipboard_write(true)` のときだけ呼ぶ。
+    fn on_clipboard(&self, _text: String) {}
 }
 
 /// Tera Term の「設定 > 端末」のうち、Session が扱う項目。
@@ -346,6 +348,17 @@ impl Session {
             .answerback
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = text.map(|t| t.replace('\u{5}', ""));
+    }
+
+    /// 端末 ID（Tera Term の TerminalID）。`ESC [ c` への応答が変わる。
+    pub fn set_terminal_id(&self, id: mt_vt::TerminalId) {
+        self.inner.vt().set_terminal_id(id);
+    }
+
+    /// 相手からのクリップボードへの書き込み（OSC 52）を受け付けるか（Tera Term の ClipboardAccessFromRemote）。
+    /// 受け付けると `SessionListener::on_clipboard` で知らせる。読み出しは受け付けない。
+    pub fn set_clipboard_write(&self, allow: bool) {
+        self.inner.vt().set_clipboard_write(allow);
     }
 
     /// 「設定 > キーボード」（BS / Delete キーと Meta）。
@@ -1091,6 +1104,7 @@ impl Inner {
                 VtEvent::Bell => self.listener.on_bell(),
                 VtEvent::Title(title) => self.listener.on_title(title),
                 VtEvent::ResetTitle => self.listener.on_title(String::new()),
+                VtEvent::Clipboard(text) => self.listener.on_clipboard(text),
             }
         }
     }

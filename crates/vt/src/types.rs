@@ -92,3 +92,69 @@ pub struct GridSnapshot {
     pub default_bg: u32,
     pub cursor_color: u32,
 }
+
+/// 端末 ID（Tera Term の「設定 > 端末」の TerminalID）。一次装置属性（DA1）の応答が変わる。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum TerminalId {
+    #[default]
+    Vt100,
+    Vt101,
+    Vt102,
+    Vt220,
+    Vt282,
+    Vt320,
+    Vt382,
+    Vt420,
+    Vt520,
+}
+
+impl TerminalId {
+    pub const ALL: [TerminalId; 9] = [
+        TerminalId::Vt100,
+        TerminalId::Vt101,
+        TerminalId::Vt102,
+        TerminalId::Vt220,
+        TerminalId::Vt282,
+        TerminalId::Vt320,
+        TerminalId::Vt382,
+        TerminalId::Vt420,
+        TerminalId::Vt520,
+    ];
+
+    /// 表示名（TERATERM.INI の値と同じ）
+    pub fn name(self) -> &'static str {
+        match self {
+            TerminalId::Vt100 => "VT100",
+            TerminalId::Vt101 => "VT101",
+            TerminalId::Vt102 => "VT102",
+            TerminalId::Vt220 => "VT220",
+            TerminalId::Vt282 => "VT282",
+            TerminalId::Vt320 => "VT320",
+            TerminalId::Vt382 => "VT382",
+            TerminalId::Vt420 => "VT420",
+            TerminalId::Vt520 => "VT520",
+        }
+    }
+
+    /// `VT220` のような名前から（大文字・小文字は区別しない）。
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|t| t.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// `ESC [ c` への応答（各機種の DA1）。
+    pub fn primary_attributes(self) -> &'static str {
+        match self {
+            TerminalId::Vt100 => "\x1b[?1;2c",
+            TerminalId::Vt101 => "\x1b[?1;0c",
+            TerminalId::Vt102 => "\x1b[?6c",
+            TerminalId::Vt220 => "\x1b[?62;1;2;6;7;8;9c",
+            TerminalId::Vt282 => "\x1b[?62;1;2;4;6;7;8;9;15c",
+            TerminalId::Vt320 => "\x1b[?63;1;2;6;7;8;9c",
+            TerminalId::Vt382 => "\x1b[?63;1;2;4;6;7;8;9;15c",
+            TerminalId::Vt420 => "\x1b[?64;1;2;6;7;8;9;15;18;21;22c",
+            TerminalId::Vt520 => "\x1b[?65;1;2;6;7;8;9;15;18;21;22c",
+        }
+    }
+}

@@ -150,6 +150,53 @@ pub trait SessionListener: Send + Sync {
     fn on_title(&self, title: String);
     /// 相手で ZMODEM の sz / rz が動いた（Tera Term の自動切り替え）。
     fn on_transfer_request(&self, request: TransferRequest);
+    /// 相手がクリップボードに書いた（OSC 52）。`set_clipboard_write(true)` のときだけ
+    fn on_clipboard(&self, text: String);
+}
+
+/// 端末 ID（Tera Term の TerminalID）。`ESC [ c` への応答が変わる。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum TerminalId {
+    Vt100,
+    Vt101,
+    Vt102,
+    Vt220,
+    Vt282,
+    Vt320,
+    Vt382,
+    Vt420,
+    Vt520,
+}
+
+impl From<core::TerminalId> for TerminalId {
+    fn from(t: core::TerminalId) -> Self {
+        match t {
+            core::TerminalId::Vt100 => Self::Vt100,
+            core::TerminalId::Vt101 => Self::Vt101,
+            core::TerminalId::Vt102 => Self::Vt102,
+            core::TerminalId::Vt220 => Self::Vt220,
+            core::TerminalId::Vt282 => Self::Vt282,
+            core::TerminalId::Vt320 => Self::Vt320,
+            core::TerminalId::Vt382 => Self::Vt382,
+            core::TerminalId::Vt420 => Self::Vt420,
+            core::TerminalId::Vt520 => Self::Vt520,
+        }
+    }
+}
+
+impl From<TerminalId> for core::TerminalId {
+    fn from(t: TerminalId) -> Self {
+        core::TerminalId::ALL
+            .into_iter()
+            .find(|c| TerminalId::from(*c) == t)
+            .unwrap_or_default()
+    }
+}
+
+/// 端末 ID の表示名（`VT100` など）。
+#[uniffi::export]
+pub fn terminal_id_name(id: TerminalId) -> String {
+    core::TerminalId::from(id).name().to_owned()
 }
 
 /// 相手で始まった ZMODEM の向き。
@@ -181,6 +228,9 @@ impl core::SessionListener for ListenerAdapter {
             core::TransferRequest::ZmodemReceive => TransferRequest::ZmodemReceive,
             core::TransferRequest::ZmodemSend => TransferRequest::ZmodemSend,
         });
+    }
+    fn on_clipboard(&self, text: String) {
+        self.0.on_clipboard(text);
     }
 }
 
@@ -982,6 +1032,16 @@ impl Session {
         let (handle, divert) = transfer::create(protocol, send, files, destination)?;
         self.inner.start_transfer(divert)?;
         Ok(handle)
+    }
+
+    /// 端末 ID（`ESC [ c` への応答）。
+    pub fn set_terminal_id(&self, id: TerminalId) {
+        self.inner.set_terminal_id(id.into());
+    }
+
+    /// 相手からのクリップボードへの書き込み（OSC 52）を受け付けるか。受け付けると `on_clipboard` で知らせる。
+    pub fn set_clipboard_write(&self, allow: bool) {
+        self.inner.set_clipboard_write(allow);
     }
 
     /// サーバーになっている相手の Kermit から `names`（ワイルドカード可）を `destination` へ受け取る（「Kermit > 取得」）。

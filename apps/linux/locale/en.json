@@ -90,5 +90,6 @@
   "ブレークの長さ": "Break length",
   "ミリ秒": "ms",
   "Tera Term の操作感を macOS・Linux で": "The feel of Tera Term on macOS and Linux",
-  "送り先の設定": "Session setting"
+  "送り先の設定": "Session setting",
+  "相手がクリップボードに書き込みました（{} 文字）": "The remote host wrote to the clipboard ({} characters)"
 }

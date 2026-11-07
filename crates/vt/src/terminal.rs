@@ -13,7 +13,9 @@ use alacritty_terminal::vte::ansi::{self, Color, Processor, Rgb};
 use crate::keys::{self, Key, KeyMode, Modifiers};
 use crate::palette;
 use crate::select::{self, Point, Selection, UrlMatch};
-use crate::types::{Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row};
+use crate::types::{
+    Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row, TerminalId,
+};
 
 /// VT 解釈の結果、Session が処理すべき出来事。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,6 +25,8 @@ pub enum VtEvent {
     Bell,
     /// 相手に送り返すバイト列（DA・DSR・色問い合わせなどへの応答）
     Reply(Vec<u8>),
+    /// 相手がクリップボードに書いた（OSC 52）。`set_clipboard_write(true)` のときだけ
+    Clipboard(String),
 }
 
 #[derive(Clone, Copy)]
@@ -68,6 +72,8 @@ pub struct Terminal {
     resize_gen: u64,
     scrollback_limit: usize,
     keyboard: crate::keys::KeyboardOptions,
+    config: Config,
+    terminal_id: TerminalId,
 }
 
 impl Terminal {
@@ -76,12 +82,14 @@ impl Terminal {
             cols: usize::from(cols.max(1)),
             rows: usize::from(rows.max(1)),
         };
+        // OSC 52 は既定で受け付けない（Tera Term の ClipboardAccessFromRemote=off）
         let config = Config {
             scrolling_history: scrollback,
+            osc52: alacritty_terminal::term::Osc52::Disabled,
             ..Config::default()
         };
         let events = Collector::default();
-        let mut term = Term::new(config, &size, events.clone());
+        let mut term = Term::new(config.clone(), &size, events.clone());
         term.reset_damage();
         Self {
             term,
@@ -93,6 +101,28 @@ impl Terminal {
             resize_gen: 1,
             scrollback_limit: scrollback,
             keyboard: crate::keys::KeyboardOptions::default(),
+            config,
+            terminal_id: TerminalId::default(),
+        }
+    }
+
+    /// 端末 ID（DA1 の応答）。
+    pub fn set_terminal_id(&mut self, id: TerminalId) {
+        self.terminal_id = id;
+    }
+
+    /// 相手からのクリップボードへの書き込み（OSC 52）を受け付けるか。読み出しは受け付けない。
+    pub fn set_clipboard_write(&mut self, allow: bool) {
+        self.config.osc52 = if allow {
+            alacritty_terminal::term::Osc52::OnlyCopy
+        } else {
+            alacritty_terminal::term::Osc52::Disabled
+        };
+        // set_options はタイトルを知らせ直すので、そのとき足された通知は捨てる
+        let before = self.events.0.lock().map(|q| q.len()).unwrap_or(0);
+        self.term.set_options(self.config.clone());
+        if let Ok(mut q) = self.events.0.lock() {
+            q.truncate(before);
         }
     }
 
@@ -345,7 +375,14 @@ impl Terminal {
                 Event::Title(t) => Some(VtEvent::Title(t)),
                 Event::ResetTitle => Some(VtEvent::ResetTitle),
                 Event::Bell => Some(VtEvent::Bell),
+                // alacritty は VT102 として答えるので、設定の端末 ID の答えにする
+                Event::PtyWrite(s) if s == "\x1b[?6c" => Some(VtEvent::Reply(
+                    self.terminal_id.primary_attributes().as_bytes().to_vec(),
+                )),
                 Event::PtyWrite(s) => Some(VtEvent::Reply(s.into_bytes())),
+                Event::ClipboardStore(alacritty_terminal::term::ClipboardType::Clipboard, text) => {
+                    Some(VtEvent::Clipboard(text))
+                }
                 Event::ColorRequest(index, fmt) => {
                     let rgb = self.lookup(index);
                     let rgb = Rgb {
@@ -565,6 +602,32 @@ mod tests {
         assert_eq!(row.cells[0].fg, 0xCD0000);
         assert_eq!(row.cells[1].fg, palette::DEFAULT_BG);
         assert_eq!(row.cells[1].bg, palette::DEFAULT_FG);
+    }
+
+    #[test]
+    fn terminal_id_and_osc52() {
+        let mut t = Terminal::new(10, 2, 0);
+        assert!(
+            t.feed(b"\x1b[c")
+                .contains(&VtEvent::Reply(b"\x1b[?1;2c".to_vec()))
+        );
+        t.set_terminal_id(TerminalId::Vt220);
+        assert!(
+            t.feed(b"\x1b[c")
+                .contains(&VtEvent::Reply(b"\x1b[?62;1;2;6;7;8;9c".to_vec()))
+        );
+        // OSC 52（"hi" の base64 は aGk=）は許したときだけ
+        let osc = b"\x1b]52;c;aGk=\x07";
+        assert!(
+            !t.feed(osc)
+                .iter()
+                .any(|e| matches!(e, VtEvent::Clipboard(_)))
+        );
+        t.set_clipboard_write(true);
+        assert!(t.feed(osc).contains(&VtEvent::Clipboard("hi".into())));
+        // 読み出しの問い合わせには答えない
+        assert!(t.feed(b"\x1b]52;c;?\x07").is_empty());
+        assert_eq!(TerminalId::from_name("vt420"), Some(TerminalId::Vt420));
     }
 
     #[test]

@@ -13,4 +13,4 @@ pub use keys::{Key, KeyboardOptions, Modifiers};
 pub use palette::themes;
 pub use select::{Point, SearchQuery, Selection, UrlMatch};
 pub use terminal::{Terminal, VtEvent};
-pub use types::{Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row};
+pub use types::{Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Row, TerminalId};

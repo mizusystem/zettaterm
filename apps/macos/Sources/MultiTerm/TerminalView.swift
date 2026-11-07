@@ -30,6 +30,10 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var terminalSettings = defaultTerminalSettings()
     /// ENQ への返事（次の接続から）
     var answerback = ""
+    /// 端末 ID（ESC [ c への応答）
+    var terminalId: TerminalId = .vt100
+    /// 相手がクリップボードに書いた（知らせる設定のとき）
+    var onClipboardWritten: ((String) -> Void)?
     /// SSH の認証・ホスト鍵確認の問い合わせ先
     var prompter: SshPrompter?
     private var bridge: SessionBridge?
@@ -38,6 +42,10 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private var screen = ScreenBuffer()
     private var displayLink: CADisplayLink?
     private var gridSize: (cols: UInt16, rows: UInt16) = (0, 0)
+    /// 今の端末の桁数と行数（まだ決まっていなければウィンドウの大きさから）
+    var terminalSize: (cols: UInt16, rows: UInt16) {
+        gridSize.cols > 0 ? gridSize : geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
+    }
     private var scrollRemainder: CGFloat = 0
     private var markedText: String?
 
@@ -164,6 +172,20 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
+    /// ウィンドウの大きさを、端末が `cols` × `rows` になるように変える（「設定 > 端末」の端末サイズ）。
+    func fitWindow(cols: Int, rows: Int) {
+        guard let window else { return }
+        let want = NSSize(width: CGFloat(cols) * cellW + pad * 2 + scrollerWidth,
+                          height: CGFloat(rows) * cellH + pad * 2)
+        let content = window.contentRect(forFrameRect: window.frame).size
+        let size = NSSize(width: content.width + want.width - bounds.width,
+                          height: content.height + want.height - bounds.height)
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        // 左上をそのままにする
+        frame.origin = NSPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+        window.setFrame(frame, display: true, animate: false)
+    }
+
     private var cellW: CGFloat { CGFloat(geometry.cellWidth) }
     private var cellH: CGFloat { CGFloat(geometry.cellHeight) }
     private var pad: CGFloat { CGFloat(geometry.padding) }
@@ -224,6 +246,17 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
                     guard let self, self.sessionToken == token else { return }
                     self.onTransferRequest?(request)
                 }
+            },
+            onClipboard: { [weak self] text in
+                MainActor.assumeIsolated {
+                    guard let self, self.sessionToken == token else { return }
+                    // 設定を切ったあとに届いたものは捨てる
+                    let config = CopyPasteConfig.saved
+                    guard config.remoteClipboardWrite else { return }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                    if config.notifyClipboard { self.onClipboardWritten?(text) }
+                }
             }
         )
         let terminal = terminalSettings
@@ -251,6 +284,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         opened.setAppearance(appearance: AppearanceConfig.saved.appearance)
         opened.setKeyboard(keyboard: KeyboardConfig.saved)
         opened.setAnswerback(text: answerback)
+        opened.setTerminalId(id: terminalId)
+        opened.setClipboardWrite(allow: CopyPasteConfig.saved.remoteClipboardWrite)
         // 待っている間にウィンドウの大きさが変わっていれば合わせる
         let now = geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
         if now != size {

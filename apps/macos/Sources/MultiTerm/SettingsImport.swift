@@ -43,6 +43,7 @@ enum SettingsImport {
             if let e = ini.localEcho { t.localEcho = e }
             if let c = ini.charsetReceive { t.charsetReceive = choice(c) }
             if let c = ini.charsetSend { t.charsetSend = choice(c) }
+            if let id = ini.terminalId { t.terminalId = id }
             t.save(scope)
         }
 
@@ -81,6 +82,8 @@ enum SettingsImport {
         if let v = ini.trimTrailingNl { cp.trimTrailingNewline = v }
         if let v = ini.rightClickPaste { cp.rightClickPaste = v }
         if let v = ini.middleClickPaste { cp.middleClickPaste = v }
+        if let v = ini.clipboardWrite { cp.remoteClipboardWrite = v }
+        if let v = ini.notifyClipboard { cp.notifyClipboard = v }
         cp.save()
 
         // SSH

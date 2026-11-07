@@ -48,6 +48,16 @@ struct TerminalConfig: Codable, Hashable, Sendable {
     var charsetSend: CharsetChoice = .utf8
     /// ENQ を受けたときに返す文字列（Tera Term の Answerback）
     var answerback = ""
+    /// 端末 ID の名前（Tera Term の TerminalID。`VT100` など）
+    var terminalIdName = "VT100"
+
+    /// 選べる端末 ID
+    static let terminalIds: [TerminalId] = [.vt100, .vt101, .vt102, .vt220, .vt282, .vt320, .vt382, .vt420, .vt520]
+
+    var terminalId: TerminalId {
+        get { Self.terminalIds.first { MTCore.terminalIdName(id: $0) == terminalIdName } ?? .vt100 }
+        set { terminalIdName = MTCore.terminalIdName(id: newValue) }
+    }
 
     init(receive: Receive = .cr, send: Send = .cr, localEcho: Bool = false,
          charsetReceive: CharsetChoice = .utf8, charsetSend: CharsetChoice = .utf8) {
@@ -67,6 +77,7 @@ struct TerminalConfig: Codable, Hashable, Sendable {
         charsetReceive = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetReceive) ?? .utf8
         charsetSend = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetSend) ?? .utf8
         answerback = try c.decodeIfPresent(String.self, forKey: .answerback) ?? ""
+        terminalIdName = try c.decodeIfPresent(String.self, forKey: .terminalIdName) ?? "VT100"
     }
 
     var settings: TerminalSettings {

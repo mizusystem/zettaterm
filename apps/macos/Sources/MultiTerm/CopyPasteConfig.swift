@@ -20,6 +20,10 @@ struct CopyPasteConfig: Equatable {
     var delimiters = defaultWordDelimiters()
     /// URL に下線を引き、Cmd + クリックで開く（EnableClickableUrl）
     var clickableUrl = true
+    /// 相手からのクリップボードへの書き込み（OSC 52。Tera Term の ClipboardAccessFromRemote の書込）
+    var remoteClipboardWrite = false
+    /// 書き込まれたら知らせる（NotifyClipboardAccess）
+    var notifyClipboard = true
 
     private enum Key {
         static let autoCopy = "copyPaste.autoCopy"
@@ -30,6 +34,8 @@ struct CopyPasteConfig: Equatable {
         static let trimTrailingNewline = "copyPaste.trimTrailingNewline"
         static let delimiters = "copyPaste.delimiters"
         static let clickableUrl = "copyPaste.clickableUrl"
+        static let remoteClipboardWrite = "copyPaste.remoteClipboardWrite"
+        static let notifyClipboard = "copyPaste.notifyClipboard"
     }
 
     static var saved: CopyPasteConfig {
@@ -45,6 +51,8 @@ struct CopyPasteConfig: Equatable {
         }
         if let delims = d.string(forKey: Key.delimiters) { c.delimiters = delims }
         if d.object(forKey: Key.clickableUrl) != nil { c.clickableUrl = d.bool(forKey: Key.clickableUrl) }
+        c.remoteClipboardWrite = d.bool(forKey: Key.remoteClipboardWrite)
+        if d.object(forKey: Key.notifyClipboard) != nil { c.notifyClipboard = d.bool(forKey: Key.notifyClipboard) }
         return c
     }
 
@@ -58,6 +66,8 @@ struct CopyPasteConfig: Equatable {
         d.set(trimTrailingNewline, forKey: Key.trimTrailingNewline)
         d.set(delimiters, forKey: Key.delimiters)
         d.set(clickableUrl, forKey: Key.clickableUrl)
+        d.set(remoteClipboardWrite, forKey: Key.remoteClipboardWrite)
+        d.set(notifyClipboard, forKey: Key.notifyClipboard)
         NotificationCenter.default.post(name: .copyPasteConfigChanged, object: nil)
     }
 }
@@ -83,6 +93,13 @@ struct CopyPasteSettingsView: View {
             Toggle(TT.text("DLG_TAB_COPYPASTE_TRIM_TRAILING_NL", "貼り付け時に末尾の改行を削除する"),
                    isOn: $config.trimTrailingNewline)
             Toggle(TT.text("DLG_TAB_GENERAL_CLICKURL", "クリッカブルURLを有効にする"), isOn: $config.clickableUrl)
+            // 読み出し（読込）は受け付けない。書き込み（OSC 52）だけ
+            Toggle(TT.text("DLG_TAB_SEQUENCE_CLIPBOARD_ACCESS", "リモートからのクリップボードアクセス") + "（"
+                   + TT.text("DLG_TAB_SEQUENCE_CLIPBOARD_ACCESS_WRITE", "書込のみ") + "）",
+                   isOn: $config.remoteClipboardWrite)
+            Toggle(TT.text("DLG_TAB_SEQUENCE_CLIPBOARD_NOTIFY", "リモートからのクリップボードアクセスを通知する"),
+                   isOn: $config.notifyClipboard)
+                .disabled(!config.remoteClipboardWrite)
 
             HStack {
                 Text(TT.text("DLG_TAB_COPYPASTE_DELIMITER", "区切り文字"))

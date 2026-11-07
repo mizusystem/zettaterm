@@ -51,6 +51,14 @@ struct TerminalWindow: View {
                     if let m = controller.macro {
                         MacroBadge(macro: m) { controller.stopMacro() }
                     }
+                    if let notice = controller.notice {
+                        Text(notice)
+                            .font(.caption)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 6))
+                            .padding(8)
+                            .transition(.opacity)
+                    }
                 }
                 // スクロールバーにかからないように
                 .padding(.trailing, NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))

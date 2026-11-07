@@ -870,6 +870,10 @@ impl TermWindow {
                     session.set_answerback(
                         (!saved.answerback.is_empty()).then(|| saved.answerback.clone()),
                     );
+                    session.set_terminal_id(
+                        mt_core::TerminalId::from_name(&saved.terminal_id).unwrap_or_default(),
+                    );
+                    session.set_clipboard_write(saved.copy_paste.remote_clipboard_write);
                     // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
                     session.set_view_only(me.view_only.get());
                     if let Some((secs, text, nl)) = me.recurring.borrow().clone() {
@@ -893,6 +897,31 @@ impl TermWindow {
         });
     }
 
+    /// 相手がクリップボードに書いた（OSC 52）。設定で許していれば入れ、知らせる設定なら右上に出す。
+    fn remote_clipboard(&self, text: &str) {
+        let conf = Settings::load().copy_paste;
+        if !conf.remote_clipboard_write {
+            return;
+        }
+        WidgetExt::display(&self.win).clipboard().set_text(text);
+        if conf.notify_clipboard {
+            let n = text.chars().count();
+            self.badge_status.set_text(&lf(
+                "相手がクリップボードに書き込みました（{} 文字）",
+                &[&n],
+            ));
+            self.badge.set_visible(true);
+            let (badge, status) = (self.badge.clone(), self.badge_status.clone());
+            let macro_running = self.macro_stop.borrow().is_some();
+            glib::timeout_add_seconds_local_once(3, move || {
+                status.set_text("");
+                if !macro_running {
+                    badge.set_visible(false);
+                }
+            });
+        }
+    }
+
     fn notify_waiters(&self, s: Option<Arc<mt_core::Session>>) {
         for w in self.waiters.borrow_mut().drain(..) {
             w(s.clone());
@@ -904,13 +933,25 @@ impl TermWindow {
         let profile = self.profile.borrow().clone();
         let current = Settings::load().terminal_for(profile.as_ref());
         let me = Rc::clone(self);
-        settings::terminal_dialog(&self.parent(), current, move |conf| {
+        let before = self.view.grid_size();
+        settings::terminal_dialog(&self.parent(), current, before, move |conf, size| {
             let mut s = Settings::load();
             s.set_terminal_for(profile.as_ref(), conf);
             s.save();
             if let Some(session) = me.view.session() {
                 session.set_terminal_settings(conf.core());
                 session.set_answerback((!s.answerback.is_empty()).then(|| s.answerback.clone()));
+                session.set_terminal_id(
+                    mt_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default(),
+                );
+            }
+            // 端末サイズを変えたら、その大きさになるようにウィンドウを変える
+            if size != before {
+                let (now_w, now_h) = me.view.pixel_size(before.0, before.1);
+                let (want_w, want_h) = me.view.pixel_size(size.0, size.1);
+                let w = me.win.width() + want_w - now_w;
+                let h = me.win.height() + want_h - now_h;
+                me.win.set_default_size(w.max(200), h.max(100));
             }
         });
     }
@@ -1927,6 +1968,7 @@ impl TermWindow {
                     }
                     Event::Bell => WidgetExt::display(&me.win).beep(),
                     Event::Transfer(r) => me.transfer_request(r),
+                    Event::Clipboard(text) => me.remote_clipboard(&text),
                 }
             }
         });

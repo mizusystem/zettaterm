@@ -281,6 +281,10 @@ pub struct CopyPaste {
     pub delimiters: String,
     /// URL に下線を引き、Ctrl + クリックで開く（EnableClickableUrl）
     pub clickable_url: bool,
+    /// 相手からのクリップボードへの書き込み（OSC 52。ClipboardAccessFromRemote の書込）
+    pub remote_clipboard_write: bool,
+    /// 書き込まれたら知らせる（NotifyClipboardAccess）
+    pub notify_clipboard: bool,
 }
 
 impl Default for CopyPaste {
@@ -294,6 +298,8 @@ impl Default for CopyPaste {
             trim_trailing_newline: false,
             delimiters: mt_core::DEFAULT_DELIMITERS.to_owned(),
             clickable_url: true,
+            remote_clipboard_write: false,
+            notify_clipboard: true,
         }
     }
 }
@@ -337,6 +343,8 @@ pub struct Settings {
     pub log: LogConf,
     /// ENQ を受けたときに返す文字列（Answerback。空なら返さない）
     pub answerback: String,
+    /// 端末 ID（TerminalID。`VT100` など）
+    pub terminal_id: String,
     /// 「設定 > キーボード」
     pub keyboard: KeyboardConf,
     /// Telnet のキープアライブ（秒。0 で送らない。TelKeepAliveInterval）
@@ -372,6 +380,7 @@ impl Default for Settings {
             copy_paste: CopyPaste::default(),
             log: LogConf::default(),
             answerback: String::new(),
+            terminal_id: "VT100".into(),
             keyboard: KeyboardConf::default(),
             raw_receive_idle: 0,
             telnet_keepalive: 0,
@@ -480,7 +489,8 @@ const CHARSETS: [Charset; 13] = Charset::ALL;
 pub fn terminal_dialog(
     parent: &gtk::Window,
     current: TermConf,
-    apply: impl Fn(TermConf) + 'static,
+    size: (u16, u16),
+    apply: impl Fn(TermConf, (u16, u16)) + 'static,
 ) {
     let (win, content, row) = modal(parent, &tt("DLG_TERM_TITLE", "端末"));
     let grid = gtk::Grid::builder()
@@ -548,19 +558,52 @@ pub fn terminal_dialog(
     answerback.set_text(&Settings::load().answerback);
     grid.attach(&label(tt("DLG_TERM_ANSWERBACK", "応答:")), 0, 6, 1, 1);
     grid.attach(&answerback, 1, 6, 1, 1);
+    let ids: Vec<String> = mt_core::TerminalId::ALL
+        .iter()
+        .map(|t| t.name().to_owned())
+        .collect();
+    let saved_id =
+        mt_core::TerminalId::from_name(&Settings::load().terminal_id).unwrap_or_default();
+    let term_id = dropdown(
+        &ids,
+        mt_core::TerminalId::ALL
+            .iter()
+            .position(|t| *t == saved_id)
+            .unwrap_or(0),
+    );
+    grid.attach(&label(tt("DLG_TERM_ID", "端末ID:")), 0, 7, 1, 1);
+    grid.attach(&term_id, 1, 7, 1, 1);
+    let cols = gtk::SpinButton::with_range(10.0, 500.0, 1.0);
+    cols.set_value(f64::from(size.0));
+    let rows = gtk::SpinButton::with_range(2.0, 200.0, 1.0);
+    rows.set_value(f64::from(size.1));
+    let size_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    size_row.append(&cols);
+    size_row.append(&gtk::Label::new(Some("×")));
+    size_row.append(&rows);
+    grid.attach(&label(tt("DLG_TERM_WIDTHLABEL", "端末サイズ:")), 0, 8, 1, 1);
+    grid.attach(&size_row, 1, 8, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
         let mut saved = Settings::load();
         saved.answerback = answerback.text().to_string();
+        saved.terminal_id = mt_core::TerminalId::ALL
+            [(term_id.selected() as usize).min(mt_core::TerminalId::ALL.len() - 1)]
+        .name()
+        .into();
         saved.save();
-        apply(TermConf {
-            newline_receive: rcv_vals[(rcv.selected() as usize).min(rcv_vals.len() - 1)],
-            newline_send: send_vals[(send.selected() as usize).min(send_vals.len() - 1)],
-            local_echo: echo.is_active(),
-            charset_receive: CHARSETS[(kin.selected() as usize).min(CHARSETS.len() - 1)],
-            charset_send: CHARSETS[(kout.selected() as usize).min(CHARSETS.len() - 1)],
-        })
+        let size = (cols.value() as u16, rows.value() as u16);
+        apply(
+            TermConf {
+                newline_receive: rcv_vals[(rcv.selected() as usize).min(rcv_vals.len() - 1)],
+                newline_send: send_vals[(send.selected() as usize).min(send_vals.len() - 1)],
+                local_echo: echo.is_active(),
+                charset_receive: CHARSETS[(kin.selected() as usize).min(CHARSETS.len() - 1)],
+                charset_send: CHARSETS[(kout.selected() as usize).min(CHARSETS.len() - 1)],
+            },
+            size,
+        )
     });
     win.present();
 }
@@ -778,6 +821,25 @@ pub fn copy_paste_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
         tt("DLG_TAB_GENERAL_CLICKURL", "クリッカブルURLを有効にする"),
         current.clickable_url,
     );
+    // 読み出し（読込）は受け付けない。書き込み（OSC 52）だけ
+    let remote = check(
+        format!(
+            "{}（{}）",
+            tt(
+                "DLG_TAB_SEQUENCE_CLIPBOARD_ACCESS",
+                "リモートからのクリップボードアクセス"
+            ),
+            tt("DLG_TAB_SEQUENCE_CLIPBOARD_ACCESS_WRITE", "書込のみ")
+        ),
+        current.remote_clipboard_write,
+    );
+    let notify = check(
+        tt(
+            "DLG_TAB_SEQUENCE_CLIPBOARD_NOTIFY",
+            "リモートからのクリップボードアクセスを通知する",
+        ),
+        current.notify_clipboard,
+    );
 
     let delim_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     delim_row.append(&gtk::Label::new(Some(&tt(
@@ -839,6 +901,8 @@ pub fn copy_paste_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             trim_trailing_newline: trim.is_active(),
             delimiters: delims.text().to_string(),
             clickable_url: url.is_active(),
+            remote_clipboard_write: remote.is_active(),
+            notify_clipboard: notify.is_active(),
         };
         s.save();
         applied();
@@ -1261,6 +1325,15 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(t) = ini.telnet_keepalive {
         s.telnet_keepalive = t;
+    }
+    if let Some(id) = ini.terminal_id {
+        s.terminal_id = id.name().into();
+    }
+    if let Some(v) = ini.clipboard_write {
+        s.copy_paste.remote_clipboard_write = v;
+    }
+    if let Some(v) = ini.notify_clipboard {
+        s.copy_paste.notify_clipboard = v;
     }
     if let Some(ms) = ini.send_break_ms.filter(|ms| *ms > 0) {
         s.break_ms = ms;

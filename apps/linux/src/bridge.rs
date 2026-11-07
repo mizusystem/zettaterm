@@ -17,6 +17,8 @@ pub enum Event {
     Title(String),
     Bell,
     Transfer(TransferRequest),
+    /// 相手がクリップボードに書いた（OSC 52）
+    Clipboard(String),
 }
 
 pub struct Listener {
@@ -39,6 +41,9 @@ impl SessionListener for Listener {
     }
     fn on_transfer_request(&self, request: TransferRequest) {
         let _ = self.tx.send_blocking(Event::Transfer(request));
+    }
+    fn on_clipboard(&self, text: String) {
+        let _ = self.tx.send_blocking(Event::Clipboard(text));
     }
 }
 

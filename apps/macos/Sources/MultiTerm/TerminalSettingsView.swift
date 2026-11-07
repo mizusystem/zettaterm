@@ -1,3 +1,4 @@
+import MTCore
 import SwiftUI
 
 /// 「端末」設定。当面は改行コード（受信・送信）とローカルエコー。
@@ -5,6 +6,9 @@ struct TerminalSettingsView: View {
     @ObservedObject var controller: TerminalController
     @Environment(\.dismiss) private var dismiss
     @State private var config = TerminalConfig()
+    @State private var cols = 80
+    @State private var rows = 24
+    @State private var startSize = (80, 24)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -60,6 +64,19 @@ struct TerminalSettingsView: View {
                    isOn: $config.localEcho)
 
             HStack {
+                Text(TT.text("DLG_TERM_ID", "端末ID:"))
+                Picker("", selection: $config.terminalId) {
+                    ForEach(TerminalConfig.terminalIds, id: \.self) { Text(terminalIdName(id: $0)).tag($0) }
+                }
+                .labelsHidden().fixedSize()
+                Spacer()
+                Text(TT.text("DLG_TERM_WIDTHLABEL", "端末サイズ:"))
+                TextField("", value: $cols, format: .number).frame(width: 48)
+                Text("×")
+                TextField("", value: $rows, format: .number).frame(width: 40)
+            }
+
+            HStack {
                 Text(TT.text("DLG_TERM_ANSWERBACK", "応答:"))
                 TextField(L("ENQ を受けたときに返す文字列（空なら返さない）"), text: $config.answerback)
             }
@@ -78,12 +95,20 @@ struct TerminalSettingsView: View {
                 Button(TT.text("BTN_OK", "OK")) {
                     dismiss()
                     controller.applyTerminal(config)
+                    // 端末サイズを変えたら、その大きさになるようにウィンドウを変える
+                    let size = (max(10, min(cols, 500)), max(2, min(rows, 200)))
+                    if size != startSize { controller.view.fitWindow(cols: size.0, rows: size.1) }
                 }
                 .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
         .frame(width: 420)
-        .onAppear { config = controller.terminalConfig }
+        .onAppear {
+            config = controller.terminalConfig
+            let size = controller.view.terminalSize
+            (cols, rows) = (Int(size.cols), Int(size.rows))
+            startSize = (cols, rows)
+        }
     }
 }
