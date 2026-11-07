@@ -104,7 +104,7 @@
 - [x] **ウィンドウサイズと端末サイズを連動 (`TermIsWin`)** / **ウィンドウサイズ自動調整 (`AutoWinResize`)**（※端末の大きさはいつもウィンドウの大きさに合わせる。TermIsWin=on と同じ）
 - [x] **端末 ID (`TerminalID`)**（※DA1 の応答。既定は Tera Term と同じ VT100）: `VT100`, `VT101`, `VT102`, `VT220`, `VT282`, `VT320`, `VT382`, `VT420`, `VT520` の応答切り替え
 - [x] **アンサーバック (`Answerback`)**: `ENQ` (`0x05`) 受信時に自動返送する文字列
-- [ ] **漢字イン (`KanjiIn`: `^[$B` / `^[$@`)** / **漢字アウト (`KanjiOut`: `^[(B` / `^[(J` / `^[(H`)** および **7bit カタカナ送受信 (`KatakanaReceive` / `KatakanaSend`)**
+- [x] **漢字イン (`KanjiIn`: `^[$B` / `^[$@`)** / **漢字アウト (`KanjiOut`: `^[(B` / `^[(J` / `^[(H`)** および **7bit カタカナ送受信 (`KatakanaReceive` / `KatakanaSend`)**（※送信の既定は Tera Term と同じく 8 ビットの半角カナ。受信は 7 ビット・8 ビットのどちらも読む）
 - [ ] **Ambiguous（曖昧）文字幅設定 (`UnicodeAmbiguousWidth`)**（※VT に使っている alacritty_terminal が曖昧幅を 1 セル固定で扱うため、そのままでは入れられない）: 1 セル（半角） / 2 セル（全角）の切り替え、絵文字幅の上書き (`UnicodeEmojiWidth`)
 - [x] **追加の文字エンコーディング**（※CP437 / CP850 は未対応）: 韓国語 (`KS5601` / `CP949`)、簡体字中国語 (`GB2312` / `CP936`)、繁体字中国語 (`Big5` / `CP950`)、ロシア語 (`KOI8-R` / `CP1251` / `CP866`)、西欧・中欧 (`ISO-8859-1`〜`15`, `CP437`, `CP850`, `CP1252`)
 

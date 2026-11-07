@@ -22,7 +22,7 @@ pub use auth::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
     HostKeyStatus, KeyboardPrompt, NoPrompt,
 };
-pub use charset::Charset;
+pub use charset::{Charset, JisOptions};
 pub use log::{
     DEFAULT_LOG_NAME, LogFormat, LogNameVars, LogOptions, LogStatus, TimestampKind,
     expand_log_name, expand_log_name_now,

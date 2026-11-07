@@ -172,7 +172,9 @@ impl JisDecoder {
                 match self.esc.as_slice() {
                     [0x1b, b'$'] | [0x1b, b'('] => continue,
                     [0x1b, b'$', b'@'] | [0x1b, b'$', b'B'] => self.switch(JisSet::Kanji),
-                    [0x1b, b'(', b'B'] | [0x1b, b'(', b'J'] => self.switch(JisSet::Ascii),
+                    [0x1b, b'(', b'B'] | [0x1b, b'(', b'J'] | [0x1b, b'(', b'H'] => {
+                        self.switch(JisSet::Ascii)
+                    }
                     [0x1b, b'(', b'I'] => self.switch(JisSet::Kana),
                     // 文字集合の切り替えではない。端末の制御として VT に渡す
                     _ => out.push_str(&String::from_utf8_lossy(&std::mem::take(&mut self.esc))),
@@ -207,6 +209,11 @@ impl JisDecoder {
                         }
                     },
                 },
+                // 8 ビットの半角カナ（Tera Term の KatakanaReceive=8）
+                0xa1..=0xdf => {
+                    self.lead = None;
+                    out.push(char::from_u32(0xff61 + u32::from(b - 0xa1)).unwrap_or('?'));
+                }
                 _ => out.push('\u{fffd}'),
             }
         }
@@ -221,8 +228,35 @@ impl JisDecoder {
 
 /// 送信データ（UTF-8）を相手の文字コードにする。ASCII はそのまま、表せない文字は `?` にする。
 pub fn encode_send(charset: Charset, bytes: Vec<u8>) -> Vec<u8> {
+    encode_send_with(charset, JisOptions::default(), bytes)
+}
+
+/// JIS で送るときの切り替えの書き方（Tera Term の「設定 > 端末」の漢字イン・漢字アウト・半角カナ）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct JisOptions {
+    /// 漢字イン：`B` なら ESC $ B、`@` なら ESC $ @（KanjiIn）
+    pub kanji_in: u8,
+    /// 漢字アウト：`B` なら ESC ( B、`J` なら ESC ( J、`H` なら ESC ( H（KanjiOut）
+    pub kanji_out: u8,
+    /// 半角カナを 7 ビット（SO / SI で切り替え）で送る。false なら 8 ビット（KatakanaSend）
+    pub kana_7bit: bool,
+}
+
+impl Default for JisOptions {
+    /// Tera Term の既定（KanjiIn=B、KanjiOut=B、KatakanaSend=8）
+    fn default() -> Self {
+        Self {
+            kanji_in: b'B',
+            kanji_out: b'B',
+            kana_7bit: false,
+        }
+    }
+}
+
+/// `encode_send` の JIS の書き方を指定するもの。
+pub fn encode_send_with(charset: Charset, jis: JisOptions, bytes: Vec<u8>) -> Vec<u8> {
     let encoding: &'static Encoding = match (charset, charset.encoding()) {
-        (Charset::Jis, _) => return encode_jis(&String::from_utf8_lossy(&bytes)),
+        (Charset::Jis, _) => return encode_jis(&String::from_utf8_lossy(&bytes), jis),
         (_, Some(e)) => e,
         (_, None) => return bytes,
     };
@@ -247,45 +281,75 @@ pub fn encode_send(charset: Charset, bytes: Vec<u8>) -> Vec<u8> {
     out
 }
 
-/// JIS（ISO-2022-JP）。漢字は ESC $ B、半角カナは ESC ( I で切り替え、ASCII に戻すときは ESC ( B。
-fn encode_jis(text: &str) -> Vec<u8> {
+/// JIS（ISO-2022-JP）。漢字は漢字イン（ESC $ B か ESC $ @）で入り、漢字アウト（ESC ( B / J / H）で出る。
+/// 半角カナは 8 ビットのまま、7 ビットなら SO … SI で囲む。
+fn encode_jis(text: &str, jis: JisOptions) -> Vec<u8> {
     let mut out = Vec::with_capacity(text.len() * 2);
-    let mut set = JisSet::Ascii;
-    let mut switch = |out: &mut Vec<u8>, to: JisSet| {
-        if set != to {
-            out.extend_from_slice(match to {
-                JisSet::Ascii => b"\x1b(B",
-                JisSet::Kana => b"\x1b(I",
-                JisSet::Kanji => b"\x1b$B",
-            });
-            set = to;
+    let mut kanji = false;
+    let mut shifted = false;
+    let kanji_in = [0x1b, b'$', if jis.kanji_in == b'@' { b'@' } else { b'B' }];
+    let kanji_out = [
+        0x1b,
+        b'(',
+        match jis.kanji_out {
+            b'J' => b'J',
+            b'H' => b'H',
+            _ => b'B',
+        },
+    ];
+    let leave = |out: &mut Vec<u8>, kanji: &mut bool, shifted: &mut bool| {
+        if *shifted {
+            out.push(0x0f); // SI
+            *shifted = false;
+        }
+        if *kanji {
+            out.extend_from_slice(&kanji_out);
+            *kanji = false;
         }
     };
     for ch in text.chars() {
         let c = ch as u32;
         if ch.is_ascii() {
-            switch(&mut out, JisSet::Ascii);
+            leave(&mut out, &mut kanji, &mut shifted);
             out.push(ch as u8);
         } else if (0xff61..=0xff9f).contains(&c) {
-            switch(&mut out, JisSet::Kana);
-            out.push((c - 0xff61 + 0x21) as u8);
+            if kanji {
+                out.extend_from_slice(&kanji_out);
+                kanji = false;
+            }
+            if jis.kana_7bit {
+                if !shifted {
+                    out.push(0x0e); // SO
+                    shifted = true;
+                }
+                out.push((c - 0xff61 + 0x21) as u8);
+            } else {
+                out.push((c - 0xff61 + 0xa1) as u8);
+            }
         } else {
             let mut buf = [0u8; 4];
             let (euc, _, had_errors) = EUC_JP.encode(ch.encode_utf8(&mut buf));
             match (&euc[..], had_errors) {
                 ([a @ 0xa1..=0xfe, b @ 0xa1..=0xfe], false) => {
-                    switch(&mut out, JisSet::Kanji);
+                    if shifted {
+                        out.push(0x0f);
+                        shifted = false;
+                    }
+                    if !kanji {
+                        out.extend_from_slice(&kanji_in);
+                        kanji = true;
+                    }
                     out.push(a & 0x7f);
                     out.push(b & 0x7f);
                 }
                 _ => {
-                    switch(&mut out, JisSet::Ascii);
+                    leave(&mut out, &mut kanji, &mut shifted);
                     out.push(b'?');
                 }
             }
         }
     }
-    switch(&mut out, JisSet::Ascii);
+    leave(&mut out, &mut kanji, &mut shifted);
     out
 }
 
@@ -352,15 +416,24 @@ mod tests {
             encode_send(Charset::ShiftJis, "😀".as_bytes().to_vec()),
             b"?"
         );
-        // JIS は連なりごとに囲む。半角カナは ESC ( I
+        // JIS は漢字の連なりごとに囲む。半角カナは既定（Tera Term と同じ）で 8 ビット
         assert_eq!(
             encode_send(Charset::Jis, "日本a".as_bytes().to_vec()),
             b"\x1b$BF|K\\\x1b(Ba"
         );
+        assert_eq!(encode_send(Charset::Jis, "ｱ".as_bytes().to_vec()), b"\xb1");
+        // 漢字イン ESC $ @、漢字アウト ESC ( J、半角カナは SO … SI
+        let jis = JisOptions {
+            kanji_in: b'@',
+            kanji_out: b'J',
+            kana_7bit: true,
+        };
         assert_eq!(
-            encode_send(Charset::Jis, "ｱ".as_bytes().to_vec()),
-            b"\x1b(I1\x1b(B"
+            encode_send_with(Charset::Jis, jis, "日ｱｲa".as_bytes().to_vec()),
+            b"\x1b$@F|\x1b(J\x0e12\x0fa"
         );
+        // 受信は 8 ビットの半角カナと ESC ( H も読む
+        assert_eq!(decode_all(Charset::Jis, &[b"\xb1\x1b$BF|\x1b(Hz"]), "ｱ日z");
         assert_eq!(encode_send(Charset::Jis, b"ls\r".to_vec()), b"ls\r");
     }
 

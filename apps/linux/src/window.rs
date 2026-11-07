@@ -931,6 +931,7 @@ impl TermWindow {
                     );
                     session.set_clipboard_write(saved.copy_paste.remote_clipboard_write);
                     saved.other.apply(&session);
+                    session.set_jis_options(saved.terminal_for(Some(&profile)).jis());
                     // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
                     session.set_view_only(me.view_only.get());
                     if let Some((secs, text, nl)) = me.recurring.borrow().clone() {
@@ -997,6 +998,7 @@ impl TermWindow {
             s.save();
             if let Some(session) = me.view.session() {
                 session.set_terminal_settings(conf.core());
+                session.set_jis_options(conf.jis());
                 session.set_answerback((!s.answerback.is_empty()).then(|| s.answerback.clone()));
                 session.set_terminal_id(
                     mt_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default(),

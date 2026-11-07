@@ -156,6 +156,8 @@ final class TerminalController: ObservableObject {
         view.terminalSettings = TerminalConfig.saved(TerminalConfig.scope(for: target)).settings
         view.answerback = TerminalConfig.saved(TerminalConfig.scope(for: target)).answerback
         view.terminalId = TerminalConfig.saved(TerminalConfig.scope(for: target)).terminalId
+        let saved = TerminalConfig.saved(TerminalConfig.scope(for: target))
+        view.jis = (saved.kanjiIn, saved.kanjiOut, saved.kana7bit)
         view.onClipboardWritten = { [weak self] text in
             self?.showNotice(L("相手がクリップボードに書き込みました（%@ 文字）", String(text.count)))
         }
@@ -250,6 +252,8 @@ final class TerminalController: ObservableObject {
         view.session?.setAnswerback(text: config.answerback)
         view.terminalId = config.terminalId
         view.session?.setTerminalId(id: config.terminalId)
+        view.jis = (config.kanjiIn, config.kanjiOut, config.kana7bit)
+        view.session?.setJisOptions(kanjiIn: config.kanjiIn, kanjiOut: config.kanjiOut, kana7bit: config.kana7bit)
     }
 
     /// 「ファイル > 接続断」。「その他の設定」で確かめる設定なら先に尋ねる。

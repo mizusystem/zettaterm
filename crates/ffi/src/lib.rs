@@ -1073,6 +1073,15 @@ impl Session {
         Ok(handle)
     }
 
+    /// JIS で送るときの漢字イン（"B" か "@"）・漢字アウト（"B" / "J" / "H"）・半角カナを 7 ビットにするか。
+    pub fn set_jis_options(&self, kanji_in: String, kanji_out: String, kana_7bit: bool) {
+        self.inner.set_jis_options(core::JisOptions {
+            kanji_in: kanji_in.bytes().next().unwrap_or(b'B'),
+            kanji_out: kanji_out.bytes().next().unwrap_or(b'B'),
+            kana_7bit,
+        });
+    }
+
     /// 貼り付けで行ごとに待つミリ秒（PasteDelayPerLine。既定 10）。
     pub fn set_paste_delay(&self, ms_per_line: u32) {
         self.inner.set_paste_delay(ms_per_line);

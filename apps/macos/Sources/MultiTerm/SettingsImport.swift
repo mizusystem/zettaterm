@@ -44,6 +44,9 @@ enum SettingsImport {
             if let c = ini.charsetReceive { t.charsetReceive = choice(c) }
             if let c = ini.charsetSend { t.charsetSend = choice(c) }
             if let id = ini.terminalId { t.terminalId = id }
+            if let v = ini.kanjiIn { t.kanjiIn = v }
+            if let v = ini.kanjiOut { t.kanjiOut = v }
+            if let v = ini.kana7bit { t.kana7bit = v }
             t.save(scope)
         }
 

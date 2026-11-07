@@ -50,6 +50,10 @@ struct TerminalConfig: Codable, Hashable, Sendable {
     var answerback = ""
     /// 端末 ID の名前（Tera Term の TerminalID。`VT100` など）
     var terminalIdName = "VT100"
+    /// JIS で送るときの漢字イン（B / @）・漢字アウト（B / J / H）・半角カナを 7 ビットにするか
+    var kanjiIn = "B"
+    var kanjiOut = "B"
+    var kana7bit = false
 
     /// 選べる端末 ID
     static let terminalIds: [TerminalId] = [.vt100, .vt101, .vt102, .vt220, .vt282, .vt320, .vt382, .vt420, .vt520]
@@ -78,6 +82,9 @@ struct TerminalConfig: Codable, Hashable, Sendable {
         charsetSend = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetSend) ?? .utf8
         answerback = try c.decodeIfPresent(String.self, forKey: .answerback) ?? ""
         terminalIdName = try c.decodeIfPresent(String.self, forKey: .terminalIdName) ?? "VT100"
+        kanjiIn = try c.decodeIfPresent(String.self, forKey: .kanjiIn) ?? "B"
+        kanjiOut = try c.decodeIfPresent(String.self, forKey: .kanjiOut) ?? "B"
+        kana7bit = try c.decodeIfPresent(Bool.self, forKey: .kana7bit) ?? false
     }
 
     var settings: TerminalSettings {

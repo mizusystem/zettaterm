@@ -33,6 +33,10 @@ pub struct IniImport {
     pub alpha: Option<u8>,
     /// ANSIColor の 16 色（書いていない色は None）
     pub ansi: Vec<Option<u32>>,
+    /// KanjiIn（"B" / "@"）・KanjiOut（"B" / "J" / "H"）・KatakanaSend が 7 か
+    pub kanji_in: Option<String>,
+    pub kanji_out: Option<String>,
+    pub kana_7bit: Option<bool>,
     pub foreground: Option<u32>,
     pub background: Option<u32>,
     pub font_name: Option<String>,
@@ -119,6 +123,9 @@ pub fn import_teraterm_ini(path: String) -> Result<IniImport, MtError> {
         accept_title: s.accept_title,
         alpha: s.alpha,
         ansi: s.ansi.to_vec(),
+        kanji_in: s.jis.map(|j| (j.kanji_in as char).to_string()),
+        kanji_out: s.jis.map(|j| (j.kanji_out as char).to_string()),
+        kana_7bit: s.jis.map(|j| j.kana_7bit),
         foreground: s.foreground,
         background: s.background,
         font_name: s.font.as_ref().map(|f| f.0.clone()),

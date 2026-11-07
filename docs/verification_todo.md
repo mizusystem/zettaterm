@@ -85,6 +85,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「設定 > ログ」のログ表示用エディタ（Mac はアプリを選ぶ、GTK はコマンド）で「ログを表示」が開く
 - [ ] GTK：「ウィンドウ > メニューバー表示」で隠し、Ctrl+Shift+B で戻る
 - [ ] 「設定 > ウィンドウ」の ANSI の 16 色を変えると `ls --color` などの色が変わる。配色を選び直すと配色の色に戻る
+- [ ] 文字コード JIS で「設定 > 端末」の漢字イン・漢字アウト・半角カナ 7bit を変えると、送る切り替えのシーケンスが変わる（`cat -v` で確かめる）
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

@@ -660,9 +660,23 @@ pub struct TermConf {
     pub local_echo: bool,
     pub charset_receive: Charset,
     pub charset_send: Charset,
+    /// JIS で送るときの漢字イン（'B' / '@'）・漢字アウト（'B' / 'J' / 'H'）。未設定（'\0'）は 'B'
+    pub kanji_in: char,
+    pub kanji_out: char,
+    /// 半角カナを 7 ビット（SO / SI）で送る（KatakanaSend=7）
+    pub kana_7bit: bool,
 }
 
 impl TermConf {
+    pub fn jis(self) -> mt_core::JisOptions {
+        let pick = |c: char, ok: &[char]| if ok.contains(&c) { c as u8 } else { b'B' };
+        mt_core::JisOptions {
+            kanji_in: pick(self.kanji_in, &['B', '@']),
+            kanji_out: pick(self.kanji_out, &['B', 'J', 'H']),
+            kana_7bit: self.kana_7bit,
+        }
+    }
+
     pub fn core(self) -> TerminalSettings {
         TerminalSettings {
             newline_receive: self.newline_receive,
@@ -937,6 +951,33 @@ pub fn terminal_dialog(
     size_row.append(&rows);
     grid.attach(&label(tt("DLG_TERM_WIDTHLABEL", "端末サイズ:")), 0, 8, 1, 1);
     grid.attach(&size_row, 1, 8, 1, 1);
+    // JIS で送るときの書き方
+    let jis_now = current.jis();
+    let ins = ['B', '@'];
+    let outs = ['B', 'J', 'H'];
+    let kanji_in = dropdown(
+        &["^[$B".to_owned(), "^[$@".to_owned()],
+        ins.iter()
+            .position(|c| *c as u8 == jis_now.kanji_in)
+            .unwrap_or(0),
+    );
+    let kanji_out = dropdown(
+        &["^[(B".to_owned(), "^[(J".to_owned(), "^[(H".to_owned()],
+        outs.iter()
+            .position(|c| *c as u8 == jis_now.kanji_out)
+            .unwrap_or(0),
+    );
+    let kana7 =
+        gtk::CheckButton::with_label(&format!("{} 7bit", tt("DLG_TERM_KANASEND", "半角カナ")));
+    kana7.set_active(jis_now.kana_7bit);
+    let jis_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    jis_row.append(&gtk::Label::new(Some(&tt("DLG_TERM_KIN", "漢字イン:"))));
+    jis_row.append(&kanji_in);
+    jis_row.append(&gtk::Label::new(Some(&tt("DLG_TERM_KOUT", "漢字アウト:"))));
+    jis_row.append(&kanji_out);
+    jis_row.append(&kana7);
+    grid.attach(&label("JIS".to_owned()), 0, 9, 1, 1);
+    grid.attach(&jis_row, 1, 9, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
@@ -955,6 +996,9 @@ pub fn terminal_dialog(
                 local_echo: echo.is_active(),
                 charset_receive: CHARSETS[(kin.selected() as usize).min(CHARSETS.len() - 1)],
                 charset_send: CHARSETS[(kout.selected() as usize).min(CHARSETS.len() - 1)],
+                kanji_in: ins[(kanji_in.selected() as usize).min(1)],
+                kanji_out: outs[(kanji_out.selected() as usize).min(2)],
+                kana_7bit: kana7.is_active(),
             },
             size,
         )
@@ -1664,6 +1708,11 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
         }
         if let Some(c) = ini.charset_send {
             t.charset_send = c;
+        }
+        if let Some(j) = ini.jis {
+            t.kanji_in = j.kanji_in as char;
+            t.kanji_out = j.kanji_out as char;
+            t.kana_7bit = j.kana_7bit;
         }
     }
     if ini.ansi.iter().any(Option::is_some) {

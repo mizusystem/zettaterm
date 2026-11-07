@@ -32,6 +32,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var answerback = ""
     /// 端末 ID（ESC [ c への応答）
     var terminalId: TerminalId = .vt100
+    /// JIS で送るときの漢字イン・漢字アウト・半角カナ 7 ビット
+    var jis: (String, String, Bool) = ("B", "B", false)
     /// 相手がクリップボードに書いた（知らせる設定のとき）
     var onClipboardWritten: ((String) -> Void)?
     /// SSH の認証・ホスト鍵確認の問い合わせ先
@@ -290,6 +292,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         opened.setKeyboard(keyboard: KeyboardConfig.saved)
         opened.setAnswerback(text: answerback)
         opened.setTerminalId(id: terminalId)
+        opened.setJisOptions(kanjiIn: jis.0, kanjiOut: jis.1, kana7bit: jis.2)
         opened.setClipboardWrite(allow: CopyPasteConfig.saved.remoteClipboardWrite)
         let other = OtherConfig.saved
         opened.setRemoteControl(clearScrollback: other.remoteClearScrollback, cursorStyle: other.remoteCursorStyle)

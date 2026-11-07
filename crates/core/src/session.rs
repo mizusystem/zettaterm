@@ -136,6 +136,7 @@ struct Inner {
     /// 「ポートのリセット」で受信を終わらせた（自動再接続が切れていても開き直す）
     reset_requested: AtomicBool,
     paste_delay_ms: std::sync::atomic::AtomicU32,
+    jis: Mutex<charset::JisOptions>,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
     recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -294,6 +295,7 @@ impl Session {
             enq: Mutex::new(EnqScanner::default()),
             reset_requested: AtomicBool::new(false),
             paste_delay_ms: std::sync::atomic::AtomicU32::new(DEFAULT_PASTE_DELAY_MS),
+            jis: Mutex::new(charset::JisOptions::default()),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
@@ -353,10 +355,10 @@ impl Session {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         let ms = self.inner.paste_delay_ms.load(Ordering::SeqCst);
-        let _ = self
-            .inner
-            .tx
-            .send(WriterMsg::Paste(charset::encode_send(cs, bytes), ms));
+        let _ = self.inner.tx.send(WriterMsg::Paste(
+            charset::encode_send_with(cs, self.inner.jis(), bytes),
+            ms,
+        ));
     }
 
     /// ポートを閉じて開き直す（Tera Term の「コントロール > ポートのリセット」）。シリアルだけ。
@@ -374,6 +376,11 @@ impl Session {
             return Err(e);
         }
         Ok(())
+    }
+
+    /// JIS で送るときの漢字イン・漢字アウト・半角カナ（Tera Term の KanjiIn / KanjiOut / KatakanaSend）。
+    pub fn set_jis_options(&self, options: charset::JisOptions) {
+        *self.inner.jis.lock().unwrap_or_else(|e| e.into_inner()) = options;
     }
 
     /// 貼り付けで行ごとに待つミリ秒（Tera Term の PasteDelayPerLine。既定 10）。
@@ -548,7 +555,7 @@ impl Session {
             .charset_send
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        self.write(charset::encode_send(cs, bytes));
+        self.write(charset::encode_send_with(cs, self.inner.jis(), bytes));
     }
 
     /// 今の端末設定（改行コード・ローカルエコー・文字コード）。
@@ -932,6 +939,10 @@ fn write_with_delay(w: &mut dyn Write, bytes: &[u8], delay: SendDelay) -> io::Re
 }
 
 impl Inner {
+    fn jis(&self) -> charset::JisOptions {
+        *self.jis.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn vt(&self) -> MutexGuard<'_, Terminal> {
         // VT 更新中に panic しても描画は続けたいので、毒化は無視する
         self.vt.lock().unwrap_or_else(|e| e.into_inner())
@@ -1105,7 +1116,7 @@ impl Inner {
                 .clone();
             if let Some(a) = answer.filter(|a| !a.is_empty()) {
                 let cs = *self.charset_send.lock().unwrap_or_else(|e| e.into_inner());
-                let reply = charset::encode_send(cs, a.into_bytes());
+                let reply = charset::encode_send_with(cs, self.jis(), a.into_bytes());
                 for _ in 0..enqs.min(MAX_ANSWERBACKS) {
                     let _ = self.tx.send(WriterMsg::Data(reply.clone()));
                 }

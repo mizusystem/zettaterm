@@ -51,6 +51,8 @@ pub struct IniSettings {
     pub accept_title: Option<String>,
     /// `AlphaBlendActive`（0〜255）
     pub alpha: Option<u8>,
+    /// `KanjiIn` / `KanjiOut` / `KatakanaSend`（JIS で送るとき）
+    pub jis: Option<crate::charset::JisOptions>,
     // ---- 見た目
     /// `VTColor` の文字色・背景色
     pub foreground: Option<u32>,
@@ -272,6 +274,23 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s.confirm_disconnect = get("confirmdisconnect").and_then(on_off);
     s.accept_title = get("accepttitlechangerequest").map(|v| v.to_ascii_lowercase());
     s.alpha = get("alphablendactive").and_then(|v| v.parse().ok());
+    if ["kanjiin", "kanjiout", "katakanasend"]
+        .iter()
+        .any(|k| get(k).is_some())
+    {
+        let mut j = crate::charset::JisOptions::default();
+        if let Some(v) = get("kanjiin").and_then(|v| v.bytes().next()) {
+            j.kanji_in = if v == b'@' { b'@' } else { b'B' };
+        }
+        if let Some(v) = get("kanjiout").and_then(|v| v.bytes().next()) {
+            j.kanji_out = match v {
+                b'J' | b'H' => v,
+                _ => b'B',
+            };
+        }
+        j.kana_7bit = get("katakanasend").is_some_and(|v| v.trim() == "7");
+        s.jis = Some(j);
+    }
     s.telnet_keepalive = get("telkeepaliveinterval").and_then(|v| v.parse().ok());
     s.send_break_ms = get("sendbreaktime").and_then(|v| v.parse().ok());
 

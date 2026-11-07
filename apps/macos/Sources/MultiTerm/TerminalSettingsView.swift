@@ -60,6 +60,25 @@ struct TerminalSettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
+            if config.charsetSend == .jis {
+                HStack(spacing: 12) {
+                    Text(TT.text("DLG_TERM_KIN", "漢字イン:"))
+                    Picker("", selection: $config.kanjiIn) {
+                        Text("^[$B").tag("B")
+                        Text("^[$@").tag("@")
+                    }
+                    .labelsHidden().fixedSize()
+                    Text(TT.text("DLG_TERM_KOUT", "漢字アウト:"))
+                    Picker("", selection: $config.kanjiOut) {
+                        Text("^[(B").tag("B")
+                        Text("^[(J").tag("J")
+                        Text("^[(H").tag("H")
+                    }
+                    .labelsHidden().fixedSize()
+                    Toggle(TT.text("DLG_TERM_KANASEND", "半角カナ") + " 7bit", isOn: $config.kana7bit)
+                }
+            }
+
             Toggle(TT.text("DLG_TERM_LOCALECHO", "ローカルエコー:").trimmingCharacters(in: CharacterSet(charactersIn: ":：")),
                    isOn: $config.localEcho)
 
