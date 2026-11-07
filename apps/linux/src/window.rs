@@ -197,6 +197,13 @@ impl Tabs {
         add("find-prev", Box::new(|_, me| me.view.find_step(false)));
         add("reset-terminal", Box::new(|_, me| me.view.reset_terminal()));
         add(
+            "reset-title",
+            Box::new(|_, me| {
+                me.remote_title.borrow_mut().clear();
+                me.update_title();
+            }),
+        );
+        add(
             "setup-window",
             Box::new(|t, _| {
                 settings::window_dialog(&t.win.clone().upcast(), apply_look_everywhere)

@@ -287,6 +287,20 @@ final class TerminalController: ObservableObject {
     }
 
     /// 「コントロール > 端末リセット」
+    /// 「コントロール > リモートタイトルリセット」：相手が OSC で付けたタイトルを外す。
+    func resetRemoteTitle() {
+        remoteTitle = ""
+    }
+
+    /// 「常に最前面に表示」（TTXAlwaysOnTop）。
+    var alwaysOnTop: Bool {
+        get { view.window?.level == .floating }
+        set {
+            objectWillChange.send()
+            view.window?.level = newValue ? .floating : .normal
+        }
+    }
+
     func resetTerminal() {
         view.textSession?.resetTerminal()
     }

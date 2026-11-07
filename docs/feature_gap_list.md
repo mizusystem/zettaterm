@@ -20,6 +20,7 @@
 | Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
 | Step 2（ログ・設定・シリアル） | 完了（2026-11-06）。Linux 版は画面での確認が未了、信号線は実機での確認が未了 |
 | Step 3（TTL） | ほぼ完了（2026-11-07）。残りは `waitevent` `kermitget` `kermitfinish` `sendkcode` `setdlgpos` `move` `resize` `getttpos` `logrotate` `logautoclosemode` `getipv4addr` `getipv6addr` `restoresetup` `savesetup` |
+| 残りの章 | 進行中（ログ再生・ファイル受信・View mode・繰り返しコマンド・キーボード・アンサーバック・文字コード追加など）。画面での確認は [verification_todo.md](verification_todo.md) |
 | Step 4（TTSSH・設定互換） | 完了（2026-11-07）。エージェント転送は実際の ssh-agent での確認が未了 |
 
 ## 目次
@@ -77,7 +78,7 @@
 
 ### 1-4. 「コントロール (Control)」メニュー (`MENU_CONTROL`)
 - [x] **端末リセット (`MENU_CONTROL_RESET`)**: VT パーサ状態、スクロール領域、文字セット、タブストップ、属性のリセット
-- [ ] **リモートタイトルリセット (`MENU_CONTROL_RESETTITLE`)**: OSC 0/2 で変更されたタイトルを初期タイトルに戻す
+- [x] **リモートタイトルリセット (`MENU_CONTROL_RESETTITLE`)**: OSC 0/2 で変更されたタイトルを初期タイトルに戻す
 - [ ] **ポートのリセット (`MENU_CONTROL_RESETPORT`)**: シリアル通信バッファのクリアとポート再初期化
 - [ ] **AYT 送信 (`MENU_CONTROL_AREYOUTHERE`)** (`Alt+T`): Telnet の `IAC AYT` 送信
 - [ ] **マクロウィンドウの表示 (`MENU_CONTROL_SHOW_MACRO`)**: 実行中マクロの詳細・ポーズ制御
@@ -270,7 +271,7 @@
   - `/T=<0|1>` (Telnet 有効/無効) / `/W="<title>"` (ウィンドウタイトル指定)
 
 ### 6-3. 標準同梱 TTX プラグイン相当の機能
-- [ ] **常に最前面に表示 (`TTXAlwaysOnTop`)**: ウィンドウを最前面に固定するメニュー／ショートカット
+- [x] **常に最前面に表示 (`TTXAlwaysOnTop`)**（※Mac のみ。GTK4 にはこの機能が無い）: ウィンドウを最前面に固定するメニュー／ショートカット
 - [x] **文字コードクイック切替メニュー (`TTXKanjiMenu`)**: 設定ダイアログを開かずにメニューバー（またはステータスバー）から 1 クリックで `UTF-8` / `Shift_JIS` / `EUC-JP` を切り替える機能
 - [x] **繰り返しコマンド (`TTXRecurringCommand`)**: 指定秒数間隔で特定の文字列・改行を自動送信する機能（セッション維持や定期監視用）
 - [x] **ViewMode (`TTXViewMode`)**: 誤入力防止のためキーボード送信をロックして閲覧専用にするモード

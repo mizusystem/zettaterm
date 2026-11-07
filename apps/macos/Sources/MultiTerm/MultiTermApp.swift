@@ -316,6 +316,13 @@ struct TerminalCommands: Commands {
         CommandMenu(TT.text("MENU_CONTROL", "コントロール")) {
             Button(TT.text("MENU_CONTROL_RESET", "端末リセット")) { controller?.resetTerminal() }
                 .disabled(controller?.view.textSession == nil)
+            Button(TT.text("MENU_CONTROL_RESETTITLE", "リモートタイトルリセット")) { controller?.resetRemoteTitle() }
+                .disabled(controller == nil)
+            Toggle(TT.text("MENU_ALWAYSONTOP", "常に最前面に表示", section: "TTXAlwaysOnTop"), isOn: Binding(
+                get: { controller?.alwaysOnTop == true },
+                set: { controller?.alwaysOnTop = $0 }
+            ))
+            .disabled(controller == nil)
 
             Divider()
 
