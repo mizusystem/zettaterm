@@ -62,6 +62,10 @@ fn menu() -> gio::Menu {
         Some(&tt("MENU_FILE_SENDFILE", "ファイル送信...")),
         Some("win.send-file"),
     );
+    file.append(
+        Some(&tt("MENU_FILE_RECVFILE", "ファイル受信...")),
+        Some("win.recv-file"),
+    );
     file.append(Some("SSH SCP..."), Some("win.scp"));
     file.append(
         Some(&tt("MENU_FILE_DISCONNECT", "接続断")),
@@ -200,6 +204,25 @@ fn menu() -> gio::Menu {
     control.append(
         Some(&tt("MENU_CONTROL_SENDBREAK", "ブレーク送信")),
         Some("win.send-break"),
+    );
+    control.append(
+        Some(&crate::strings::section(
+            "TTXViewMode",
+            "MENU_VIEWMODE",
+            "View modeに入る",
+        )),
+        Some("win.view-only"),
+    );
+    control.append(
+        Some(&format!(
+            "{}...",
+            crate::strings::section(
+                "TTXRecurringCommand",
+                "MENU_CONTROL_RECURRING",
+                "繰り返しコマンド"
+            )
+        )),
+        Some("win.recurring"),
     );
     control.append(Some("DTR"), Some("win.dtr"));
     control.append(Some("RTS"), Some("win.rts"));

@@ -270,6 +270,8 @@ impl Tabs {
             Box::new(|t, _| settings::keygen_dialog(&t.win.clone().upcast())),
         );
         add("log-view", Box::new(|_, me| me.view_log()));
+        add("recv-file", Box::new(|_, me| me.begin_raw_receive()));
+        add("recurring", Box::new(|_, me| me.recurring_dialog()));
         add(
             "log-replay",
             Box::new(|t, _| {
@@ -296,7 +298,7 @@ impl Tabs {
             }),
         );
         // チェック付きの項目。状態は sync_menu_state でタブに合わせる
-        for name in ["log-pause", "dtr", "rts"] {
+        for name in ["log-pause", "dtr", "rts", "view-only"] {
             let a = gio::SimpleAction::new_stateful(name, None, &false.to_variant());
             let t = Rc::downgrade(self);
             let n = name.to_owned();
@@ -307,6 +309,12 @@ impl Tabs {
                 match n.as_str() {
                     "log-pause" => me.toggle_log_pause(),
                     "dtr" => me.toggle_line(true),
+                    "view-only" => {
+                        me.view_only.set(!me.view_only.get());
+                        if let Some(s) = me.view.session() {
+                            s.set_view_only(me.view_only.get());
+                        }
+                    }
                     _ => me.toggle_line(false),
                 }
                 me.sync_menu_state();
@@ -403,6 +411,10 @@ pub struct TermWindow {
     log_paused: Cell<bool>,
     /// マクロの setmulticastname（sendmulticast の宛先の名前）
     multicast_name: RefCell<Option<String>>,
+    /// 閲覧専用（TTXViewMode）
+    view_only: Cell<bool>,
+    /// 繰り返し送信（TTXRecurringCommand）：秒、文字列、改行
+    recurring: RefCell<Option<(u32, String, bool)>>,
     /// 起動引数の /L=（ファイル, 追記）と /M=。接続できてから始める
     launch_log: RefCell<Option<(String, bool)>>,
     launch_macro: RefCell<Option<std::path::PathBuf>>,
@@ -502,6 +514,8 @@ impl TermWindow {
             logging: Cell::new(false),
             log_paused: Cell::new(false),
             multicast_name: RefCell::new(None),
+            view_only: Cell::new(false),
+            recurring: RefCell::new(None),
             launch_log: RefCell::new(None),
             launch_macro: RefCell::new(None),
             modem: Cell::new(None),
@@ -668,6 +682,15 @@ impl TermWindow {
                     me.auto_start_log(&session, &profile);
                     me.start_modem_polling();
                     me.start_launch_extras(&session);
+                    // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
+                    session.set_view_only(me.view_only.get());
+                    if let Some((secs, text, nl)) = me.recurring.borrow().clone() {
+                        session.set_recurring(Some((
+                            std::time::Duration::from_secs(u64::from(secs)),
+                            text,
+                            nl,
+                        )));
+                    }
                     me.sync_menu_state();
                     me.view.area.grab_focus();
                     me.notify_waiters(Some(session));
@@ -969,6 +992,7 @@ impl TermWindow {
             }
         };
         set("log-pause", self.log_paused.get().to_variant());
+        set("view-only", self.view_only.get().to_variant());
         let m = self.modem.get();
         set("dtr", m.is_some_and(|m| m.dtr).to_variant());
         set("rts", m.is_some_and(|m| m.rts).to_variant());
@@ -1191,6 +1215,126 @@ impl TermWindow {
                 }
             });
         }
+    }
+
+    /// 「ファイル > ファイル受信」：止める秒数を尋ねてから、保存先を選ぶ。
+    fn begin_raw_receive(self: &Rc<Self>) {
+        let Some(session) = self.view.session().filter(|s| !s.is_transferring()) else {
+            return;
+        };
+        let me = Rc::clone(self);
+        let last = Settings::load().raw_receive_idle;
+        dialogs::input(
+            &self.parent(),
+            &tt("MENU_FILE_RECVFILE", "ファイル受信"),
+            &l("この秒数データが来なければ止める（0 は止めない）:"),
+            &last.to_string(),
+            false,
+            move |answer| {
+                let Some(secs) = answer.and_then(|a| a.trim().parse::<u32>().ok()) else {
+                    return;
+                };
+                let mut s = Settings::load();
+                s.raw_receive_idle = secs;
+                s.save();
+                let dialog = gtk::FileDialog::builder()
+                    .title(l("受信をそのまま保存するファイル"))
+                    .initial_folder(&gio::File::for_path(transfer::downloads_dir()))
+                    .initial_name("capture.bin")
+                    .build();
+                let me2 = Rc::clone(&me);
+                dialog.save(Some(&me.win), None::<&gio::Cancellable>, move |r| {
+                    if let Some(p) = r.ok().and_then(|f| f.path()) {
+                        transfer::start_raw(&me2.parent(), &session, p, secs);
+                    }
+                });
+            },
+        );
+    }
+
+    /// 「コントロール > 繰り返しコマンド」。
+    fn recurring_dialog(self: &Rc<Self>) {
+        let (win, content, row) = dialogs::modal(
+            &self.parent(),
+            &crate::strings::section(
+                "TTXRecurringCommand",
+                "MENU_CONTROL_RECURRING",
+                "繰り返しコマンド",
+            ),
+        );
+        let note = gtk::Label::new(Some(&l(
+            "無通信で切られないよう、決まった間隔で文字列を送ります。",
+        )));
+        note.set_xalign(0.0);
+        note.add_css_class("dim-label");
+        content.append(&note);
+        let current = self.recurring.borrow().clone().unwrap_or_else(|| {
+            let s = Settings::load();
+            (
+                s.recurring_secs.max(1),
+                s.recurring_text,
+                s.recurring_newline,
+            )
+        });
+        let secs = gtk::SpinButton::with_range(1.0, 86_400.0, 1.0);
+        secs.set_value(f64::from(current.0));
+        let text = gtk::Entry::new();
+        text.set_text(&current.1);
+        text.set_hexpand(true);
+        let newline = gtk::CheckButton::with_label(&l("続けて改行を送る"));
+        newline.set_active(current.2);
+        let r1 = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        r1.append(&gtk::Label::new(Some(&l("間隔（秒）:"))));
+        r1.append(&secs);
+        let r2 = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        r2.append(&gtk::Label::new(Some(&l("送る文字列:"))));
+        r2.append(&text);
+        content.append(&r1);
+        content.append(&r2);
+        content.append(&newline);
+
+        let stop = gtk::Button::with_label(&l("止める"));
+        stop.set_visible(self.recurring.borrow().is_some());
+        let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+        let start = gtk::Button::with_label(&l("始める"));
+        start.add_css_class("suggested-action");
+        row.append(&stop);
+        row.append(&cancel);
+        row.append(&start);
+        let w = win.clone();
+        cancel.connect_clicked(move |_| w.close());
+        let (w, me) = (win.clone(), Rc::clone(self));
+        stop.connect_clicked(move |_| {
+            *me.recurring.borrow_mut() = None;
+            if let Some(s) = me.view.session() {
+                s.set_recurring(None);
+            }
+            w.close();
+        });
+        let (w, me) = (win.clone(), Rc::clone(self));
+        start.connect_clicked(move |_| {
+            let cmd = (
+                secs.value() as u32,
+                text.text().to_string(),
+                newline.is_active(),
+            );
+            let mut s = Settings::load();
+            s.recurring_secs = cmd.0;
+            s.recurring_text = cmd.1.clone();
+            s.recurring_newline = cmd.2;
+            s.save();
+            if let Some(session) = me.view.session() {
+                session.set_recurring(Some((
+                    std::time::Duration::from_secs(u64::from(cmd.0)),
+                    cmd.1.clone(),
+                    cmd.2,
+                )));
+            }
+            *me.recurring.borrow_mut() = Some(cmd);
+            w.close();
+        });
+        win.set_default_widget(Some(&start));
+        win.present();
     }
 
     /// 転送を始める。XON/XOFF のシリアルで XMODEM / YMODEM なら確かめ、XMODEM はオプションを尋ねる。

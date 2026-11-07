@@ -11,10 +11,18 @@ use crate::MtError;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum TransferProtocol {
-    XModem { crc: bool, one_k: bool },
+    XModem {
+        crc: bool,
+        one_k: bool,
+    },
     YModem,
     ZModem,
     Kermit,
+    /// プロトコルなしの受信（Tera Term の「ファイル受信」）。`idle_ms` 来なければ終わる（0 は止めるまで）。
+    /// `destination` は保存するファイル
+    Raw {
+        idle_ms: u32,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
@@ -118,6 +126,7 @@ pub(crate) fn create(
         TransferProtocol::YModem => Protocol::YModem,
         TransferProtocol::ZModem => Protocol::ZModem,
         TransferProtocol::Kermit => Protocol::Kermit,
+        TransferProtocol::Raw { idle_ms } => Protocol::Raw { idle_ms },
     };
     let direction = if send {
         Direction::Send(files.into_iter().map(PathBuf::from).collect())

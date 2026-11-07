@@ -73,5 +73,13 @@
   "接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。": "Lets you authenticate with your local ssh-agent keys when you ssh onward from the server. Use it only with servers you trust.",
   "パスフレーズが一致しません。": "The passphrases do not match.",
   "ttyrec（再生できる記録）": "ttyrec (replayable)",
-  "再生するログ（バイナリか ttyrec）を選んでください。": "Choose a log to replay (binary or ttyrec)."
+  "再生するログ（バイナリか ttyrec）を選んでください。": "Choose a log to replay (binary or ttyrec).",
+  "受信をそのまま保存するファイル": "File to save the received data to, as is",
+  "この秒数データが来なければ止める（0 は止めない）:": "Stop after this many seconds without data (0 = never):",
+  "無通信で切られないよう、決まった間隔で文字列を送ります。": "Sends a string at a fixed interval so idle connections are not dropped.",
+  "間隔（秒）:": "Interval (seconds):",
+  "送る文字列:": "String to send:",
+  "続けて改行を送る": "Send a newline after it",
+  "止める": "Stop",
+  "始める": "Start"
 }

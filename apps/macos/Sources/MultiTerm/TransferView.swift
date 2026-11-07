@@ -97,6 +97,39 @@ extension TerminalController {
         }
     }
 
+    /// 「ファイル > ファイル受信」：プロトコルなしで受信をそのままファイルへ（機器の出力を丸ごと取るとき）。
+    /// データが来ないまま指定の秒数が過ぎたら止まる（0 なら止めるまで）。
+    func beginRawReceive() {
+        guard isConnected, let session = view.session, !session.isTransferring() else { return }
+        let panel = NSSavePanel()
+        panel.directoryURL = Self.downloads
+        panel.nameFieldStringValue = "capture.bin"
+        panel.message = L("受信をそのまま保存するファイル")
+        let key = "rawReceive.idleSecs"
+        let field = NSTextField(string: String(UserDefaults.standard.integer(forKey: key)))
+        field.frame = NSRect(x: 0, y: 0, width: 60, height: 22)
+        let label = NSTextField(labelWithString: L("この秒数データが来なければ止める（0 は止めない）:"))
+        let stack = NSStackView(views: [label, field])
+        stack.orientation = .horizontal
+        stack.edgeInsets = NSEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+        panel.accessoryView = stack
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let secs = max(0, Int(field.stringValue) ?? 0)
+        UserDefaults.standard.set(secs, forKey: key)
+        do {
+            let handle = try session.startTransfer(
+                protocol: .raw(idleMs: UInt32(clamping: secs * 1000)), send: false, files: [], destination: url.path)
+            show(ActiveTransfer(
+                title: TT.text("MENU_FILE_RECVFILE", "ファイル受信").replacingOccurrences(of: "...", with: ""),
+                send: false,
+                poll: { handle.progress() },
+                cancel: { [weak session] in session?.cancelTransfer() }
+            ))
+        } catch {
+            errorMessage = Self.describe(error)
+        }
+    }
+
     // MARK: XMODEM のオプション
 
     /// 送信はチェックサム / CRC / 1K、受信はチェックサム / CRC。前回の選択を覚えておく。

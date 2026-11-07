@@ -7,6 +7,7 @@
 
 mod crc;
 mod kermit;
+mod raw;
 mod xymodem;
 mod zmodem;
 
@@ -27,6 +28,8 @@ pub enum Protocol {
     ZModem,
     /// Kermit（短いパケット、停止待ち）
     Kermit,
+    /// プロトコルなしの受信（受信をそのままファイルへ。`idle_ms` 来なければ終わる。0 は止めるまで）
+    Raw { idle_ms: u32 },
 }
 
 /// 送るか受けるか。
@@ -104,6 +107,15 @@ pub fn new_transfer(protocol: Protocol, direction: Direction) -> io::Result<Box<
         (Protocol::ZModem, Direction::Receive(dir)) => Box::new(zmodem::Receiver::new(dir)?),
         (Protocol::Kermit, Direction::Send(files)) => Box::new(kermit::Sender::new(files)?),
         (Protocol::Kermit, Direction::Receive(dir)) => Box::new(kermit::Receiver::new(dir)?),
+        (Protocol::Raw { idle_ms }, Direction::Receive(path)) => Box::new(raw::RawReceiver::new(
+            path,
+            Some(std::time::Duration::from_millis(u64::from(idle_ms))),
+        )?),
+        (Protocol::Raw { .. }, Direction::Send(_)) => {
+            return Err(io::Error::other(
+                "use Session::send_file to send a file without a protocol",
+            ));
+        }
     })
 }
 

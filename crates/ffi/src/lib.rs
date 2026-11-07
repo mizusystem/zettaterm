@@ -795,6 +795,26 @@ impl Session {
         self.inner.clear_buffer();
     }
 
+    /// 閲覧専用（TTXViewMode）。キー入力と貼り付けを送らない。
+    pub fn set_view_only(&self, on: bool) {
+        self.inner.set_view_only(on);
+    }
+
+    pub fn is_view_only(&self) -> bool {
+        self.inner.is_view_only()
+    }
+
+    /// 繰り返し送信（TTXRecurringCommand）。`interval_secs` が 0 なら止める。
+    pub fn set_recurring(&self, interval_secs: u32, text: String, newline: bool) {
+        self.inner.set_recurring((interval_secs > 0).then(|| {
+            (
+                std::time::Duration::from_secs(u64::from(interval_secs)),
+                text,
+                newline,
+            )
+        }));
+    }
+
     /// 色とカーソル形状の既定を変える。
     pub fn set_appearance(&self, appearance: Appearance) {
         self.inner.set_appearance(&appearance.to_core());

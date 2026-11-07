@@ -633,3 +633,32 @@ fn log_can_start_with_the_screen_and_be_paused() {
     assert_eq!(status.bytes, text.len() as u64);
     session.close();
 }
+
+/// TTXViewMode：閲覧専用の間はキー入力と貼り付けを送らない。TTXRecurringCommand：一定間隔で送る。
+#[test]
+fn view_only_and_recurring_command() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_view_only(true);
+    assert!(session.is_view_only());
+    session.key(Key::Text("x".into()), Modifiers::default());
+    session.paste("y".into());
+    assert!(remote.recv(Duration::from_millis(200)).is_none());
+    session.set_view_only(false);
+    session.key(Key::Text("z".into()), Modifiers::default());
+    assert_eq!(remote.recv(WAIT).unwrap(), b"z");
+
+    session.set_recurring(Some((Duration::from_secs(1), "keep".into(), true)));
+    let start = std::time::Instant::now();
+    let mut got = Vec::new();
+    while start.elapsed() < Duration::from_millis(2600) {
+        if let Some(b) = remote.recv(Duration::from_millis(100)) {
+            got.extend(b);
+        }
+    }
+    assert_eq!(String::from_utf8_lossy(&got), "keep\rkeep\r");
+    session.set_recurring(None);
+    assert!(remote.recv(Duration::from_millis(1300)).is_none());
+    session.close();
+}

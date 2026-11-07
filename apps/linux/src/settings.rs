@@ -264,6 +264,12 @@ pub struct Settings {
     pub zmodem_auto_receive: bool,
     pub copy_paste: CopyPaste,
     pub log: LogConf,
+    /// ファイル受信で、この秒数データが来なければ止める（0 は止めない）
+    pub raw_receive_idle: u32,
+    /// 繰り返しコマンドの前回の値
+    pub recurring_secs: u32,
+    pub recurring_text: String,
+    pub recurring_newline: bool,
     pub look: Look,
     pub ssh: SshConf,
 }
@@ -279,6 +285,10 @@ impl Default for Settings {
             zmodem_auto_receive: true,
             copy_paste: CopyPaste::default(),
             log: LogConf::default(),
+            raw_receive_idle: 0,
+            recurring_secs: 60,
+            recurring_text: String::new(),
+            recurring_newline: true,
             look: Look::default(),
             ssh: SshConf::default(),
         }

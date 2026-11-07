@@ -155,6 +155,33 @@ pub fn start_with(
         },
         kind.name()
     );
+    start_titled(parent, session, title, protocol, direction);
+}
+
+/// 「ファイル > ファイル受信」：プロトコルなしで受信をそのまま `path` へ。`idle_secs` 来なければ止める（0 は止めない）。
+pub fn start_raw(parent: &gtk::Window, session: &Arc<Session>, path: PathBuf, idle_secs: u32) {
+    let title = tt("MENU_FILE_RECVFILE", "ファイル受信")
+        .trim_end_matches("...")
+        .to_owned();
+    start_titled(
+        parent,
+        session,
+        title,
+        Protocol::Raw {
+            idle_ms: idle_secs.saturating_mul(1000),
+        },
+        Direction::Receive(path),
+    );
+}
+
+fn start_titled(
+    parent: &gtk::Window,
+    session: &Arc<Session>,
+    title: String,
+    protocol: Protocol,
+    direction: Direction,
+) {
+    let send = matches!(direction, Direction::Send(_));
     let transfer = match mt_xfer::new_transfer(protocol, direction) {
         Ok(t) => t,
         Err(e) => {

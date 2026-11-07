@@ -122,6 +122,10 @@ struct Inner {
     terminal: Mutex<TerminalSettings>,
     /// 接続した時刻（ログの経過時間）
     opened_at: std::time::Instant,
+    /// 閲覧専用（TTXViewMode）。キー入力と貼り付けを送らない
+    view_only: AtomicBool,
+    /// 繰り返し送信の世代（変えると前のスレッドが止まる）
+    recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
     taps: Mutex<Taps>,
 }
@@ -208,6 +212,8 @@ impl Session {
             local_echo: AtomicBool::new(options.terminal.local_echo),
             terminal: Mutex::new(options.terminal),
             opened_at: std::time::Instant::now(),
+            view_only: AtomicBool::new(false),
+            recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
 
@@ -237,6 +243,9 @@ impl Session {
     /// キー入力を送る。カーソルキーなどは端末モードに合わせて変換する。
     /// Enter は「送信」の改行コードで送る。
     pub fn key(&self, key: Key, mods: Modifiers) {
+        if self.inner.view_only.load(Ordering::SeqCst) {
+            return;
+        }
         let mut bytes = self.inner.vt().encode_key(&key, mods);
         if key == Key::Enter && bytes.ends_with(b"\r") {
             bytes = self.inner.newline_send().apply(bytes);
@@ -247,6 +256,9 @@ impl Session {
     /// 貼り付け。改行は「送信」の改行コードに揃え、ブラケットペーストモードなら囲む。
     /// 送信遅延は送信スレッドで効く。複数行の確認は UI 側で行う。
     pub fn paste(&self, text: String) {
+        if self.inner.view_only.load(Ordering::SeqCst) {
+            return;
+        }
         let bytes = self.inner.vt().encode_paste(&text);
         let bytes = self.inner.newline_send().apply(bytes);
         // ローカルエコーには貼り付けた文字だけを出す（ブラケットペーストの ESC[200~ などは出さない）
@@ -255,6 +267,50 @@ impl Session {
             self.inner.echo(plain.as_bytes());
         }
         self.send_wire(bytes);
+    }
+
+    /// 閲覧専用にする（TTXViewMode）。キー入力と貼り付けを送らない（マクロの送信は通す）。
+    pub fn set_view_only(&self, on: bool) {
+        self.inner.view_only.store(on, Ordering::SeqCst);
+    }
+
+    pub fn is_view_only(&self) -> bool {
+        self.inner.view_only.load(Ordering::SeqCst)
+    }
+
+    /// 繰り返し送信（TTXRecurringCommand）：`interval` ごとに `text` を送り、`newline` なら改行も送る。
+    /// None で止める。接続が閉じたら止まる。
+    pub fn set_recurring(&self, command: Option<(Duration, String, bool)>) {
+        let generation = self.inner.recurring_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let Some((interval, text, newline)) = command else {
+            return;
+        };
+        let interval = interval.max(Duration::from_secs(1));
+        let weak = Arc::downgrade(&self.inner);
+        let _ = thread::Builder::new()
+            .name("mt-recurring".into())
+            .spawn(move || {
+                let mut waited = Duration::ZERO;
+                loop {
+                    thread::sleep(Duration::from_millis(100));
+                    waited += Duration::from_millis(100);
+                    let Some(inner) = weak.upgrade() else { return };
+                    if inner.recurring_gen.load(Ordering::SeqCst) != generation
+                        || inner.closing.load(Ordering::SeqCst)
+                    {
+                        return;
+                    }
+                    if waited < interval {
+                        continue;
+                    }
+                    waited = Duration::ZERO;
+                    let session = Session { inner };
+                    session.send_text(&text);
+                    if newline {
+                        session.send_line("");
+                    }
+                }
+            });
     }
 
     /// 文字列を送る（TTL の send）。送信の文字コードに変換し、ローカルエコーなら画面にも出す。

@@ -93,6 +93,7 @@ struct TerminalWindow: View {
                 case .fontSettings: FontSettingsView()
                 case .sshSettings: SshSettingsView()
                 case .sshKeyGen: SshKeyGenView()
+                case .recurring: RecurringView(controller: controller)
                 }
             }
             .alert(
@@ -202,6 +203,8 @@ struct TerminalCommands: Commands {
             }
 
             Button(TT.text("MENU_FILE_SENDFILE", "ファイル送信...")) { controller?.beginSendFile() }
+                .disabled(controller?.isConnected != true || controller?.transfer != nil)
+            Button(TT.text("MENU_FILE_RECVFILE", "ファイル受信...")) { controller?.beginRawReceive() }
                 .disabled(controller?.isConnected != true || controller?.transfer != nil)
 
             // TTSSH が「ファイル」メニューに足す項目
@@ -334,6 +337,18 @@ struct TerminalCommands: Commands {
                 .disabled(controller == nil || controller?.macro != nil)
             Button(L("マクロの停止")) { controller?.stopMacro() }
                 .disabled(controller?.macro == nil)
+
+            Divider()
+
+            Toggle(TT.text("MENU_VIEWMODE", "View modeに入る", section: "TTXViewMode"), isOn: Binding(
+                get: { controller?.viewOnly == true },
+                set: { _ in controller?.toggleViewOnly() }
+            ))
+            .disabled(controller == nil)
+            Button(TT.text("MENU_CONTROL_RECURRING", "繰り返しコマンド", section: "TTXRecurringCommand") + "...") {
+                controller?.sheet = .recurring
+            }
+            .disabled(controller?.isConnected != true)
 
             Divider()
 

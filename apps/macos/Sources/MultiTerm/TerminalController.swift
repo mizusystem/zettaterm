@@ -9,6 +9,7 @@ final class TerminalController: ObservableObject {
 
     enum Sheet: String, Identifiable {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
+        case recurring
         case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings, sshKeyGen
         var id: String { rawValue }
     }
@@ -39,6 +40,10 @@ final class TerminalController: ObservableObject {
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false
     @Published private(set) var isLogPaused = false
+    /// 閲覧専用（TTXViewMode）
+    @Published private(set) var viewOnly = false
+    /// 繰り返し送信（TTXRecurringCommand）。秒、文字列、改行
+    @Published private(set) var recurring: RecurringCommand?
     /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
     @Published private(set) var modemLines: ModemLines?
     private var modemTimer: Timer?
@@ -131,6 +136,9 @@ final class TerminalController: ObservableObject {
                 if remember { HostStore.shared.add(target) }
                 autoStartLog()
                 startModemPolling()
+                // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
+                if viewOnly { view.session?.setViewOnly(on: true) }
+                if let r = recurring { setRecurring(r) }
                 startLaunchExtras()
             } catch is CancellationError {
                 prompter.setOneTimePassword(nil)
@@ -370,6 +378,23 @@ final class TerminalController: ObservableObject {
         NSWorkspace.shared.open(URL(fileURLWithPath: path))
     }
 
+    // MARK: 閲覧専用・繰り返し送信
+
+    func toggleViewOnly() {
+        viewOnly.toggle()
+        view.session?.setViewOnly(on: viewOnly)
+    }
+
+    func setRecurring(_ command: RecurringCommand?) {
+        recurring = command
+        if let c = command {
+            view.session?.setRecurring(intervalSecs: UInt32(clamping: c.seconds), text: c.text, newline: c.newline)
+            RecurringCommand.last = c
+        } else {
+            view.session?.setRecurring(intervalSecs: 0, text: "", newline: false)
+        }
+    }
+
     // MARK: 文字コード
 
     /// 今の接続の文字コード（受信と送信が違えば nil）。
@@ -486,5 +511,74 @@ final class TerminalController: ObservableObject {
             return message == en ? L(ja) : "\(L(ja))\n（\(message)）"
         }
         return message
+    }
+}
+
+/// 繰り返し送信の設定（TTXRecurringCommand）。
+struct RecurringCommand: Equatable {
+    var seconds: Int
+    var text: String
+    var newline: Bool
+
+    /// 前回の設定（ダイアログの初期値）
+    static var last: RecurringCommand {
+        get {
+            let d = UserDefaults.standard
+            return RecurringCommand(
+                seconds: d.object(forKey: "recurring.seconds") == nil ? 60 : d.integer(forKey: "recurring.seconds"),
+                text: d.string(forKey: "recurring.text") ?? "",
+                newline: d.object(forKey: "recurring.newline") == nil ? true : d.bool(forKey: "recurring.newline"))
+        }
+        set {
+            let d = UserDefaults.standard
+            d.set(newValue.seconds, forKey: "recurring.seconds")
+            d.set(newValue.text, forKey: "recurring.text")
+            d.set(newValue.newline, forKey: "recurring.newline")
+        }
+    }
+}
+
+/// 「コントロール > 繰り返しコマンド」。
+struct RecurringView: View {
+    @ObservedObject var controller: TerminalController
+    @Environment(\.dismiss) private var dismiss
+    @State private var command = RecurringCommand.last
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(TT.text("MENU_CONTROL_RECURRING", "繰り返しコマンド", section: "TTXRecurringCommand")).font(.headline)
+            Text(L("無通信で切られないよう、決まった間隔で文字列を送ります。"))
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Text(L("間隔（秒）:"))
+                TextField("", value: $command.seconds, format: .number).frame(width: 70)
+            }
+            HStack {
+                Text(L("送る文字列:"))
+                TextField("", text: $command.text).frame(minWidth: 240)
+            }
+            Toggle(L("続けて改行を送る"), isOn: $command.newline)
+            HStack {
+                if controller.recurring != nil {
+                    Button(L("止める")) {
+                        controller.setRecurring(nil)
+                        dismiss()
+                    }
+                }
+                Spacer()
+                Button(TT.text("BTN_CANCEL", "キャンセル")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(L("始める")) {
+                    command.seconds = max(1, command.seconds)
+                    controller.setRecurring(command)
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(command.text.isEmpty && !command.newline)
+            }
+        }
+        .padding(20)
+        .frame(width: 440)
+        .onAppear { if let r = controller.recurring { command = r } }
     }
 }

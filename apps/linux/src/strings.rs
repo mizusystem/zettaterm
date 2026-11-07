@@ -120,6 +120,11 @@ pub fn ssh(key: &str, fallback: &str) -> String {
     lookup("TTSSH", key, fallback)
 }
 
+/// ほかのセクション（TTXRecurringCommand など、標準のプラグインの文言）。
+pub fn section(section: &str, key: &str, fallback: &str) -> String {
+    lookup(section, key, fallback)
+}
+
 fn lookup(section: &str, key: &str, fallback: &str) -> String {
     let s = sections();
     let raw = s
