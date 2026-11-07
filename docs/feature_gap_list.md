@@ -168,7 +168,7 @@
 - [ ] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定
 
 ### 3-2. Telnet / TCP (`crates/net/src/telnet.rs`)
-- [ ] **Telnet Binary オプション (`TRANSMIT-BINARY`, Option 0)** のネゴシエーション対応
+- [x] **Telnet Binary オプション (`TRANSMIT-BINARY`, Option 0)** のネゴシエーション対応（※最初から対応済み。BINARY 中は CR に NUL を付けない）
 - [x] **Telnet Keep-Alive (`TelKeepAliveInterval`)**（※値は TERATERM.INI の読み込みから。設定画面は未実装）: 定期的な `IAC NOP` (`0xFF 0xF1`) 送信
 - [x] **Telnet `IAC AYT` (Are You There)** 送信メソッドの公開
 - [ ] **名前付きパイプ (Windows Named Pipe) / UNIX ドメインソケット接続**（VMware / VirtualBox / QEMU の仮想シリアルポート直結用）
@@ -176,7 +176,7 @@
 ### 3-3. シリアルポート (`crates/serial/src/port.rs`)
 - [x] **モデムステータスライン（CTS, DSR, RI, CD/DCD）の読み取り API と UI ステータス表示**
 - [x] **DTR / RTS の手動 ON/OFF トグル UI**（`Session::set_lines` をメニューまたはステータスバーから操作可能にする）
-- [ ] **可変ブレーク信号長 (`SendBreakTime`)**: 設定値（デフォルト 1000ms 等）に応じたブレーク送信
+- [x] **可変ブレーク信号長 (`SendBreakTime`)**: 設定値（デフォルト 1000ms 等）に応じたブレーク送信（「設定 > シリアルポート」の「ブレークの長さ」。TERATERM.INI からも読む）
 - [ ] **macOS における Mark / Space パリティ・DSR/DTR フロー制御のサポート（または代替処理）**
 
 ---

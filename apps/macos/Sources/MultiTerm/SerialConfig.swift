@@ -43,6 +43,15 @@ struct SerialConfig: Codable, Hashable, Sendable {
         )
     }
 
+    /// ブレーク信号の長さ（ミリ秒。Tera Term の SendBreakTime。既定 1000）
+    static var breakMs: UInt32 {
+        get {
+            let v = UserDefaults.standard.integer(forKey: "serial.breakMs")
+            return v > 0 ? UInt32(clamping: v) : 1000
+        }
+        set { UserDefaults.standard.set(Int(max(1, min(newValue, 10_000))), forKey: "serial.breakMs") }
+    }
+
     /// タイトルなどに出す短い表記（例：115200bps 8N1）。
     var summary: String {
         let p: String

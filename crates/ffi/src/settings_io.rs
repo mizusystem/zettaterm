@@ -41,6 +41,8 @@ pub struct IniImport {
     pub middle_click_paste: Option<bool>,
     pub ssh_keepalive: Option<u32>,
     pub telnet_keepalive: Option<u32>,
+    /// ブレーク信号の長さ（ミリ秒。SendBreakTime）
+    pub send_break_ms: Option<u32>,
     pub ssh_forwards: Vec<String>,
     /// [Hosts] の接続先（読めたものだけ）
     pub hosts: Vec<MacroConnect>,
@@ -118,6 +120,7 @@ pub fn import_teraterm_ini(path: String) -> Result<IniImport, MtError> {
         middle_click_paste: s.middle_click_paste,
         ssh_keepalive: s.ssh_keepalive.map(|k| k.min(u64::from(u32::MAX)) as u32),
         telnet_keepalive: s.telnet_keepalive,
+        send_break_ms: s.send_break_ms,
         ssh_forwards: s.ssh_forwards,
         hosts,
     })

@@ -59,6 +59,8 @@ pub struct IniSettings {
     pub ssh_keepalive: Option<u64>,
     /// `TelKeepAliveInterval`（秒）
     pub telnet_keepalive: Option<u32>,
+    /// `SendBreakTime`（ミリ秒）
+    pub send_break_ms: Option<u32>,
     /// `DefaultForwarding`（`L 8080:host:80` の形に直したもの）
     pub ssh_forwards: Vec<String>,
     // ---- ホスト一覧（[Hosts] の Host1..。コマンドラインの形のまま）
@@ -230,6 +232,7 @@ pub fn parse_ini(text: &str) -> IniSettings {
     });
     s.scroll_buffer = get("scrollbuffsize").and_then(|v| v.parse().ok());
     s.telnet_keepalive = get("telkeepaliveinterval").and_then(|v| v.parse().ok());
+    s.send_break_ms = get("sendbreaktime").and_then(|v| v.parse().ok());
 
     // 見た目
     if let Some(v) = get("vtcolor") {
@@ -334,6 +337,7 @@ StopBit=1
 FlowCtrl=hard
 DelayPerChar=0
 DelayPerLine=10
+SendBreakTime=500
 CRSend=CRLF
 CRReceive=AUTO
 LocalEcho=off
@@ -370,6 +374,7 @@ Host10=/C=1 ;serial port
         assert_eq!(serial.parity, Parity::Even);
         assert_eq!(serial.flow, FlowControl::RtsCts);
         assert_eq!(s.delay.unwrap().per_line_ms, 10);
+        assert_eq!(s.send_break_ms, Some(500));
         assert_eq!(s.newline_send, Some(NewlineSend::CrLf));
         assert_eq!(s.newline_receive, Some(NewlineReceive::Auto));
         assert_eq!(s.local_echo, Some(false));

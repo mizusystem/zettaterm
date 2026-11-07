@@ -232,10 +232,11 @@ impl Tabs {
         add(
             "send-break",
             Box::new(|_, me| {
-                // ブレークの間（300 ms）画面を止めないよう、別スレッドで送る
+                // ブレークの間、画面を止めないよう別スレッドで送る
                 if let Some(s) = me.view.session() {
+                    let ms = crate::settings::Settings::load().break_ms;
                     std::thread::spawn(move || {
-                        let _ = s.send_break(300);
+                        let _ = s.send_break(ms);
                     });
                 }
             }),

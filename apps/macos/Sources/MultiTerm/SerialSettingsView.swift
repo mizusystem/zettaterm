@@ -11,6 +11,7 @@ struct SerialSettingsView: View {
     @State private var port = ""
     @State private var config = SerialConfig()
     @State private var baudText = ""
+    @State private var breakMs = SerialConfig.breakMs
 
     private enum Action { case open, closeAndOpen, reset }
 
@@ -105,6 +106,13 @@ struct SerialSettingsView: View {
                         Text(TT.text("DLG_SERIAL_DELAYLINE", "ミリ秒/行"))
                     }
                 }
+                GridRow {
+                    Text(L("ブレークの長さ"))
+                    HStack {
+                        TextField("", value: $breakMs, format: .number).frame(width: 60)
+                        Text(L("ミリ秒"))
+                    }
+                }
             }
 
             if config.parity == .mark || config.parity == .space || config.flow == .dsrDtr {
@@ -147,6 +155,7 @@ struct SerialSettingsView: View {
         guard let baud else { return }
         var c = config
         c.baud = baud
+        SerialConfig.breakMs = breakMs
         dismiss()
         switch action {
         case .open, .closeAndOpen: controller.connect(.serial(port: port, config: c), remember: true)

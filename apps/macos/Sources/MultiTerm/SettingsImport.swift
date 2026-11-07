@@ -31,6 +31,8 @@ enum SettingsImport {
             config.save()
         }
 
+        if let ms = ini.sendBreakMs, ms > 0 { SerialConfig.breakMs = ms }
+
         // 端末（Tera Term ではシリアルとそれ以外で共通なので両方に）
         for scope in [TerminalConfig.Scope.serial, .other] {
             var t = TerminalConfig.saved(scope)

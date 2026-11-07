@@ -341,6 +341,8 @@ pub struct Settings {
     pub keyboard: KeyboardConf,
     /// Telnet のキープアライブ（秒。0 で送らない。TelKeepAliveInterval）
     pub telnet_keepalive: u32,
+    /// ブレーク信号の長さ（ミリ秒。SendBreakTime）
+    pub break_ms: u32,
     /// ファイル受信で、この秒数データが来なければ止める（0 は止めない）
     pub raw_receive_idle: u32,
     /// 繰り返しコマンドの前回の値
@@ -366,6 +368,7 @@ impl Default for Settings {
             keyboard: KeyboardConf::default(),
             raw_receive_idle: 0,
             telnet_keepalive: 0,
+            break_ms: 1000,
             recurring_secs: 60,
             recurring_text: String::new(),
             recurring_newline: true,
@@ -651,6 +654,8 @@ pub fn serial_dialog(
     dchar.set_value(delay.per_char_ms as f64);
     let dline = gtk::SpinButton::with_range(0.0, 10000.0, 1.0);
     dline.set_value(delay.per_line_ms as f64);
+    let brk = gtk::SpinButton::with_range(1.0, 10000.0, 10.0);
+    brk.set_value(Settings::load().break_ms as f64);
 
     let rows: [(&str, &str, gtk::Widget); 6] = [
         ("DLG_SERIAL_PORT", "ポート:", port.clone().upcast()),
@@ -680,6 +685,11 @@ pub fn serial_dialog(
         "ミリ秒/行",
     ))));
     grid.attach(&drow, 0, 7, 2, 1);
+    let brow = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    brow.append(&gtk::Label::new(Some(&l("ブレークの長さ"))));
+    brow.append(&brk);
+    brow.append(&gtk::Label::new(Some(&l("ミリ秒"))));
+    grid.attach(&brow, 0, 8, 2, 1);
     content.append(&grid);
 
     let ok_label = if connected_port.is_some() {
@@ -695,6 +705,9 @@ pub fn serial_dialog(
         let Ok(b) = baud.text().trim().parse::<u32>() else {
             return;
         };
+        let mut saved = Settings::load();
+        saved.break_ms = brk.value() as u32;
+        saved.save();
         apply(SerialChoice {
             port: p,
             settings: SerialSettings {
@@ -1236,6 +1249,9 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(t) = ini.telnet_keepalive {
         s.telnet_keepalive = t;
+    }
+    if let Some(ms) = ini.send_break_ms.filter(|ms| *ms > 0) {
+        s.break_ms = ms;
     }
     if !ini.ssh_forwards.is_empty() {
         s.ssh.forwards = ini.ssh_forwards.clone();

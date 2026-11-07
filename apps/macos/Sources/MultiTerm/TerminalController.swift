@@ -231,11 +231,12 @@ final class TerminalController: ObservableObject {
 
     func sendBreak() {
         guard let session = view.session else { return }
+        let ms = SerialConfig.breakMs
         // ブレーク中は待つので、メインスレッドを止めない
         Task {
             let message: String? = await Task.detached {
                 do {
-                    try session.sendBreak(ms: 300)
+                    try session.sendBreak(ms: ms)
                     return nil
                 } catch {
                     return TerminalController.describe(error)
