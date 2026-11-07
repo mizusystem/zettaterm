@@ -9,6 +9,10 @@
 apps/macos/scripts/build-core.sh && apps/macos/scripts/make-app.sh && open apps/macos/build/MultiTerm.app
 ```
 
+## 実機で確認済み
+
+- [x] シリアル接続：QX-S4148GT-4G のコンソールで、ふつうに使えた（2026-11-07）
+
 ## TTL マクロ（Step 3）
 
 - [ ] `listbox`：一覧のダイアログが出て、選んだ番号が `result` に入る
