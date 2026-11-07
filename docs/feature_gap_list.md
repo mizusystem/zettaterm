@@ -133,7 +133,7 @@
    - [x] リモートからのクリップボードアクセス (OSC 52) の制御（※書き込みだけ。読み出しは受け付けない）（無効 / 読込のみ / 書込のみ / 読込・書込）と通知 (`ClipboardAccessFromRemote`, `NotifyClipboardAccess`)
    - [x] リモートからのスクロールバッファ消去 (`ClearScrollBufferFromRemote`) の許可/拒否（※既定は Tera Term と同じく拒否）
    - [x] カーソル形状・点滅制御シーケンス (`CursorCtrlSequence`) の許可/拒否（※既定は Tera Term と同じく拒否）
-   - [x] ベル動作の選択（無効 / サウンド / ビジュアルベル） (`Beep`) と連続ベル抑制（※連続ベルの抑制は未実装）
+   - [x] ベル動作の選択（無効 / サウンド / ビジュアルベル） (`Beep`) と連続ベル抑制（※連続ベルの抑制は Tera Term の既定の値で固定：2 秒に 5 回鳴ったら 5 秒止める）
 3. **コピーと貼り付け (`DLG_TAB_COPYPASTE`)**:
    - [x] **選択時自動コピー (`AutoTextCopy`)**: マウスでテキストを選択した瞬間にクリップボードへコピー
    - [x] **右クリックでの貼り付け (`DisablePasteMouseRButton` / `ConfirmPasteMouseRButton`)** および **中クリックでの貼り付け (`DisablePasteMouseMButton`)**

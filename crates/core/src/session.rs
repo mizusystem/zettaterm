@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use mt_vt::{
     GridSnapshot, Key, Modifiers, Point, Row, SearchQuery, Selection, Terminal, UrlMatch, VtEvent,
@@ -137,6 +137,7 @@ struct Inner {
     reset_requested: AtomicBool,
     paste_delay_ms: std::sync::atomic::AtomicU32,
     jis: Mutex<charset::JisOptions>,
+    bells: Mutex<BellLimiter>,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
     recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -174,6 +175,41 @@ const HELD_LIMIT: usize = 256 * 1024;
 const HELD_TIMEOUT: Duration = Duration::from_secs(5);
 /// 返事の無い問い合わせを、これより長くは覚えておかない（応じない UI のあとで、次の転送を知らせられるように）
 const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// 連続するベルを抑える（Tera Term の BeepOverUsedCount=5、BeepOverUsedTime=2、BeepSuppressTime=5）。
+/// 2 秒の間に 5 回鳴ったら、その後 5 秒は鳴らさない。
+#[derive(Default)]
+struct BellLimiter {
+    recent: std::collections::VecDeque<Instant>,
+    quiet_until: Option<Instant>,
+}
+
+const BELL_COUNT: usize = 5;
+const BELL_WINDOW: Duration = Duration::from_secs(2);
+const BELL_QUIET: Duration = Duration::from_secs(5);
+
+impl BellLimiter {
+    /// 鳴らしてよいか。
+    fn ring(&mut self, now: Instant) -> bool {
+        if self.quiet_until.is_some_and(|t| now < t) {
+            return false;
+        }
+        self.quiet_until = None;
+        while self
+            .recent
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > BELL_WINDOW)
+        {
+            self.recent.pop_front();
+        }
+        self.recent.push_back(now);
+        if self.recent.len() >= BELL_COUNT {
+            self.recent.clear();
+            self.quiet_until = Some(now + BELL_QUIET);
+        }
+        true
+    }
+}
 
 /// 貼り付けで行ごとに待つ既定（Tera Term の PasteDelayPerLine の既定）
 pub const DEFAULT_PASTE_DELAY_MS: u32 = 10;
@@ -296,6 +332,7 @@ impl Session {
             reset_requested: AtomicBool::new(false),
             paste_delay_ms: std::sync::atomic::AtomicU32::new(DEFAULT_PASTE_DELAY_MS),
             jis: Mutex::new(charset::JisOptions::default()),
+            bells: Mutex::new(BellLimiter::default()),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
@@ -1203,7 +1240,16 @@ impl Inner {
                 VtEvent::Reply(bytes) => {
                     let _ = self.tx.send(WriterMsg::Data(bytes));
                 }
-                VtEvent::Bell => self.listener.on_bell(),
+                VtEvent::Bell => {
+                    if self
+                        .bells
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .ring(Instant::now())
+                    {
+                        self.listener.on_bell();
+                    }
+                }
                 VtEvent::Title(title) => self.listener.on_title(title),
                 VtEvent::ResetTitle => self.listener.on_title(String::new()),
                 VtEvent::Clipboard(text) => self.listener.on_clipboard(text),
@@ -1242,5 +1288,28 @@ mod enq_tests {
         assert_eq!(s.scan(b"\x05\x1b\\\x05"), 1);
         // CAN で取り消し
         assert_eq!(s.scan(b"\x1b]x\x18\x05"), 1);
+    }
+}
+
+#[cfg(test)]
+mod bell_tests {
+    use super::*;
+
+    #[test]
+    fn many_bells_are_quieted_for_a_while() {
+        let mut b = BellLimiter::default();
+        let t0 = Instant::now();
+        // 2 秒以内の 5 回目までは鳴らし、そこから 5 秒は鳴らさない
+        for i in 0..5 {
+            assert!(b.ring(t0 + Duration::from_millis(100 * i)));
+        }
+        assert!(!b.ring(t0 + Duration::from_secs(1)));
+        assert!(!b.ring(t0 + Duration::from_secs(5)));
+        assert!(b.ring(t0 + Duration::from_secs(6)));
+        // 間を空けて鳴らすぶんには抑えない
+        let mut b = BellLimiter::default();
+        for i in 0..10 {
+            assert!(b.ring(t0 + Duration::from_secs(i)));
+        }
     }
 }
