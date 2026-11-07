@@ -121,6 +121,8 @@ pub struct Look {
     pub cursor_blink: bool,
     /// Pango のフォント指定（"Monospace 12" など）
     pub font: String,
+    /// 個別に変えた ANSI の 16 色（空なら配色のまま。Tera Term の ANSIColor）
+    pub ansi: Vec<u32>,
 }
 
 impl Default for Look {
@@ -134,17 +136,29 @@ impl Default for Look {
             cursor_shape: "block".to_owned(),
             cursor_blink: false,
             font: "Monospace 12".to_owned(),
+            ansi: Vec::new(),
         }
     }
 }
 
 impl Look {
-    pub fn appearance(&self) -> mt_core::Appearance {
-        let ansi = mt_core::themes()
+    /// 配色の ANSI の 16 色
+    pub fn theme_ansi(theme: &str) -> [u32; 16] {
+        mt_core::themes()
             .into_iter()
-            .find(|(n, _)| *n == self.theme)
+            .find(|(n, _)| *n == theme)
             .map(|(_, a)| a.ansi)
-            .unwrap_or(mt_core::Appearance::default().ansi);
+            .unwrap_or(mt_core::Appearance::default().ansi)
+    }
+
+    /// 今の ANSI の 16 色（個別に変えていればそちら）
+    pub fn palette(&self) -> [u32; 16] {
+        <[u32; 16]>::try_from(self.ansi.as_slice())
+            .unwrap_or_else(|_| Self::theme_ansi(&self.theme))
+    }
+
+    pub fn appearance(&self) -> mt_core::Appearance {
+        let ansi = self.palette();
         mt_core::Appearance {
             foreground: self.foreground,
             background: self.background,
@@ -1429,14 +1443,27 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     );
     let blink = gtk::CheckButton::with_label(&l("カーソルを点滅させる"));
     blink.set_active(current.cursor_blink);
+    // ANSI の 16 色（Tera Term の ANSIColor）
+    let palette = current.palette();
+    let ansi: Vec<gtk::ColorDialogButton> = palette.iter().map(|c| color_button(*c)).collect();
+    let ansi_grid = gtk::Grid::builder()
+        .row_spacing(4)
+        .column_spacing(4)
+        .build();
+    for (i, b) in ansi.iter().enumerate() {
+        ansi_grid.attach(b, (i % 8) as i32, (i / 8) as i32, 1, 1);
+    }
     // 配色を選んだら、文字色などもその配色の色にする
     {
-        let (fg, bg, cur) = (fg.clone(), bg.clone(), cur.clone());
+        let (fg, bg, cur, ansi) = (fg.clone(), bg.clone(), cur.clone(), ansi.clone());
         theme.connect_selected_notify(move |d| {
             if let Some((_, a)) = mt_core::themes().into_iter().nth(d.selected() as usize) {
                 fg.set_rgba(&rgba(a.foreground));
                 bg.set_rgba(&rgba(a.background));
                 cur.set_rgba(&rgba(a.cursor));
+                for (b, c) in ansi.iter().zip(a.ansi) {
+                    b.set_rgba(&rgba(c));
+                }
             }
         });
     }
@@ -1454,6 +1481,14 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
         grid.attach(&w, 1, i as i32, 1, 1);
     }
     grid.attach(&blink, 1, 5, 1, 1);
+    grid.attach(
+        &label(tt("DLG_TAB_VISUAL_ANSICOLOR", "ANSIカラー")),
+        0,
+        6,
+        1,
+        1,
+    );
+    grid.attach(&ansi_grid, 1, 6, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
@@ -1471,6 +1506,13 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             .unwrap_or("block")
             .to_owned();
         s.look.cursor_blink = blink.is_active();
+        // 配色と同じなら覚えない（配色を変えたときに付いていく）
+        let chosen: Vec<u32> = ansi.iter().map(|b| from_rgba(&b.rgba())).collect();
+        s.look.ansi = if chosen[..] == Look::theme_ansi(&s.look.theme)[..] {
+            Vec::new()
+        } else {
+            chosen
+        };
         s.save();
         applied();
     });
@@ -1623,6 +1665,15 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
         if let Some(c) = ini.charset_send {
             t.charset_send = c;
         }
+    }
+    if ini.ansi.iter().any(Option::is_some) {
+        let mut p = s.look.palette();
+        for (slot, c) in p.iter_mut().zip(ini.ansi) {
+            if let Some(c) = c {
+                *slot = c;
+            }
+        }
+        s.look.ansi = p.to_vec();
     }
     if let Some(fg) = ini.foreground {
         s.look.foreground = fg;

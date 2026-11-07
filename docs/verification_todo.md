@@ -84,6 +84,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「ファイル > ディレクトリを変更」で選んだフォルダに ZMODEM などの受信が入る。「設定 > 設定フォルダ」で設定のフォルダが開く
 - [ ] 「設定 > ログ」のログ表示用エディタ（Mac はアプリを選ぶ、GTK はコマンド）で「ログを表示」が開く
 - [ ] GTK：「ウィンドウ > メニューバー表示」で隠し、Ctrl+Shift+B で戻る
+- [ ] 「設定 > ウィンドウ」の ANSI の 16 色を変えると `ls --color` などの色が変わる。配色を選び直すと配色の色に戻る
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

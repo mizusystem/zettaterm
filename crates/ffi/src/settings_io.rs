@@ -31,6 +31,8 @@ pub struct IniImport {
     pub confirm_disconnect: Option<bool>,
     pub accept_title: Option<String>,
     pub alpha: Option<u8>,
+    /// ANSIColor の 16 色（書いていない色は None）
+    pub ansi: Vec<Option<u32>>,
     pub foreground: Option<u32>,
     pub background: Option<u32>,
     pub font_name: Option<String>,
@@ -116,6 +118,7 @@ pub fn import_teraterm_ini(path: String) -> Result<IniImport, MtError> {
         confirm_disconnect: s.confirm_disconnect,
         accept_title: s.accept_title,
         alpha: s.alpha,
+        ansi: s.ansi.to_vec(),
         foreground: s.foreground,
         background: s.background,
         font_name: s.font.as_ref().map(|f| f.0.clone()),

@@ -146,7 +146,7 @@
    - [x] ウィンドウ不透明度（アクティブ時 / 非アクティブ時） (`AlphaBlendActive`, `AlphaBlend`)
    - [ ] 背景画像・背景透過テーマの読み込みとプレビュー (`BGThemeFile`)
    - [x] URL の自動検出・色分け・下線表示 (`EnableClickableUrl`, `URLColor`, `URLUnderline`)（※下線のみ。色の設定は未実装）
-   - [ ] ANSI 16色カラーパレットの RGB カスタマイズ (`ANSIColor`)
+   - [x] ANSI 16色カラーパレットの RGB カスタマイズ (`ANSIColor`)（※「設定 > ウィンドウ」。TERATERM.INI からも読む）
 5. **ログ (`DLG_TAB_LOG`)**:
    - [x] 標準のログ保存先フォルダ (`LogDefaultPath`)、標準ログファイル名 (`LogDefaultName`)、自動開始 (`LogAutoStart`)、ローテート設定、ログ表示用エディタ指定 (`ViewlogEditor`)
 6. **フォント / 文字コード (`DLG_TAB_FONT` / `DLG_CODING`)**:

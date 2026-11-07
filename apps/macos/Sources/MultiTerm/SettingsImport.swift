@@ -57,6 +57,13 @@ enum SettingsImport {
         case "block": look.cursorShape = .block
         default: break
         }
+        if ini.ansi.contains(where: { $0 != nil }) {
+            var p = look.palette
+            for (i, c) in ini.ansi.enumerated() where i < p.count {
+                if let c { p[i] = c }
+            }
+            look.ansi = p
+        }
         if let name = ini.fontName, NSFont(name: name, size: 12) != nil { look.fontName = name }
         // Tera Term の高さはピクセル（96 dpi）。ポイントに直す
         if let px = ini.fontPixels { look.fontSize = max(6, min(72, (Double(px) * 72 / 96).rounded())) }

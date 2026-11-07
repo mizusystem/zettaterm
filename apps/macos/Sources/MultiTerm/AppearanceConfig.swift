@@ -13,6 +13,19 @@ struct AppearanceConfig: Equatable {
     var cursorBlink = false
     var fontName = "Menlo"
     var fontSize: Double = 14
+    /// 個別に変えた ANSI の 16 色（nil なら配色のまま。Tera Term の ANSIColor）
+    var ansi: [UInt32]?
+
+    /// 配色の ANSI の 16 色
+    var themeAnsi: [UInt32] {
+        themes().first(where: { $0.name == theme })?.appearance.ansi ?? themes().first?.appearance.ansi ?? []
+    }
+
+    /// 今の ANSI の 16 色
+    var palette: [UInt32] {
+        if let ansi, ansi.count == 16 { return ansi }
+        return themeAnsi
+    }
 
     init() {
         let base = themes().first?.appearance
@@ -23,9 +36,7 @@ struct AppearanceConfig: Equatable {
 
     /// コアに渡す見た目（ANSI の 16 色は配色から）。
     var appearance: Appearance {
-        let ansi = themes().first(where: { $0.name == theme })?.appearance.ansi
-            ?? themes().first?.appearance.ansi ?? []
-        return Appearance(foreground: foreground, background: background, cursor: cursor, ansi: ansi,
+        return Appearance(foreground: foreground, background: background, cursor: cursor, ansi: palette,
                           cursorShape: cursorShape, cursorBlink: cursorBlink)
     }
 
@@ -33,6 +44,7 @@ struct AppearanceConfig: Equatable {
     mutating func choose(theme name: String) {
         guard let t = themes().first(where: { $0.name == name }) else { return }
         theme = name
+        ansi = nil
         foreground = t.appearance.foreground
         background = t.appearance.background
         cursor = t.appearance.cursor
@@ -47,6 +59,7 @@ struct AppearanceConfig: Equatable {
         static let blink = "appearance.cursorBlink"
         static let font = "appearance.fontName"
         static let size = "appearance.fontSize"
+        static let ansi = "appearance.ansi"
     }
 
     static var saved: AppearanceConfig {
@@ -64,6 +77,9 @@ struct AppearanceConfig: Equatable {
         c.cursorBlink = d.bool(forKey: Key.blink)
         if let f = d.string(forKey: Key.font), NSFont(name: f, size: 12) != nil { c.fontName = f }
         if d.object(forKey: Key.size) != nil { c.fontSize = min(72, max(6, d.double(forKey: Key.size))) }
+        if let a = d.array(forKey: Key.ansi) as? [Int], a.count == 16 {
+            c.ansi = a.map { UInt32(truncatingIfNeeded: $0) }
+        }
         return c
     }
 
@@ -77,6 +93,12 @@ struct AppearanceConfig: Equatable {
         d.set(cursorBlink, forKey: Key.blink)
         d.set(fontName, forKey: Key.font)
         d.set(fontSize, forKey: Key.size)
+        // 配色と同じなら覚えない（配色を変えたときに付いていく）
+        if let ansi, ansi != themeAnsi {
+            d.set(ansi.map { Int($0) }, forKey: Key.ansi)
+        } else {
+            d.removeObject(forKey: Key.ansi)
+        }
         NotificationCenter.default.post(name: .appearanceConfigChanged, object: nil)
     }
 
@@ -167,17 +189,14 @@ struct WindowSettingsView: View {
     }
 
     private var preview: some View {
-        let ansi = config.appearance.ansi
-        return VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 4) {
             Text("user@host:~$ ls").foregroundStyle(Color(rgb: config.foreground))
-            HStack(spacing: 0) {
-                ForEach(Array(ansi.prefix(8).enumerated()), id: \.offset) { _, c in
-                    Text("■ ").foregroundStyle(Color(rgb: c))
-                }
-            }
-            HStack(spacing: 0) {
-                ForEach(Array(ansi.dropFirst(8).enumerated()), id: \.offset) { _, c in
-                    Text("■ ").foregroundStyle(Color(rgb: c))
+            // ANSI の 16 色（押すと変えられる）
+            ForEach([0, 8], id: \.self) { start in
+                HStack(spacing: 4) {
+                    ForEach(start..<start + 8, id: \.self) { i in
+                        ColorPicker("", selection: ansiColor(i), supportsOpacity: false).labelsHidden()
+                    }
                 }
             }
         }
@@ -186,6 +205,15 @@ struct WindowSettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(rgb: config.background))
         .clipShape(RoundedRectangle(cornerRadius: 4))
+    }
+
+    private func ansiColor(_ i: Int) -> Binding<Color> {
+        Binding(get: { Color(rgb: config.palette[safe: i] ?? 0) }, set: {
+            var p = config.palette
+            guard i < p.count else { return }
+            p[i] = $0.rgb
+            config.ansi = p
+        })
     }
 
     private func color(_ key: WritableKeyPath<AppearanceConfig, UInt32>) -> Binding<Color> {
@@ -242,4 +270,8 @@ struct FontSettingsView: View {
         .padding(20)
         .frame(width: 440)
     }
+}
+
+extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
