@@ -239,9 +239,36 @@ extension TerminalController {
         UserDefaults.standard.object(forKey: "zmodem.autoReceive") as? Bool ?? true
     }
 
+    /// ファイルを受け取るフォルダ（「ファイル > ディレクトリを変更」で決めたもの。無ければダウンロード）。
     static var downloads: URL {
-        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        if let p = UserDefaults.standard.string(forKey: "transfer.folder"), !p.isEmpty {
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: p, isDirectory: &isDir), isDir.boolValue {
+                return URL(fileURLWithPath: p)
+            }
+        }
+        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory())
+    }
+
+    /// 「ファイル > ディレクトリを変更」：受け取るフォルダ（マクロの受信を含む）を選ぶ。
+    static func chooseTransferFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.directoryURL = downloads
+        panel.message = TT.text("DLG_SELECT_DIR_TITLE", "新しいディレクトリを選択してください")
+        if panel.runModal() == .OK, let url = panel.url {
+            UserDefaults.standard.set(url.path, forKey: "transfer.folder")
+        }
+    }
+
+    /// 「設定 > 設定フォルダ」：接続先の履歴などを置いているフォルダを Finder で開く。
+    static func openSettingsFolder() {
+        let dir = URL(fileURLWithPath: HostStore.historyPath).deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
     }
 
     /// 相手で sz / rz が動いたとき（Tera Term の ZMODEM 自動切り替え）。

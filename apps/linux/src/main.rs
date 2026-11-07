@@ -59,6 +59,10 @@ fn menu() -> gio::Menu {
         Some("win.log-replay"),
     );
     file.append(
+        Some(&tt("MENU_FILE_CHANGEDIR", "ディレクトリを変更...")),
+        Some("win.change-dir"),
+    );
+    file.append(
         Some(&tt("MENU_FILE_SENDFILE", "ファイル送信...")),
         Some("win.send-file"),
     );
@@ -149,6 +153,10 @@ fn menu() -> gio::Menu {
     setup.append(
         Some(&tt("MENU_SETUP_ADDITION", "その他の設定...")),
         Some("win.setup-other"),
+    );
+    setup.append(
+        Some(&tt("MENU_SETUP_OPENSETUP", "設定フォルダ...")),
+        Some("win.open-setup"),
     );
     setup.append(
         Some(&crate::strings::section(
@@ -293,6 +301,11 @@ fn menu() -> gio::Menu {
         Some(&tt("DLG_WINLIST_TITLE", "ウィンドウのリスト").replace("Tera Term: ", "")),
         Some("app.window-list"),
     );
+    // 隠したあとは Ctrl+Shift+B で戻す
+    window.append(
+        Some(&tt("MENU_SHOW_MENUBAR", "メニューバー表示")),
+        Some("win.show-menubar"),
+    );
     window.append(
         Some(&tt("MENU_WINDOW_MINIMIZEALL", "すべて最小化")),
         Some("app.minimize-all"),
@@ -406,6 +419,7 @@ fn main() -> glib::ExitCode {
         app.set_accels_for_action("win.find-prev", &["<Control><Shift>h"]);
         app.set_accels_for_action("win.paste-cr", &["<Control><Shift>r"]);
         app.set_accels_for_action("win.select-all", &["<Control><Shift>a"]);
+        app.set_accels_for_action("win.show-menubar", &["<Control><Shift>b"]);
     });
     app.connect_activate(move |app| {
         let tabs = Tabs::new(app);

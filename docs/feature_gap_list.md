@@ -46,7 +46,7 @@
 - [ ] **ログ記録中ダイアログを表示 (`MENU_FILE_SHOWLOGDIALOG`)**: 記録中のファイル名・サイズ・一時停止ボタンを持つフローティング小窓
 - [x] **ログを再生 (`MENU_FILE_REPLAYLOG`)**（※`/R=` の起動引数は未対応）: バイナリモードで記録したログファイルを端末に流して再現する機能 (`/R=` オプション相当)
 - [x] **ファイル受信 (`MENU_FILE_RECVFILE`)**: プロトコルなしの生データファイル受信（データ途絶タイマー `ReceivefileAutoStopWaitTime` による自動停止付き）
-- [ ] **ディレクトリを変更 (`MENU_FILE_CHANGEDIR`)**: ファイル送受信・マクロの基準ディレクトリの変更 (`DLG_SELECT_DIR_TITLE`)
+- [x] **ディレクトリを変更 (`MENU_FILE_CHANGEDIR`)**（※受け取るフォルダ。マクロの受信も）: ファイル送受信・マクロの基準ディレクトリの変更 (`DLG_SELECT_DIR_TITLE`)
 - [ ] **印刷 (`MENU_FILE_PRINT`)**: 端末画面または選択範囲の印刷／PDF出力
 - [x] **Tera Term の全終了 (`MENU_FILE_EXITALL`)**（※GTK 版の「終了」はこのウィンドウを閉じるように変更）: 全ウィンドウ・セッションを一括終了
 
@@ -92,7 +92,7 @@
 ### 1-6. 「ウィンドウ (Window)」および「ヘルプ (Help)」メニュー
 - [x] **ウィンドウリスト (`DLG_WINLIST_TITLE`)**（※Mac は標準の「ウィンドウ」メニューの一覧）: 開いている全端末ウィンドウの一覧・切り替え・クローズ
 - [x] **重ねて表示 / 左右に並べて表示 / 上下に並べて表示 / すべて最小化 / すべて復元** (`MENU_WINDOW_*`)（※並べるのは Mac のみ。GTK4 はウィンドウの位置を決められないので最小化・復元だけ）
-- [ ] **メニューバー表示トグル (`MENU_SHOW_MENUBAR`)**
+- [x] **メニューバー表示トグル (`MENU_SHOW_MENUBAR`)**（※GTK のみ。隠したら Ctrl+Shift+B で戻す。macOS はメニューバーが画面上部にあるので無い）
 - [x] **バージョン情報 (`MENU_HELP_ABOUT` / `DLG_ABOUT_TITLE`)**: バージョン、コミットハッシュ、Tera Term Project の 3 条項 BSD ライセンス表記
 
 ---
@@ -148,7 +148,7 @@
    - [x] URL の自動検出・色分け・下線表示 (`EnableClickableUrl`, `URLColor`, `URLUnderline`)（※下線のみ。色の設定は未実装）
    - [ ] ANSI 16色カラーパレットの RGB カスタマイズ (`ANSIColor`)
 5. **ログ (`DLG_TAB_LOG`)**:
-   - [ ] 標準のログ保存先フォルダ (`LogDefaultPath`)、標準ログファイル名 (`LogDefaultName`)、自動開始 (`LogAutoStart`)、ローテート設定、ログ表示用エディタ指定 (`ViewlogEditor`)
+   - [x] 標準のログ保存先フォルダ (`LogDefaultPath`)、標準ログファイル名 (`LogDefaultName`)、自動開始 (`LogAutoStart`)、ローテート設定、ログ表示用エディタ指定 (`ViewlogEditor`)
 6. **フォント / 文字コード (`DLG_TAB_FONT` / `DLG_CODING`)**:
    - [ ] Unicode と DEC 特殊文字（罫線など）のマッピング設定 (`UnicodeToDecSpMapping`)
 

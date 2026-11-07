@@ -14,6 +14,8 @@ struct LogConfig: Equatable {
     var rotateKiB: UInt32 = 0
     /// 残す古いファイルの数（LogRotateStep）
     var rotateKeep: UInt32 = 5
+    /// 「ログを表示」で開くアプリ（ViewlogEditor。空なら既定のアプリ）
+    var viewer = ""
 
     static var documents: String {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -26,6 +28,7 @@ struct LogConfig: Equatable {
         static let autoStart = "log.autoStart"
         static let rotateKiB = "log.rotateKiB"
         static let rotateKeep = "log.rotateKeep"
+        static let viewer = "log.viewer"
     }
 
     static var saved: LogConfig {
@@ -36,6 +39,7 @@ struct LogConfig: Equatable {
         c.autoStart = d.bool(forKey: Key.autoStart)
         c.rotateKiB = UInt32(clamping: d.integer(forKey: Key.rotateKiB))
         if d.object(forKey: Key.rotateKeep) != nil { c.rotateKeep = UInt32(clamping: d.integer(forKey: Key.rotateKeep)) }
+        c.viewer = d.string(forKey: Key.viewer) ?? ""
         return c
     }
 
@@ -46,6 +50,7 @@ struct LogConfig: Equatable {
         d.set(autoStart, forKey: Key.autoStart)
         d.set(Int(rotateKiB), forKey: Key.rotateKiB)
         d.set(Int(rotateKeep), forKey: Key.rotateKeep)
+        d.set(viewer, forKey: Key.viewer)
     }
 
     /// `target` 向けのログファイルのパス（テンプレートを今の時刻で展開したもの）。
@@ -95,6 +100,18 @@ struct LogSettingsView: View {
             Toggle(TT.text("DLG_TAB_LOG_AUTOSTART", "自動的にログ採取を開始する"), isOn: $config.autoStart)
 
             HStack {
+                Text(TT.text("DLG_TAB_LOG_EDITOR", "ログ表示用エディタ"))
+                TextField(L("既定のアプリ"), text: Binding(
+                    get: { config.viewer.isEmpty ? "" : (config.viewer as NSString).lastPathComponent },
+                    set: { if $0.isEmpty { config.viewer = "" } }))
+                    .disabled(true)
+                Button("…") { chooseViewer() }
+                if !config.viewer.isEmpty {
+                    Button(L("既定に戻す")) { config.viewer = "" }
+                }
+            }
+
+            HStack {
                 Toggle(TT.text("DLG_TAB_LOG_ROTATE", "ログのローテート"), isOn: Binding(
                     get: { config.rotateKiB > 0 },
                     set: { config.rotateKiB = $0 ? max(config.rotateKiB, 10_240) : 0 }))
@@ -123,6 +140,15 @@ struct LogSettingsView: View {
         }
         .padding(20)
         .frame(width: 520)
+    }
+
+    private func chooseViewer() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        if panel.runModal() == .OK, let url = panel.url { config.viewer = url.path }
     }
 
     private func chooseFolder() {

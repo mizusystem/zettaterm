@@ -218,6 +218,8 @@ struct TerminalCommands: Commands {
                 }
             }
 
+            Button(TT.text("MENU_FILE_CHANGEDIR", "ディレクトリを変更...")) { TerminalController.chooseTransferFolder() }
+
             Button(TT.text("MENU_FILE_SENDFILE", "ファイル送信...")) { controller?.beginSendFile() }
                 .disabled(controller?.isConnected != true || controller?.transfer != nil)
             Button(TT.text("MENU_FILE_RECVFILE", "ファイル受信...")) { controller?.beginRawReceive() }
@@ -299,6 +301,7 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_SETUP_RESTORE", "設定の読み込み...")) {
                 SettingsImport.chooseAndImport(controller)
             }
+            Button(TT.text("MENU_SETUP_OPENSETUP", "設定フォルダ...")) { TerminalController.openSettingsFolder() }
             Divider()
             // TTSSH の「SSH...」と「SSH 転送...」をまとめたもの
             Button(TT.text("MENU_SSH", "SSH...", section: "TTSSH")) { controller?.sheet = .sshSettings }

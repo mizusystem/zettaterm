@@ -458,7 +458,15 @@ final class TerminalController: ObservableObject {
     /// 「ログを表示」：記録中のログを既定のアプリで開く。
     func viewLog() {
         guard let path = view.session?.logStatus()?.path else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        let url = URL(fileURLWithPath: path)
+        // 「設定 > ログ」のログ表示用エディタ（無ければ、その種類の既定のアプリ）
+        let editor = LogConfig.saved.viewer
+        if !editor.isEmpty {
+            NSWorkspace.shared.open([url], withApplicationAt: URL(fileURLWithPath: editor),
+                                    configuration: NSWorkspace.OpenConfiguration())
+        } else {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: 閲覧専用・繰り返し送信

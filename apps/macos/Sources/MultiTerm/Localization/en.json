@@ -128,5 +128,6 @@
   "接続断の前に確認する": "Confirm before disconnecting",
   "切断しますか？": "Disconnect?",
   "使わない": "None",
-  "Telnet・TCP・内蔵 SSH の接続に使います（ssh_config の ProxyCommand / ProxyJump があればそちら）。パスワードは保存せず、アプリを終了すると消えます。": "Used for Telnet, TCP and built-in SSH connections (ProxyCommand / ProxyJump in ssh_config take precedence). The password is not saved and is forgotten when the app quits."
+  "Telnet・TCP・内蔵 SSH の接続に使います（ssh_config の ProxyCommand / ProxyJump があればそちら）。パスワードは保存せず、アプリを終了すると消えます。": "Used for Telnet, TCP and built-in SSH connections (ProxyCommand / ProxyJump in ssh_config take precedence). The password is not saved and is forgotten when the app quits.",
+  "既定のアプリ": "Default app"
 }

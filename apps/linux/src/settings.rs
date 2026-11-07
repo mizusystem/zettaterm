@@ -184,6 +184,8 @@ pub struct LogConf {
     /// この大きさ（KiB）を超えたらローテート（0 はしない）
     pub rotate_kib: u64,
     pub rotate_keep: u32,
+    /// 「ログを表示」で開くコマンド（ViewlogEditor。空なら既定のアプリ）
+    pub viewer: String,
 }
 
 impl Default for LogConf {
@@ -202,6 +204,7 @@ impl Default for LogConf {
             timestamp_kind: String::new(),
             rotate_kib: 0,
             rotate_keep: 5,
+            viewer: String::new(),
         }
     }
 }
@@ -698,6 +701,8 @@ pub struct Settings {
     pub ssh: SshConf,
     pub other: OtherConf,
     pub proxy: ProxyConf,
+    /// ファイルを受け取るフォルダ（「ファイル > ディレクトリを変更」。空ならダウンロード）
+    pub transfer_dir: String,
 }
 
 impl Default for Settings {
@@ -729,6 +734,7 @@ impl Default for Settings {
             ssh: SshConf::default(),
             other: OtherConf::default(),
             proxy: ProxyConf::default(),
+            transfer_dir: String::new(),
         }
     }
 }
@@ -1335,6 +1341,17 @@ pub fn log_settings_dialog(parent: &gtk::Window, profile: Option<ConnectionProfi
     ))));
     rot_row.append(&keep);
     content.append(&rot_row);
+    let viewer_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    viewer_row.append(&gtk::Label::new(Some(&tt(
+        "DLG_TAB_LOG_EDITOR",
+        "ログ表示用エディタ",
+    ))));
+    let viewer = gtk::Entry::new();
+    viewer.set_hexpand(true);
+    viewer.set_placeholder_text(Some(&l("既定のアプリ")));
+    viewer.set_text(&current.viewer);
+    viewer_row.append(&viewer);
+    content.append(&viewer_row);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
         let mut s = Settings::load();
@@ -1352,6 +1369,7 @@ pub fn log_settings_dialog(parent: &gtk::Window, profile: Option<ConnectionProfi
             0
         };
         s.log.rotate_keep = keep.value() as u32;
+        s.log.viewer = viewer.text().trim().to_owned();
         s.save();
     });
     win.present();

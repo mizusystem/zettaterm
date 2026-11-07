@@ -62,7 +62,12 @@ impl Kind {
     }
 }
 
+/// ファイルを受け取るフォルダ（「ファイル > ディレクトリを変更」で決めたもの。無ければダウンロード）。
 pub fn downloads_dir() -> PathBuf {
+    let chosen = crate::settings::Settings::load().transfer_dir;
+    if !chosen.is_empty() && std::path::Path::new(&chosen).is_dir() {
+        return PathBuf::from(chosen);
+    }
     glib::user_special_dir(glib::UserDirectory::Downloads)
         .unwrap_or_else(|| glib::home_dir().join("Downloads"))
 }

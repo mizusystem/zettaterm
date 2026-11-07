@@ -430,6 +430,41 @@ impl Tabs {
         add("log-view", Box::new(|_, me| me.view_log()));
         add("recv-file", Box::new(|_, me| me.begin_raw_receive()));
         add(
+            "change-dir",
+            Box::new(|t, _| {
+                let dialog = gtk::FileDialog::builder()
+                    .title(tt(
+                        "DLG_SELECT_DIR_TITLE",
+                        "新しいディレクトリを選択してください",
+                    ))
+                    .initial_folder(&gio::File::for_path(transfer::downloads_dir()))
+                    .build();
+                dialog.select_folder(Some(&t.win), None::<&gio::Cancellable>, |r| {
+                    if let Some(p) = r.ok().and_then(|f| f.path()) {
+                        let mut s = Settings::load();
+                        s.transfer_dir = p.to_string_lossy().into_owned();
+                        s.save();
+                    }
+                });
+            }),
+        );
+        add(
+            "open-setup",
+            Box::new(|_, _| {
+                let dir = crate::connect::history_path()
+                    .parent()
+                    .map(std::path::Path::to_path_buf)
+                    .unwrap_or_default();
+                let _ = std::fs::create_dir_all(&dir);
+                let uri = gio::File::for_path(&dir).uri();
+                let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
+            }),
+        );
+        add(
+            "show-menubar",
+            Box::new(|t, _| t.win.set_show_menubar(!t.win.shows_menubar())),
+        );
+        add(
             "kermit-get",
             Box::new(|_, me| {
                 let Some(session) = me.view.session().filter(|s| !s.is_transferring()) else {
@@ -1131,6 +1166,15 @@ impl TermWindow {
         let Some(st) = self.view.session().and_then(|s| s.log_status()) else {
             return;
         };
+        // 「設定 > ログ」のログ表示用エディタ（無ければ、その種類の既定のアプリ）
+        let viewer = Settings::load().log.viewer;
+        if let Some(words) = shlex_split(&viewer).filter(|w| !w.is_empty()) {
+            let _ = std::process::Command::new(&words[0])
+                .args(&words[1..])
+                .arg(&st.path)
+                .spawn();
+            return;
+        }
         let uri = gio::File::for_path(&st.path).uri();
         let _ = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>);
     }
@@ -2141,4 +2185,58 @@ fn apply_look_everywhere() {
             p.view.apply_look();
         }
     });
+}
+
+/// コマンドの文字列を、空白で語に分ける（"..." と '...' で囲めば空白を含められる）。閉じていなければ None。
+fn shlex_split(text: &str) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    let mut started = false;
+    for ch in text.chars() {
+        match (quote, ch) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => cur.push(c),
+            (None, '"' | '\'') => {
+                quote = Some(ch);
+                started = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if started {
+                    out.push(std::mem::take(&mut cur));
+                    started = false;
+                }
+            }
+            (None, c) => {
+                cur.push(c);
+                started = true;
+            }
+        }
+    }
+    if quote.is_some() {
+        return None;
+    }
+    if started {
+        out.push(cur);
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shlex_split;
+
+    #[test]
+    fn commands_are_split_into_words() {
+        assert_eq!(
+            shlex_split("gedit --new-window").unwrap(),
+            ["gedit", "--new-window"]
+        );
+        assert_eq!(
+            shlex_split("\"/opt/My Editor/bin/ed\" -x ''").unwrap(),
+            ["/opt/My Editor/bin/ed", "-x", ""]
+        );
+        assert!(shlex_split("\"open").is_none());
+        assert!(shlex_split("  ").unwrap().is_empty());
+    }
 }
