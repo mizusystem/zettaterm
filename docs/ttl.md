@@ -16,12 +16,14 @@
 
 | 分類 | コマンド |
 | --- | --- |
-| 通信 | `connect` `disconnect` `closett` `testlink` `send` `sendln` `sendbreak` `setdtr` `setrts` `flushrecv` `wait` `waitln` `recvln` `waitregex` `logopen` `logclose` `logpause` `logstart` `logwrite` `loginfo` `sendfile` |
-| ファイル転送 | `xmodemsend` `xmodemrecv` `ymodemsend` `ymodemrecv` `zmodemsend` `zmodemrecv` `kermitsend` `kermitrecv` |
+| 通信 | `connect` `disconnect` `closett` `testlink` `send` `sendln` `sendbreak` `setdtr` `setrts` `setbaud` `setflowctrl` `getmodemstatus` `setecho` `clearscreen` `flushrecv` `wait` `wait4all` `waitn` `waitln` `recvln` `waitregex` `logopen` `logclose` `logpause` `logstart` `logwrite` `loginfo` `sendfile` `sendbroadcast` `sendlnbroadcast` `sendmulticast` `setmulticastname` |
+| ファイル転送 | `scpsend` `scprecv` `xmodemsend` `xmodemrecv` `ymodemsend` `ymodemrecv` `zmodemsend` `zmodemrecv` `kermitsend` `kermitrecv` |
 | 文字列 | `strlen` `strconcat` `strcompare` `strcopy` `strscan` `strinsert` `strremove` `strtrim` `strreplace` `strsplit` `strmatch` `str2int` `int2str` `sprintf` `sprintf2` `tolower` `toupper` `code2str` `str2code` |
-| ファイル | `fileopen` `filecreate` `fileclose` `filereadln` `filewrite` `filewriteln` `filesearch` `filedelete` `getdir` `setdir` `basename` `dirname` `makepath` `crc32` `crc32file` |
-| ダイアログ・画面 | `messagebox` `inputbox` `passwordbox` `yesnobox` `statusbox` `closesbox` `dispstr` `settitle` `gettitle` `beep` `show` `showtt` |
-| その他 | `setexitcode` `pause` `mpause` `getdate` `gettime` `getenv` `random` `intdim` `strdim` |
+| ファイル | `fileopen` `filecreate` `fileclose` `filereadln` `filewrite` `filewriteln` `filesearch` `filedelete` `getdir` `setdir` `fileread` `fileseek` `filemarkptr` `fileseekback` `filestat` `filetruncate` `filelock` `fileunlock` `filecopy` `filerename` `fileconcat` `foldercreate` `folderdelete` `foldersearch` `basename` `dirname` `makepath` |
+| ダイアログ・画面 | `messagebox` `inputbox` `passwordbox` `yesnobox` `listbox` `filenamebox` `dirnamebox` `statusbox` `closesbox` `dispstr` `settitle` `gettitle` `beep` `show` `showtt` |
+| チェックサム | `crc32` `crc32file` `crc16` `crc16file` `checksum8` `checksum8file` `checksum16` `checksum16file` `checksum32` `checksum32file` |
+| パスワード | `getpassword` `setpassword` `ispassword` `delpassword` |
+| その他 | `setexitcode` `exec` `getver` `gethostname` `getttdir` `getspecialfolder` `uptime` `clipb2var` `var2clipb` `pause` `mpause` `getdate` `gettime` `getenv` `random` `intdim` `strdim` |
 
 ## 本家との違い
 
@@ -36,6 +38,14 @@
 - `wait` は、前回の一致より後に届いた受信のすべてから探す（`flushrecv` で捨てられる）
 - `loginfo` の `result` は、記録していなければ -1、記録中は 0、`logpause` 中は 1（本家はログの種類のビット）
 - `setexitcode` は `mt run` の終了コードになる（0〜255 に収める）
+- `scpsend` / `scprecv` は内蔵 SSH の接続だけ（「システムの ssh を使う」では使えない）。`result` は 0 成功、1 失敗
+- `getpassword` などのパスワードファイルは独自の形式（Tera Term のファイルは読めない）。中身は難読化しただけで暗号化ではないので、ファイルの置き場所に注意する
+- `exec` はシェルを通さずにプログラムを起動する（`|` や `>` は使えない。必要なら `exec 'sh -c "..."'`）。待つときの `result` は終了コード
+- `getmodemstatus` のビットは Windows と同じ（CTS 0x10、DSR 0x20、RI 0x40、CD 0x80）
+- `uptime` はマクロを始めてからのミリ秒（本家は OS の起動から）
+- `crc16` は CRC-16/X-25（`123456789` で 0x906E）
+- `clearscreen 0` は画面だけ、1 と 2 はスクロールバックも消す
+- `getipv4addr` / `getipv6addr` は未対応
 
 ## 実行
 

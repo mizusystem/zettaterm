@@ -345,6 +345,8 @@ pub struct TermWindow {
     files: RefCell<Option<mt_net::SshFiles>>,
     logging: Cell<bool>,
     log_paused: Cell<bool>,
+    /// マクロの setmulticastname（sendmulticast の宛先の名前）
+    multicast_name: RefCell<Option<String>>,
     /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
     modem: Cell<Option<mt_core::ModemLines>>,
     modem_timer: RefCell<Option<glib::SourceId>>,
@@ -440,6 +442,7 @@ impl TermWindow {
             files: RefCell::new(None),
             logging: Cell::new(false),
             log_paused: Cell::new(false),
+            multicast_name: RefCell::new(None),
             modem: Cell::new(None),
             modem_timer: RefCell::new(None),
             lines_label,
@@ -1329,6 +1332,78 @@ impl TermWindow {
                 self.update_title();
             }
             MacroReq::Beep => WidgetExt::display(&self.win).beep(),
+            MacroReq::List {
+                title,
+                text,
+                items,
+                selected,
+                reply,
+            } => {
+                let title = if title.is_empty() {
+                    "MACRO".into()
+                } else {
+                    title
+                };
+                dialogs::list(&parent, &title, &text, &items, selected, move |a| {
+                    let _ = reply.send(a);
+                });
+            }
+            MacroReq::ChoosePath {
+                title,
+                save,
+                folder,
+                dir,
+                reply,
+            } => {
+                let dialog = gtk::FileDialog::new();
+                dialog.set_title(&title);
+                dialog.set_initial_folder(Some(&gio::File::for_path(&dir)));
+                let done = move |r: Result<gio::File, glib::Error>| {
+                    let path = r
+                        .ok()
+                        .and_then(|f| f.path())
+                        .map(|p| p.display().to_string());
+                    let _ = reply.send(path);
+                };
+                if folder {
+                    dialog.select_folder(Some(&parent), None::<&gio::Cancellable>, done);
+                } else if save {
+                    dialog.save(Some(&parent), None::<&gio::Cancellable>, done);
+                } else {
+                    dialog.open(Some(&parent), None::<&gio::Cancellable>, done);
+                }
+            }
+            MacroReq::ClipboardGet(reply) => {
+                self.win
+                    .clipboard()
+                    .read_text_async(None::<&gio::Cancellable>, move |r| {
+                        let _ = reply.send(r.ok().flatten().map(|t| t.to_string()));
+                    });
+            }
+            MacroReq::ClipboardSet(text) => self.win.clipboard().set_text(&text),
+            MacroReq::Broadcast {
+                group,
+                text,
+                newline,
+            } => {
+                for p in connected_panes() {
+                    if group.is_some() && *p.multicast_name.borrow() != group {
+                        continue;
+                    }
+                    if !text.is_empty() {
+                        p.send_text(&text);
+                    }
+                    if newline {
+                        p.send_line("");
+                    }
+                }
+            }
+            MacroReq::MulticastName(name) => {
+                *self.multicast_name.borrow_mut() = (!name.is_empty()).then_some(name);
+            }
+            MacroReq::Files(reply) => {
+                let _ = reply.send(self.files.borrow().clone());
+            }
             MacroReq::Transfer(t) => {
                 self.badge_transfer.set_visible(t.is_some());
                 self.badge_transfer.set_text(t.as_deref().unwrap_or(""));

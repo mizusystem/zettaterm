@@ -33,6 +33,8 @@ final class TerminalController: ObservableObject {
     @Published var dropped: [URL] = []
     /// マクロの `settitle`
     @Published var macroTitle: String?
+    /// マクロの `setmulticastname`（`sendmulticast` の宛先の名前）
+    var multicastName: String?
 
     @Published private(set) var status: Status = .disconnected
     @Published private(set) var isLogging = false

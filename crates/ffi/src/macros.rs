@@ -60,6 +60,28 @@ pub trait MacroHost: Send + Sync {
     fn transfer_finished(&self, ok: bool);
     /// マクロが終わった。`error` は失敗の理由（「ファイル:行: 内容」）
     fn finished(&self, stopped: bool, error: Option<String>);
+    /// `listbox`。選んだ番号（0 起点）、取り消しは None
+    fn list_box(
+        &self,
+        title: String,
+        text: String,
+        items: Vec<String>,
+        selected: u32,
+    ) -> Option<u32>;
+    /// `filenamebox`（`save` なら保存のダイアログ）/ `dirnamebox`（`folder`）。取り消しは None
+    fn choose_path(
+        &self,
+        title: String,
+        save: bool,
+        folder: bool,
+        start_dir: String,
+    ) -> Option<String>;
+    fn clipboard(&self) -> Option<String>;
+    fn set_clipboard(&self, text: String) -> bool;
+    /// 開いているすべての接続（`group` があればその名前の接続）に送る。`newline` なら Enter も
+    fn broadcast(&self, group: Option<String>, text: String, newline: bool);
+    /// この接続の一斉送信の名前（`setmulticastname`）
+    fn set_multicast_name(&self, name: String);
 }
 
 /// 実行中のマクロ。
@@ -96,13 +118,14 @@ pub fn run_macro(
         stop: Arc::clone(&stop),
         running: Arc::clone(&running),
     });
-    let core_session = session.map(|s| Arc::clone(&s.inner));
+    let core_session = session.as_ref().map(|s| Arc::clone(&s.inner));
     let spawned = std::thread::Builder::new().name("mt-macro".into()).spawn({
         let host = Arc::clone(&host);
         move || {
             let mut adapter = HostAdapter {
                 host: Arc::clone(&host),
                 current: Mutex::new(core_session.clone()),
+                ffi_session: session,
             };
             let result = {
                 let mut interp = Interp::new(&mut adapter, core_session, stop);
@@ -127,6 +150,8 @@ struct HostAdapter {
     host: Arc<dyn MacroHost>,
     /// dispstr を出す先
     current: Mutex<Option<Arc<core::Session>>>,
+    /// SCP に使う（内蔵 SSH の接続なら files を持っている）
+    ffi_session: Option<Arc<Session>>,
 }
 
 impl Host for HostAdapter {
@@ -148,6 +173,7 @@ impl Host for HostAdapter {
             .ok_or_else(|| "could not connect".to_owned())?;
         let inner = Arc::clone(&session.inner);
         *self.current.lock().unwrap_or_else(|e| e.into_inner()) = Some(Arc::clone(&inner));
+        self.ffi_session = Some(session);
         Ok(inner)
     }
 
@@ -208,5 +234,68 @@ impl Host for HostAdapter {
 
     fn transfer_finished(&mut self, ok: bool) {
         self.host.transfer_finished(ok);
+    }
+
+    fn scp(
+        &mut self,
+        send: bool,
+        local: &Path,
+        remote: &str,
+        stopped: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        let files = self
+            .ffi_session
+            .as_ref()
+            .and_then(|s| s.files.clone())
+            .ok_or("SCP needs a connection with the built-in SSH")?;
+        if send {
+            files.send_file(local, remote, stopped)
+        } else {
+            files.recv_file(remote, local, stopped)
+        }
+    }
+
+    fn list_box(
+        &mut self,
+        title: &str,
+        text: &str,
+        items: &[String],
+        selected: usize,
+    ) -> Option<usize> {
+        self.host
+            .list_box(title.into(), text.into(), items.to_vec(), selected as u32)
+            .map(|i| i as usize)
+            .filter(|i| *i < items.len())
+    }
+
+    fn file_name_box(&mut self, title: &str, save: bool, dir: &Path) -> Option<String> {
+        self.host
+            .choose_path(title.into(), save, false, dir.display().to_string())
+    }
+
+    fn dir_name_box(&mut self, title: &str, dir: &Path) -> Option<String> {
+        self.host
+            .choose_path(title.into(), false, true, dir.display().to_string())
+    }
+
+    fn clipboard(&mut self) -> Option<String> {
+        self.host.clipboard()
+    }
+
+    fn set_clipboard(&mut self, text: &str) -> bool {
+        self.host.set_clipboard(text.into())
+    }
+
+    fn broadcast(&mut self, text: &str, newline: bool) -> bool {
+        self.host.broadcast(None, text.into(), newline);
+        true
+    }
+
+    fn multicast(&mut self, name: &str, text: &str, newline: bool) {
+        self.host.broadcast(Some(name.into()), text.into(), newline);
+    }
+
+    fn set_multicast_name(&mut self, name: &str) {
+        self.host.set_multicast_name(name.into());
     }
 }

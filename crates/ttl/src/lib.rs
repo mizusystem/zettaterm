@@ -10,6 +10,7 @@ mod connect;
 mod format;
 mod interp;
 mod parse;
+mod util;
 
 pub use connect::{ConnectSpec, SshSpec, parse_connect};
 pub use interp::{Host, Interp, MacroError, Outcome, Value};

@@ -76,6 +76,23 @@ impl ScpJob {
         self.cancel.store(true, Ordering::SeqCst);
     }
 
+    /// 終わるまで待つ（マクロの scpsend / scprecv）。`stopped` が true を返したら取り消す。
+    pub fn wait(&self, stopped: &dyn Fn() -> bool) -> Result<ScpProgress, String> {
+        loop {
+            let p = self.progress();
+            match &p.status {
+                ScpStatus::Running => {}
+                ScpStatus::Done => return Ok(p),
+                ScpStatus::Canceled => return Err("canceled".into()),
+                ScpStatus::Failed(e) => return Err(e.clone()),
+            }
+            if stopped() {
+                self.cancel();
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+
     fn update(&self, f: impl FnOnce(&mut ScpProgress)) {
         f(&mut self.progress.lock().unwrap_or_else(|e| e.into_inner()));
     }
@@ -114,6 +131,40 @@ impl SshFiles {
             finish(&j, result);
         });
         job
+    }
+
+    /// ファイル 1 つを送り、終わるまで待つ。`remote` はリモートのファイル名かフォルダ（空ならホーム）。
+    pub fn send_file(
+        &self,
+        local: &Path,
+        remote: &str,
+        stopped: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        self.upload(vec![local.to_owned()], remote)
+            .wait(stopped)
+            .map(|_| ())
+    }
+
+    /// リモートのファイル 1 つを `local`（ファイル名）として受け取り、終わるまで待つ。
+    pub fn recv_file(
+        &self,
+        remote: &str,
+        local: &Path,
+        stopped: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        let dir = local
+            .parent()
+            .filter(|d| !d.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let progress = self.download(remote, dir).wait(stopped)?;
+        // 受け取り先は同じ名前のファイルを上書きしないので、指定の名前に付け替える
+        if let Some(saved) = progress.saved.first()
+            && saved != local
+        {
+            std::fs::rename(saved, local).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// リモートの `remote_path` をローカルの `local_dir` へ受け取る。

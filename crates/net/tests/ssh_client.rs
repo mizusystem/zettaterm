@@ -969,6 +969,30 @@ fn scp_upload_and_download_over_the_same_connection() {
     assert_eq!(job.progress().saved, [out.join("remote.log")]);
     wait_for(&session, "echo:still alive");
 
+    // マクロの scpsend / scprecv：終わるまで待ち、受け取りは指定の名前にする（同じ名前があっても上書き）
+    let never = || false;
+    let single = env.path().join("single.txt");
+    std::fs::write(&single, b"one file\n").unwrap();
+    files.send_file(&single, "renamed.txt", &never).unwrap();
+    // このテストのサーバーは送られた名前で保存する（別名で置くのは本物の scp：下の相互転送のテスト）
+    assert_eq!(
+        server.remote_files.lock().unwrap()["single.txt"],
+        b"one file\n"
+    );
+    assert!(
+        server
+            .log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l == "exec scp -t -- 'renamed.txt'")
+    );
+    let named = out.join("named.log");
+    std::fs::write(&named, b"old").unwrap();
+    files.recv_file("remote.log", &named, &never).unwrap();
+    assert_eq!(std::fs::read(&named).unwrap(), b"from the server\n");
+    assert!(files.recv_file("missing.txt", &named, &never).is_err());
+
     // 無いファイルは理由付きで失敗する
     let job = files.download("missing.txt", out.clone());
     wait_job(&job);
@@ -1019,6 +1043,15 @@ fn scp_interoperates_with_openssh_scp() {
     let files = transport.files().expect("scp available");
     let session = open(transport);
     wait_for(&session, "welcome");
+
+    // 1 ファイルを別名で（マクロの scpsend）
+    let solo = env.path().join("solo.txt");
+    std::fs::write(&solo, b"solo\n").unwrap();
+    files.send_file(&solo, "in/renamed.txt", &|| false).unwrap();
+    assert_eq!(
+        std::fs::read(remote.path().join("in/renamed.txt")).unwrap(),
+        b"solo\n"
+    );
 
     // 複数ファイルをフォルダへ
     let a = env.path().join("one.bin");

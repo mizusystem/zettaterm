@@ -19,7 +19,7 @@
 | --- | --- |
 | Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
 | Step 2（ログ・設定・シリアル） | 完了（2026-11-06）。Linux 版は画面での確認が未了、信号線は実機での確認が未了 |
-| Step 3（TTL） | 着手（ログ制御、パス、`crc32`、`setexitcode` まで） |
+| Step 3（TTL） | ほぼ完了（2026-11-07）。残りは `waitevent` `kermitget` `kermitfinish` `sendkcode` `setdlgpos` `move` `resize` `getttpos` `logrotate` `logautoclosemode` `getipv4addr` `getipv6addr` `restoresetup` `savesetup` |
 | Step 4（TTSSH・設定互換） | 未着手 |
 
 ## 目次
@@ -204,16 +204,16 @@
 本家の約 230 予約語のうち、現在 80 コマンドが実装済み（`docs/ttl.md` 参照）。未実装の主要コマンドは以下の通りです：
 
 ### 5-1. 通信・待機・シリアル・転送（優先度：高）
-- [ ] `wait4all`: 複数の文字列すべてが出現するまで待つ
-- [ ] `waitn`: 指定バイト数を受信するまで待つ
+- [x] `wait4all`: 複数の文字列すべてが出現するまで待つ
+- [x] `waitn`: 指定バイト数を受信するまで待つ
 - [ ] `waitevent`: 指定イベントの発生を待つ
-- [ ] `setbaud`: シリアルポートのボーレートを変更する（機器のブートローダ操作マクロで頻出）
-- [ ] `setflowctrl`: シリアルポートのフロー制御を変更する
-- [ ] `getmodemstatus`: CTS / DSR / RI / CD の状態を取得する
-- [ ] `scpsend` / `scprecv`: マクロから SCP でファイルを送受信する（SSH マクロで非常に多用される）
+- [x] `setbaud`: シリアルポートのボーレートを変更する（機器のブートローダ操作マクロで頻出）
+- [x] `setflowctrl`: シリアルポートのフロー制御を変更する
+- [x] `getmodemstatus`: CTS / DSR / RI / CD の状態を取得する
+- [x] `scpsend` / `scprecv`: マクロから SCP でファイルを送受信する（SSH マクロで非常に多用される）
 - [ ] `kermitget` / `kermitfinish`: Kermit の Get / Finish
 - [ ] `sendkcode`: キーコードと繰り返し回数を指定して送信
-- [ ] `sendbroadcast` / `sendlnbroadcast` / `sendmulticast` / `setmulticastname`: マクロからの一斉送信
+- [x] `sendbroadcast` / `sendlnbroadcast` / `sendmulticast` / `setmulticastname`: マクロからの一斉送信
 
 ### 5-2. ログ制御（優先度：高）
 - [x] `logwrite`: 記録中のログファイルに任意の文字列を書き込む
@@ -223,31 +223,31 @@
 - [ ] `logautoclosemode`: 自動クローズモードの設定
 
 ### 5-3. ダイアログ・画面操作（優先度：高）
-- [ ] `listbox`: 選択肢配列からユーザーに 1 つ選ばせるダイアログ（マクロのメニュー選択で頻出）
-- [ ] `filenamebox`: ファイル選択ダイアログを開いてパスを `inputstr` に格納する
-- [ ] `dirnamebox`: フォルダ選択ダイアログを開く
-- [ ] `clearscreen`: 端末画面（またはスクロールバッファ）をクリアする (`clearscreen 0` / `1`)
-- [ ] `setecho`: ローカルエコーの ON/OFF を切り替える
+- [x] `listbox`: 選択肢配列からユーザーに 1 つ選ばせるダイアログ（マクロのメニュー選択で頻出）
+- [x] `filenamebox`: ファイル選択ダイアログを開いてパスを `inputstr` に格納する
+- [x] `dirnamebox`: フォルダ選択ダイアログを開く
+- [x] `clearscreen`: 端末画面（またはスクロールバッファ）をクリアする (`clearscreen 0` / `1`)
+- [x] `setecho`: ローカルエコーの ON/OFF を切り替える
 - [ ] `setdlgpos`: ダイアログの表示位置を指定する
 - [ ] `move` / `resize` / `getttpos`: 端末ウィンドウの位置・サイズ変更と取得
 
 ### 5-4. ファイル・フォルダ・パス操作（優先度：中〜高）
-- [ ] `foldercreate` / `folderdelete` / `foldersearch`: フォルダの作成・削除・存在確認
-- [ ] `filecopy` / `filerename` / `fileconcat`: ファイルのコピー・リネーム・結合
-- [ ] `fileread`: 指定バイト数を読み込む（現在は `filereadln` のみ）
-- [ ] `fileseek` / `fileseekback` / `filemarkptr` / `filestat` / `filetruncate` / `filelock` / `fileunlock`: ファイルポインタ制御・メタ情報取得
+- [x] `foldercreate` / `folderdelete` / `foldersearch`: フォルダの作成・削除・存在確認
+- [x] `filecopy` / `filerename` / `fileconcat`: ファイルのコピー・リネーム・結合
+- [x] `fileread`: 指定バイト数を読み込む（現在は `filereadln` のみ）
+- [x] `fileseek` / `fileseekback` / `filemarkptr` / `filestat` / `filetruncate` / `filelock` / `fileunlock`: ファイルポインタ制御・メタ情報取得
 - [x] `makepath` / `basename` / `dirname`: パス文字列の組み立てと分解
 
 ### 5-5. パスワード管理・クリップボード・外部プロセス・ユーティリティ（優先度：中）
-- [ ] `getpassword` / `setpassword` / `ispassword` / `delpassword`: パスワードファイルへの暗号化保存と取得（マクロ内に平文パスワードを書かないための定番機能）
-- [ ] `clipb2var` / `var2clipb`: クリップボードと変数の相互コピー
-- [ ] `exec`: 外部コマンド（ローカルの `ping` やスクリプト等）を起動する
+- [x] `getpassword` / `setpassword` / `ispassword` / `delpassword`: パスワードファイルへの暗号化保存と取得（マクロ内に平文パスワードを書かないための定番機能）
+- [x] `clipb2var` / `var2clipb`: クリップボードと変数の相互コピー
+- [x] `exec`: 外部コマンド（ローカルの `ping` やスクリプト等）を起動する
 - [x] `setexitcode`: マクロ終了時のプロセスの終了コードを設定する（CLI `mt run` で特に有用）
-- [ ] `getver`: Tera Term バージョン文字列の取得とバージョン比較
-- [ ] `gethostname` / `getipv4addr` / `getipv6addr`: 接続先ホスト名やローカル IP アドレス一覧の取得
-- [ ] `getttdir` / `getspecialfolder`: インストールフォルダや OS 特殊フォルダ（Desktop, Documents 等）のパス取得
-- [ ] `uptime`: OS またはアプリの稼働時間取得
-- [ ] `crc16` / `crc16file` / `crc32` / `crc32file` / `checksum8` / `checksum16` / `checksum32`: チェックサム・CRC 計算（ファームウェア転送前後の検証用）（※`crc32` と `crc32file` は実装済み）
+- [x] `getver`: Tera Term バージョン文字列の取得とバージョン比較
+- [ ] `gethostname` / `getipv4addr` / `getipv6addr`（※`gethostname` は実装済み）: 接続先ホスト名やローカル IP アドレス一覧の取得
+- [x] `getttdir` / `getspecialfolder`: インストールフォルダや OS 特殊フォルダ（Desktop, Documents 等）のパス取得
+- [x] `uptime`: OS またはアプリの稼働時間取得
+- [x] `crc16` / `crc16file` / `crc32` / `crc32file` / `checksum8` / `checksum16` / `checksum32`: チェックサム・CRC 計算（ファームウェア転送前後の検証用）
 - [ ] `restoresetup` / `savesetup`: 設定ファイルの読み込み・保存
 
 ---
@@ -295,11 +295,11 @@
 - [x] 文字コードのメニューバー／ステータスバーからの 1 クリック切り替え (`TTXKanjiMenu` 相当)
 
 ### Step 3: TTL マクロ実務互換性の完成
-- [ ] `scpsend`, `scprecv`, `setbaud`, `setflowctrl`
-- [ ] `logwrite`, `logpause`, `logstart`, `loginfo`
-- [ ] `listbox`, `filenamebox`, `dirnamebox`, `clearscreen`, `setecho`
-- [ ] `foldercreate`, `foldersearch`, `filecopy`, `filerename`, `makepath`
-- [ ] `getpassword`, `setpassword`, `clipb2var`, `var2clipb`, `exec`, `wait4all`, `setexitcode`
+- [x] `scpsend`, `scprecv`, `setbaud`, `setflowctrl`
+- [x] `logwrite`, `logpause`, `logstart`, `loginfo`
+- [x] `listbox`, `filenamebox`, `dirnamebox`, `clearscreen`, `setecho`
+- [x] `foldercreate`, `foldersearch`, `filecopy`, `filerename`, `makepath`
+- [x] `getpassword`, `setpassword`, `clipb2var`, `var2clipb`, `exec`, `wait4all`, `setexitcode`
 
 ### Step 4: TTSSH 高度機能・設定互換
 - [ ] SSH ポートフォワーディング (`-L`, `-R`, `-D`) 設定 UI とトンネリング実装

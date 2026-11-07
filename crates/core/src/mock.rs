@@ -9,7 +9,7 @@ use std::io::{self, Read, Write};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
-use crate::transport::{SerialSettings, Transport, WindowSize};
+use crate::transport::{ModemLines, SerialSettings, Transport, WindowSize};
 
 type Chunk = Option<Vec<u8>>; // None は EOF
 
@@ -21,6 +21,8 @@ struct Shared {
     outbound: Option<Sender<Vec<u8>>>,
     sizes: Option<Sender<WindowSize>>,
     settings: Vec<SerialSettings>,
+    /// 信号線（入力は `set_modem_lines` で決め、DTR / RTS は `set_lines` の値）
+    lines: ModemLines,
     /// 相手がいる（抜かれていない）
     present: bool,
     reconnects: usize,
@@ -53,6 +55,11 @@ impl MockTransport {
             outbound: Some(outbound_tx),
             sizes: Some(size_tx),
             settings: Vec::new(),
+            lines: ModemLines {
+                dtr: true,
+                rts: true,
+                ..Default::default()
+            },
             present: true,
             reconnects: 0,
         }));
@@ -122,6 +129,24 @@ impl MockRemote {
         lock(&self.shared).settings.clone()
     }
 
+    /// 相手側の信号線（CTS・DSR・RI・CD）を決める。
+    pub fn set_modem_lines(&self, cts: bool, dsr: bool, ri: bool, cd: bool) {
+        let mut s = lock(&self.shared);
+        s.lines = ModemLines {
+            cts,
+            dsr,
+            ri,
+            cd,
+            ..s.lines
+        };
+    }
+
+    /// Session が出している DTR / RTS。
+    pub fn output_lines(&self) -> (bool, bool) {
+        let s = lock(&self.shared);
+        (s.lines.dtr, s.lines.rts)
+    }
+
     /// Session が送信したデータを、`timeout` まで待って受け取る。
     pub fn recv(&self, timeout: std::time::Duration) -> Option<Vec<u8>> {
         self.outbound.recv_timeout(timeout).ok()
@@ -162,6 +187,28 @@ impl Transport for MockTransport {
     fn set_serial_settings(&mut self, settings: &SerialSettings) -> io::Result<()> {
         lock(&self.shared).settings.push(*settings);
         Ok(())
+    }
+
+    /// シリアルとして振る舞う（最後に設定されたものか、既定）。
+    fn serial_settings(&self) -> Option<SerialSettings> {
+        Some(
+            lock(&self.shared)
+                .settings
+                .last()
+                .copied()
+                .unwrap_or_default(),
+        )
+    }
+
+    fn set_lines(&mut self, dtr: bool, rts: bool) -> io::Result<()> {
+        let mut s = lock(&self.shared);
+        s.lines.dtr = dtr;
+        s.lines.rts = rts;
+        Ok(())
+    }
+
+    fn modem_lines(&mut self) -> io::Result<ModemLines> {
+        Ok(lock(&self.shared).lines)
     }
 
     fn can_reconnect(&self) -> bool {

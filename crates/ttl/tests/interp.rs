@@ -26,6 +26,7 @@ struct TestHost {
     connects: Vec<ConnectSpec>,
     answers: Vec<String>,
     download: PathBuf,
+    clip: Option<String>,
 }
 
 impl Host for TestHost {
@@ -48,6 +49,33 @@ impl Host for TestHost {
     }
     fn download_dir(&self) -> PathBuf {
         self.download.clone()
+    }
+    fn list_box(
+        &mut self,
+        _: &str,
+        text: &str,
+        items: &[String],
+        selected: usize,
+    ) -> Option<usize> {
+        self.out
+            .lock()
+            .unwrap()
+            .push(format!("list:{text}:{}:{selected}", items.join(",")));
+        Some(items.len() - 1)
+    }
+    fn file_name_box(&mut self, _: &str, save: bool, dir: &Path) -> Option<String> {
+        Some(
+            dir.join(if save { "out.txt" } else { "in.txt" })
+                .display()
+                .to_string(),
+        )
+    }
+    fn clipboard(&mut self) -> Option<String> {
+        self.clip.clone()
+    }
+    fn set_clipboard(&mut self, text: &str) -> bool {
+        self.clip = Some(text.to_owned());
+        true
     }
 }
 
@@ -536,4 +564,177 @@ setexitcode 3
     );
     // logpause の間も logwrite は書く（コメントは中断中でも残す）
     assert_eq!(std::fs::read_to_string(&log).unwrap(), "first\nsecond\n");
+}
+
+#[test]
+fn serial_lines_baud_echo_and_more_waits() {
+    let (session, remote) = open_mock();
+    remote.set_modem_lines(true, false, false, true);
+    let r = remote;
+    let device = thread::spawn(move || {
+        expect(&r, b"go\r");
+        r.send(b"boot: OK\r\n");
+        r.send(b"ready> ");
+        r.send(b"ABCDEFG");
+        r
+    });
+    let src = r#"
+timeout = 5
+setbaud 115200
+int2str s result
+messagebox s
+setflowctrl 2
+getmodemstatus m
+sprintf2 s '%02X %d' m result
+messagebox s
+setdtr 0
+setecho 1
+sendln 'go'
+wait4all 'ready>' 'boot:'
+int2str s result
+messagebox s
+waitn 3
+messagebox inputstr
+mtimeout = 200
+timeout = 0
+wait4all 'X' 'Y'
+int2str s result
+messagebox s
+clearscreen 1
+"#;
+    let mut host = TestHost::default();
+    let out = run(src, &mut host, Some(Arc::clone(&session)));
+    let remote = device.join().unwrap();
+    assert_eq!(out, ["0", "90 0", "1", " AB", "0"]);
+    let last = remote.serial_settings().last().copied().unwrap();
+    assert_eq!(last.baud, 115_200);
+    assert_eq!(last.flow, mt_core::FlowControl::RtsCts);
+    assert_eq!(remote.output_lines(), (false, true));
+    assert!(session.terminal_settings().local_echo);
+    session.close();
+}
+
+#[test]
+fn file_folder_checksum_and_password_commands() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a.txt"), "hello\nworld\n").unwrap();
+    let src = r#"
+foldercreate 'sub/deep'
+foldersearch 'sub/deep'
+int2str s result
+messagebox s
+filecopy 'a.txt' 'sub/b.txt'
+fileconcat 'sub/b.txt' 'a.txt'
+filestat 'sub/b.txt' size
+int2str s size
+messagebox s
+filerename 'sub/b.txt' 'sub/c.txt'
+filesearch 'sub/c.txt'
+int2str s result
+messagebox s
+fileopen h 'sub/c.txt' 0 1
+fileread h 3 t
+messagebox t
+filemarkptr h
+filereadln h t
+messagebox t
+fileseekback h
+fileread h 2 t
+messagebox t
+off = -6
+fileseek h off 2
+filereadln h t
+messagebox t
+filelock h 100
+int2str s result
+messagebox s
+fileunlock h
+fileclose h
+filetruncate 'sub/c.txt' 2
+filestat 'sub/c.txt' size
+int2str s size
+messagebox s
+crc16 c '123456789'
+checksum8 k '123456789'
+sprintf2 s '%04X %02X' c k
+messagebox s
+folderdelete 'sub/deep'
+foldersearch 'sub/deep'
+int2str s result
+messagebox s
+ispassword 'pw.dat' 'r1'
+int2str s result
+messagebox s
+setpassword 'pw.dat' 'r1' 'p@ss'
+getpassword 'pw.dat' 'r1' p
+messagebox p
+getpassword 'pw.dat' 'r2' p
+messagebox p
+delpassword 'pw.dat' 'r1'
+ispassword 'pw.dat' 'r1'
+int2str s result
+messagebox s
+basename n 'x/y.ttl'
+getver v '0.0.0'
+int2str s result
+messagebox s
+"#;
+    let mut host = TestHost {
+        answers: vec!["asked".into()],
+        ..Default::default()
+    };
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut it = Interp::new(&mut host, None, stop);
+    it.run_source(src, dir.path()).unwrap();
+    drop(it);
+    let out = host.out.lock().unwrap().clone();
+    assert_eq!(
+        out,
+        [
+            "1", "24", "1", "hel", "lo", "lo", "world", "0", "2", "906E DD", "0", "0", "p@ss",
+            "asked", "0", "0",
+        ]
+    );
+    // 尋ねた r2 は保存されている
+    assert!(
+        std::fs::read_to_string(dir.path().join("pw.dat"))
+            .unwrap()
+            .contains("r2=")
+    );
+}
+
+#[test]
+fn dialogs_clipboard_and_broadcast_go_through_the_host() {
+    let (session, remote) = open_mock();
+    let src = r#"
+strdim items 3
+items[0] = 'r1'
+items[1] = 'r2'
+items[2] = 'r3'
+listbox 'pick' 'routers' items 1
+int2str s result
+messagebox s
+filenamebox 'save' 1
+messagebox inputstr
+dirnamebox 'dir'
+int2str s result
+messagebox s
+var2clipb 'copied text'
+clipb2var c
+messagebox c
+sendlnbroadcast 'show ' 'clock'
+scpsend 'a' 'b'
+int2str s result
+messagebox s
+"#;
+    let mut host = TestHost::default();
+    let out = run(src, &mut host, Some(Arc::clone(&session)));
+    assert_eq!(out[0], "list:pick:r1,r2,r3:1");
+    assert_eq!(out[1], "2");
+    assert!(out[2].ends_with("out.txt"), "{out:?}");
+    // dirnamebox は Host が答えない（取り消し）
+    assert_eq!(&out[3..], ["0", "copied text", "1"]);
+    // 一斉送信は Host が引き受けないので、マクロの接続に送る
+    expect(&remote, b"show clock\r");
+    session.close();
 }

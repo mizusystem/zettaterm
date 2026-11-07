@@ -28,6 +28,17 @@ pub enum ConnectSpec {
     },
 }
 
+impl ConnectSpec {
+    /// 接続先の名前（gethostname）。シリアルはポート名。
+    pub fn host_name(&self) -> String {
+        match self {
+            ConnectSpec::Serial { port, .. } => port.clone(),
+            ConnectSpec::Telnet { host, .. } | ConnectSpec::Tcp { host, .. } => host.clone(),
+            ConnectSpec::Ssh(s) => s.host.clone(),
+        }
+    }
+}
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct SshSpec {
     pub host: String,

@@ -27,6 +27,32 @@ pub enum MacroReq {
     Beep,
     Transfer(Option<String>),
     Finished(Result<Outcome, String>),
+    List {
+        title: String,
+        text: String,
+        items: Vec<String>,
+        selected: usize,
+        reply: mpsc::Sender<Option<usize>>,
+    },
+    /// filenamebox / dirnamebox
+    ChoosePath {
+        title: String,
+        save: bool,
+        folder: bool,
+        dir: PathBuf,
+        reply: mpsc::Sender<Option<String>>,
+    },
+    ClipboardGet(mpsc::Sender<Option<String>>),
+    ClipboardSet(String),
+    /// sendbroadcast / sendmulticast（group があればその名前のタブにだけ）
+    Broadcast {
+        group: Option<String>,
+        text: String,
+        newline: bool,
+    },
+    MulticastName(String),
+    /// SCP に使う、このタブの内蔵 SSH の接続
+    Files(mpsc::Sender<Option<mt_net::SshFiles>>),
 }
 
 struct GtkHost {
@@ -137,6 +163,98 @@ impl Host for GtkHost {
 
     fn transfer_finished(&mut self, _ok: bool) {
         self.tell(MacroReq::Transfer(None));
+    }
+
+    fn scp(
+        &mut self,
+        send: bool,
+        local: &Path,
+        remote: &str,
+        stopped: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        let files = self
+            .ask(MacroReq::Files, None)
+            .ok_or("SCP needs a connection with the built-in SSH")?;
+        if send {
+            files.send_file(local, remote, stopped)
+        } else {
+            files.recv_file(remote, local, stopped)
+        }
+    }
+
+    fn list_box(
+        &mut self,
+        title: &str,
+        text: &str,
+        items: &[String],
+        selected: usize,
+    ) -> Option<usize> {
+        self.ask(
+            |reply| MacroReq::List {
+                title: title.into(),
+                text: text.into(),
+                items: items.to_vec(),
+                selected,
+                reply,
+            },
+            None,
+        )
+    }
+
+    fn file_name_box(&mut self, title: &str, save: bool, dir: &Path) -> Option<String> {
+        self.ask(
+            |reply| MacroReq::ChoosePath {
+                title: title.into(),
+                save,
+                folder: false,
+                dir: dir.to_owned(),
+                reply,
+            },
+            None,
+        )
+    }
+
+    fn dir_name_box(&mut self, title: &str, dir: &Path) -> Option<String> {
+        self.ask(
+            |reply| MacroReq::ChoosePath {
+                title: title.into(),
+                save: false,
+                folder: true,
+                dir: dir.to_owned(),
+                reply,
+            },
+            None,
+        )
+    }
+
+    fn clipboard(&mut self) -> Option<String> {
+        self.ask(MacroReq::ClipboardGet, None)
+    }
+
+    fn set_clipboard(&mut self, text: &str) -> bool {
+        self.tell(MacroReq::ClipboardSet(text.into()));
+        true
+    }
+
+    fn broadcast(&mut self, text: &str, newline: bool) -> bool {
+        self.tell(MacroReq::Broadcast {
+            group: None,
+            text: text.into(),
+            newline,
+        });
+        true
+    }
+
+    fn multicast(&mut self, name: &str, text: &str, newline: bool) {
+        self.tell(MacroReq::Broadcast {
+            group: Some(name.into()),
+            text: text.into(),
+            newline,
+        });
+    }
+
+    fn set_multicast_name(&mut self, name: &str) {
+        self.tell(MacroReq::MulticastName(name.into()));
     }
 }
 

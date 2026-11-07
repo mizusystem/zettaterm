@@ -211,6 +211,65 @@ final class MacroBridge: MacroHost, @unchecked Sendable {
         onMain { self.controller?.macro?.transferring = nil }
     }
 
+    func listBox(title: String, text: String, items: [String], selected: UInt32) -> UInt32? {
+        alert(nil) {
+            let a = Self.make(title, text)
+            let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 280, height: 26), pullsDown: false)
+            popup.addItems(withTitles: items)
+            if Int(selected) < items.count { popup.selectItem(at: Int(selected)) }
+            a.accessoryView = popup
+            a.addButton(withTitle: TT.text("BTN_OK", "OK"))
+            a.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
+            return (a, { $0 == .alertFirstButtonReturn && popup.indexOfSelectedItem >= 0
+                ? UInt32(popup.indexOfSelectedItem) : nil })
+        }
+    }
+
+    func choosePath(title: String, save: Bool, folder: Bool, startDir: String) -> String? {
+        onMain {
+            let panel: NSSavePanel
+            if save {
+                panel = NSSavePanel()
+                panel.canCreateDirectories = true
+            } else {
+                let open = NSOpenPanel()
+                open.canChooseFiles = !folder
+                open.canChooseDirectories = folder
+                open.canCreateDirectories = folder
+                open.allowsMultipleSelection = false
+                panel = open
+            }
+            panel.message = title
+            panel.directoryURL = URL(fileURLWithPath: startDir)
+            return panel.runModal() == .OK ? panel.url?.path : nil
+        }
+    }
+
+    func clipboard() -> String? {
+        onMain { NSPasteboard.general.string(forType: .string) }
+    }
+
+    func setClipboard(text: String) -> Bool {
+        onMain {
+            NSPasteboard.general.clearContents()
+            return NSPasteboard.general.setString(text, forType: .string)
+        }
+    }
+
+    /// `sendbroadcast` / `sendmulticast`。`group` があれば、その名前を付けたウィンドウにだけ送る。
+    func broadcast(group: String?, text: String, newline: Bool) {
+        onMain {
+            for c in SessionRegistry.shared.controllers where c.isConnected {
+                if let group, c.multicastName != group { continue }
+                c.broadcast(text, enter: newline)
+            }
+        }
+    }
+
+    func setMulticastName(name: String) {
+        onMain { self.controller?.multicastName = name.isEmpty ? nil : name }
+    }
+
     func finished(stopped: Bool, error: String?) {
         DispatchQueue.main.async {
             MainActor.assumeIsolated { self.controller?.macroFinished(stopped: stopped, error: error) }

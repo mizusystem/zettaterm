@@ -487,3 +487,29 @@ pub fn yes_no(parent: &gtk::Window, title: &str, text: &str, answer: impl FnOnce
         answer,
     );
 }
+
+/// 一覧から 1 つ選ぶ（マクロの listbox）。
+pub fn list(
+    parent: &gtk::Window,
+    title: &str,
+    text: &str,
+    items: &[String],
+    selected: usize,
+    answer: impl FnOnce(Option<usize>) + 'static,
+) {
+    let (win, content, buttons) = modal(parent, title);
+    content.append(&wrap_label(text));
+    let strs: Vec<&str> = items.iter().map(String::as_str).collect();
+    let drop = gtk::DropDown::from_strings(&strs);
+    drop.set_selected(selected.min(items.len().saturating_sub(1)) as u32);
+    content.append(&drop);
+    let n = items.len();
+    finish(
+        &win,
+        &buttons,
+        &tt("BTN_OK", "OK"),
+        move || Some(drop.selected() as usize).filter(|i| *i < n),
+        None,
+        answer,
+    );
+}

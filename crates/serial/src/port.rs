@@ -181,6 +181,10 @@ impl Transport for SerialTransport {
         })
     }
 
+    fn serial_settings(&self) -> Option<SerialSettings> {
+        Some(self.settings)
+    }
+
     fn set_serial_settings(&mut self, settings: &SerialSettings) -> io::Result<()> {
         apply(self.port()?.as_mut(), settings)?;
         self.settings = *settings;

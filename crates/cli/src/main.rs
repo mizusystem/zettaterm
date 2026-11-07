@@ -68,7 +68,7 @@ fn run(args: &[String]) -> ExitCode {
         eprintln!("{USAGE}");
         return ExitCode::from(2);
     };
-    let mut host = CliHost { quiet };
+    let mut host = CliHost { quiet, files: None };
     let stop = Arc::new(AtomicBool::new(false));
     let mut interp = Interp::new(&mut host, None, stop);
     let result = interp.run_file(Path::new(path), params);
@@ -96,6 +96,8 @@ impl SessionListener for Quiet {
 
 struct CliHost {
     quiet: bool,
+    /// 内蔵 SSH で接続したとき（scpsend / scprecv に使う）
+    files: Option<mt_net::SshFiles>,
 }
 
 fn prompt(text: &str) -> Option<String> {
@@ -135,10 +137,10 @@ impl Host for CliHost {
                     config_path: None,
                 };
                 let prompter = Arc::new(CliPrompter(ssh.clone()));
-                Box::new(
-                    SshTransport::connect(&options, size, prompter)
-                        .map_err(|e| format!("{}: {e}", ssh.host))?,
-                )
+                let t = SshTransport::connect(&options, size, prompter)
+                    .map_err(|e| format!("{}: {e}", ssh.host))?;
+                self.files = t.files();
+                Box::new(t)
             }
         };
         let options = SessionOptions {
@@ -194,6 +196,61 @@ impl Host for CliHost {
             default.to_owned()
         } else {
             answer
+        })
+    }
+
+    fn scp(
+        &mut self,
+        send: bool,
+        local: &Path,
+        remote: &str,
+        stopped: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        let files = self
+            .files
+            .as_ref()
+            .ok_or("SCP needs a connection with the built-in SSH")?;
+        if send {
+            files.send_file(local, remote, stopped)
+        } else {
+            files.recv_file(remote, local, stopped)
+        }
+    }
+
+    fn list_box(
+        &mut self,
+        title: &str,
+        text: &str,
+        items: &[String],
+        selected: usize,
+    ) -> Option<usize> {
+        eprintln!(
+            "\n[{}] {text}",
+            if title.is_empty() { "list" } else { title }
+        );
+        for (i, item) in items.iter().enumerate() {
+            eprintln!("  {}{i}: {item}", if i == selected { "*" } else { " " });
+        }
+        let answer = prompt("number: ")?;
+        let i = if answer.trim().is_empty() {
+            selected
+        } else {
+            answer.trim().parse().ok()?
+        };
+        (i < items.len()).then_some(i)
+    }
+
+    fn file_name_box(&mut self, title: &str, _save: bool, dir: &Path) -> Option<String> {
+        let answer = prompt(&format!("\n[{title}] file ({}): ", dir.display()))?;
+        (!answer.is_empty()).then(|| dir.join(answer).display().to_string())
+    }
+
+    fn dir_name_box(&mut self, title: &str, dir: &Path) -> Option<String> {
+        let answer = prompt(&format!("\n[{title}] folder ({}): ", dir.display()))?;
+        Some(if answer.is_empty() {
+            dir.display().to_string()
+        } else {
+            dir.join(answer).display().to_string()
         })
     }
 

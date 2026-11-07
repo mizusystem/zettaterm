@@ -82,6 +82,11 @@ pub trait Transport: Send + 'static {
         Err(unsupported("modem_lines"))
     }
 
+    /// 今のシリアル設定。シリアル以外は None。
+    fn serial_settings(&self) -> Option<SerialSettings> {
+        None
+    }
+
     /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。シリアル以外は未対応。
     fn set_serial_settings(&mut self, _settings: &SerialSettings) -> io::Result<()> {
         Err(unsupported("set_serial_settings"))

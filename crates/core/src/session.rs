@@ -118,6 +118,8 @@ struct Inner {
     divert: Mutex<Route>,
     zmodem: Mutex<ZmodemDetector>,
     local_echo: AtomicBool,
+    /// 最後に設定した端末設定（`terminal_settings` で返す）
+    terminal: Mutex<TerminalSettings>,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
     taps: Mutex<Taps>,
 }
@@ -202,6 +204,7 @@ impl Session {
             divert: Mutex::new(Route::default()),
             zmodem: Mutex::new(ZmodemDetector::default()),
             local_echo: AtomicBool::new(options.terminal.local_echo),
+            terminal: Mutex::new(options.terminal),
             taps: Mutex::new(Taps::default()),
         });
 
@@ -343,7 +346,21 @@ impl Session {
         self.write(charset::encode_send(cs, bytes));
     }
 
+    /// 今の端末設定（改行コード・ローカルエコー・文字コード）。
+    pub fn terminal_settings(&self) -> TerminalSettings {
+        *self
+            .inner
+            .terminal
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
     pub fn set_terminal_settings(&self, t: TerminalSettings) {
+        *self
+            .inner
+            .terminal
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = t;
         self.inner
             .newline_receive
             .lock()
@@ -459,6 +476,11 @@ impl Session {
     /// シリアルの信号線の状態。シリアル以外は Unsupported。
     pub fn modem_lines(&self) -> io::Result<ModemLines> {
         self.inner.transport()?.modem_lines()
+    }
+
+    /// 今のシリアル設定。シリアル以外は None。
+    pub fn serial_settings(&self) -> Option<SerialSettings> {
+        self.inner.transport().ok()?.serial_settings()
     }
 
     /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。

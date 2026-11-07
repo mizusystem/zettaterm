@@ -16,6 +16,7 @@ use regex::Regex;
 use crate::connect::{ConnectSpec, parse_connect};
 use crate::format::sprintf;
 use crate::parse::{BinOp, Expr, Program, Stmt, UnOp, parse};
+use crate::util;
 
 /// 変数の値。TTL は整数（32 ビット）と文字列だけ。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +73,60 @@ pub trait Host {
     /// ファイル転送が始まった・終わった（進み具合の表示用）。
     fn transfer_started(&mut self, _name: &str, _send: bool) {}
     fn transfer_finished(&mut self, _ok: bool) {}
+
+    /// `scpsend` / `scprecv`。内蔵 SSH の接続で、終わるまで待つ。`stopped` が true なら取り消す。
+    fn scp(
+        &mut self,
+        _send: bool,
+        _local: &Path,
+        _remote: &str,
+        _stopped: &dyn Fn() -> bool,
+    ) -> Result<(), String> {
+        Err("SCP needs a connection with the built-in SSH".into())
+    }
+
+    /// `listbox`。選んだ番号（0 起点）、取り消しは None。
+    fn list_box(
+        &mut self,
+        _title: &str,
+        _text: &str,
+        _items: &[String],
+        _selected: usize,
+    ) -> Option<usize> {
+        None
+    }
+
+    /// `filenamebox`。`save` なら保存のダイアログ。
+    fn file_name_box(&mut self, _title: &str, _save: bool, _dir: &Path) -> Option<String> {
+        None
+    }
+
+    /// `dirnamebox`。
+    fn dir_name_box(&mut self, _title: &str, _dir: &Path) -> Option<String> {
+        None
+    }
+
+    /// `clipb2var`。
+    fn clipboard(&mut self) -> Option<String> {
+        None
+    }
+
+    /// `var2clipb`。できたら true。
+    fn set_clipboard(&mut self, _text: &str) -> bool {
+        false
+    }
+
+    /// `sendbroadcast` / `sendlnbroadcast`：開いているすべての接続に送る。`newline` なら各接続の改行を足す。
+    /// 引き受けなければ false（マクロの接続にだけ送る）。
+    fn broadcast(&mut self, _text: &str, _newline: bool) -> bool {
+        false
+    }
+
+    /// `sendmulticast`：`setmulticastname` で同じ名前を付けた接続に送る。
+    fn multicast(&mut self, _name: &str, _text: &str, _newline: bool) {}
+
+    /// `setmulticastname`：この接続の一斉送信の名前。
+    fn set_multicast_name(&mut self, _name: &str) {}
 }
 
 /// マクロの失敗（ファイルと行つき）。
@@ -137,6 +192,8 @@ struct Frame {
 
 struct Handle {
     file: File,
+    /// filemarkptr で覚えた位置（fileseekback で戻る）
+    mark: u64,
 }
 
 /// 受信バッファの上限（超えたら古い方を捨てる）
@@ -163,6 +220,9 @@ pub struct Interp<'h> {
     rng: u64,
     /// `setexitcode` の値（cli の終了コード）
     exit_code: i32,
+    /// `connect` で開いたホスト名（gethostname）
+    host_name: String,
+    started: Instant,
 }
 
 impl<'h> Interp<'h> {
@@ -195,6 +255,8 @@ impl<'h> Interp<'h> {
             title: String::new(),
             rng: seed,
             exit_code: 0,
+            host_name: String::new(),
+            started: Instant::now(),
         };
         for (k, v) in [
             ("result", Value::Int(0)),
@@ -741,6 +803,7 @@ impl<'h> Interp<'h> {
                     return Ok(Flow::Next);
                 }
                 let spec = parse_connect(&spec)?;
+                self.host_name = spec.host_name();
                 match self.host.connect(&spec) {
                     Ok(session) => {
                         // 接続してから写しを取り始めるまでに届いたプロンプトも見る
@@ -802,6 +865,66 @@ impl<'h> Interp<'h> {
                     .set_lines(self.dtr, self.rts)
                     .map_err(|e| format!("{name}: {e}"))?;
             }
+            "setbaud" | "setflowctrl" => {
+                argc(1, 1)?;
+                let v = self.int(&args[0])?;
+                let session = self.session_ref()?;
+                let mut settings = session
+                    .serial_settings()
+                    .ok_or_else(|| format!("{name}: not a serial connection"))?;
+                if name == "setbaud" {
+                    settings.baud = u32::try_from(v)
+                        .ok()
+                        .filter(|b| *b > 0)
+                        .ok_or_else(|| format!("setbaud: {v}"))?;
+                } else {
+                    // Tera Term の値：1 Xon/Xoff、2 RTS/CTS、3 なし、4 DSR/DTR
+                    settings.flow = match v {
+                        1 => mt_core::FlowControl::XonXoff,
+                        2 => mt_core::FlowControl::RtsCts,
+                        3 => mt_core::FlowControl::None,
+                        4 => mt_core::FlowControl::DsrDtr,
+                        _ => return Err(format!("setflowctrl: {v}").into()),
+                    };
+                }
+                let ok = session.set_serial_settings(&settings).is_ok();
+                self.set_result(if ok { 0 } else { 1 });
+            }
+            "getmodemstatus" => {
+                // Windows の GetCommModemStatus と同じビット（CTS 0x10、DSR 0x20、RI 0x40、CD 0x80）
+                argc(1, 1)?;
+                let lines = self.session.as_ref().and_then(|s| s.modem_lines().ok());
+                match lines {
+                    Some(m) => {
+                        let bits = (i32::from(m.cts) << 4)
+                            | (i32::from(m.dsr) << 5)
+                            | (i32::from(m.ri) << 6)
+                            | (i32::from(m.cd) << 7);
+                        self.set_out(&args[0], Value::Int(bits))?;
+                        self.set_result(0);
+                    }
+                    None => self.set_result(1),
+                }
+            }
+            "setecho" => {
+                argc(1, 1)?;
+                let on = self.int(&args[0])? != 0;
+                let s = self.session_ref()?;
+                let mut t = s.terminal_settings();
+                t.local_echo = on;
+                s.set_terminal_settings(t);
+            }
+            "clearscreen" => {
+                // 0 は画面だけ、1 と 2 はスクロールバックも
+                argc(1, 1)?;
+                let v = self.int(&args[0])?;
+                let s = self.session_ref()?;
+                if v == 0 {
+                    s.clear_screen();
+                } else {
+                    s.clear_buffer();
+                }
+            }
             "flushrecv" => {
                 argc(0, 0)?;
                 if let Some(tap) = &self.tap {
@@ -820,6 +943,54 @@ impl<'h> Interp<'h> {
                     Some(i)
                 })?;
                 self.set_result(hit.map_or(0, |i| i as i32 + 1));
+            }
+            "wait4all" => {
+                // すべての文字列が（順不同で）届くまで待つ
+                if n == 0 {
+                    return Err("wait4all: no string".into());
+                }
+                let pats: Vec<String> = args.iter().map(|a| self.str(a)).collect::<R<_>>()?;
+                let mut found = vec![false; pats.len()];
+                let mut consumed_upto = 0usize;
+                let hit = self.wait_until(|buf| {
+                    for (i, p) in pats.iter().enumerate() {
+                        if !found[i]
+                            && let Some(pos) = buf.find(p.as_str())
+                        {
+                            found[i] = true;
+                            consumed_upto = consumed_upto.max(pos + p.len());
+                        }
+                    }
+                    if found.iter().all(|f| *f) {
+                        buf.drain(..consumed_upto.min(buf.len()));
+                        Some(())
+                    } else {
+                        None
+                    }
+                })?;
+                self.set_result(i32::from(hit.is_some()));
+            }
+            "waitn" => {
+                // n バイト届くまで待ち、inputstr に入れる
+                argc(1, 1)?;
+                let want = self.int(&args[0])?.clamp(1, 255) as usize;
+                let hit = self.wait_until(|buf| {
+                    if buf.len() < want {
+                        return None;
+                    }
+                    let mut cut = want;
+                    while !buf.is_char_boundary(cut) {
+                        cut += 1;
+                    }
+                    Some(buf.drain(..cut).collect::<String>())
+                })?;
+                match hit {
+                    Some(s) => {
+                        self.set_str("inputstr", s);
+                        self.set_result(1);
+                    }
+                    None => self.set_result(0),
+                }
             }
             "waitln" => {
                 if n == 0 {
@@ -1024,15 +1195,17 @@ impl<'h> Interp<'h> {
             }
 
             // ---- チェックサム（ファームウェアの転送前後の確かめに）
-            "crc32" => {
+            "crc32" | "crc16" | "checksum8" | "checksum16" | "checksum32" => {
                 argc(2, 2)?;
                 let s = self.str(&args[1])?;
-                self.set_out(&args[0], Value::Int(crc32(s.as_bytes()) as i32))?;
+                let sum = util::Sum::by_name(name).ok_or("checksum")?;
+                self.set_out(&args[0], Value::Int(sum.of(s.as_bytes()) as i32))?;
             }
-            "crc32file" => {
+            "crc32file" | "crc16file" | "checksum8file" | "checksum16file" | "checksum32file" => {
                 argc(2, 2)?;
                 let file = self.str(&args[1])?;
-                match crc32_file(&self.path(&file)) {
+                let sum = util::Sum::by_name(name).ok_or("checksum")?;
+                match sum.of_file(&self.path(&file)) {
                     Ok(c) => {
                         self.set_out(&args[0], Value::Int(c as i32))?;
                         self.set_result(0);
@@ -1298,7 +1471,7 @@ impl<'h> Interp<'h> {
                     Ok(file) => {
                         let h = self.next_handle;
                         self.next_handle += 1;
-                        self.files.insert(h, Handle { file });
+                        self.files.insert(h, Handle { file, mark: 0 });
                         self.set_result(0);
                         h
                     }
@@ -1358,6 +1531,164 @@ impl<'h> Interp<'h> {
                 f.file
                     .write_all(&data)
                     .map_err(|e| format!("{name}: {e}"))?;
+            }
+            "fileread" => {
+                argc(3, 3)?;
+                let h = self.int(&args[0])?;
+                let len = self.int(&args[1])?.clamp(0, MAX_READ_LINE as i32) as usize;
+                let f = self.files.get_mut(&h).ok_or("fileread: bad file handle")?;
+                let mut buf = vec![0u8; len];
+                let mut got = 0;
+                while got < len {
+                    match f.file.read(&mut buf[got..]) {
+                        Ok(0) | Err(_) => break,
+                        Ok(k) => got += k,
+                    }
+                }
+                buf.truncate(got);
+                self.set_out(
+                    &args[2],
+                    Value::Str(String::from_utf8_lossy(&buf).into_owned()),
+                )?;
+                self.set_result(i32::from(got < len));
+            }
+            "fileseek" => {
+                // 起点：0 先頭、1 今の位置、2 末尾
+                argc(3, 3)?;
+                let h = self.int(&args[0])?;
+                let off = i64::from(self.int(&args[1])?);
+                let origin = self.int(&args[2])?;
+                let f = self.files.get_mut(&h).ok_or("fileseek: bad file handle")?;
+                let to = match origin {
+                    0 => SeekFrom::Start(off.max(0) as u64),
+                    1 => SeekFrom::Current(off),
+                    _ => SeekFrom::End(off),
+                };
+                let ok = f.file.seek(to).is_ok();
+                self.set_result(if ok { 0 } else { -1 });
+            }
+            "filemarkptr" | "fileseekback" => {
+                argc(1, 1)?;
+                let h = self.int(&args[0])?;
+                let f = self
+                    .files
+                    .get_mut(&h)
+                    .ok_or("filemarkptr: bad file handle")?;
+                if name == "filemarkptr" {
+                    f.mark = f.file.stream_position().unwrap_or(0);
+                } else {
+                    let _ = f.file.seek(SeekFrom::Start(f.mark));
+                }
+            }
+            "filelock" | "fileunlock" => {
+                // filelock の 2 番目は待つミリ秒（省略で待ち続ける）。result は 0 成功、1 失敗
+                argc(1, 2)?;
+                let h = self.int(&args[0])?;
+                let wait = match args.get(1) {
+                    Some(a) => Some(Duration::from_millis(self.int(a)?.max(0) as u64)),
+                    None => None,
+                };
+                let f = self.files.get(&h).ok_or("filelock: bad file handle")?;
+                let ok = if name == "fileunlock" {
+                    f.file.unlock().is_ok()
+                } else {
+                    let start = Instant::now();
+                    loop {
+                        if f.file.try_lock().is_ok() {
+                            break true;
+                        }
+                        if wait.is_some_and(|w| start.elapsed() >= w)
+                            || self.stop.load(Ordering::SeqCst)
+                        {
+                            break false;
+                        }
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                };
+                self.set_result(if ok { 0 } else { 1 });
+            }
+            "filestat" => {
+                // filestat <ファイル> <大きさ> [<更新日時> [<ドライブ>]]
+                argc(2, 4)?;
+                let file = self.str(&args[0])?;
+                match std::fs::metadata(self.path(&file)) {
+                    Ok(m) => {
+                        self.set_out(&args[1], Value::Int(m.len().min(i32::MAX as u64) as i32))?;
+                        if let Some(a) = args.get(2) {
+                            let t = m
+                                .modified()
+                                .ok()
+                                .map(|t| {
+                                    chrono::DateTime::<chrono::Local>::from(t)
+                                        .format("%Y-%m-%d %H:%M:%S")
+                                        .to_string()
+                                })
+                                .unwrap_or_default();
+                            self.set_out(a, Value::Str(t))?;
+                        }
+                        if let Some(a) = args.get(3) {
+                            self.set_out(a, Value::Str(String::new()))?;
+                        }
+                        self.set_result(0);
+                    }
+                    Err(_) => self.set_result(-1),
+                }
+            }
+            "filetruncate" => {
+                argc(2, 2)?;
+                let file = self.str(&args[0])?;
+                let size = self.int(&args[1])?.max(0) as u64;
+                let ok = OpenOptions::new()
+                    .write(true)
+                    .open(self.path(&file))
+                    .and_then(|f| f.set_len(size))
+                    .is_ok();
+                self.set_result(if ok { 0 } else { -1 });
+            }
+            "filecopy" | "filerename" | "fileconcat" => {
+                argc(2, 2)?;
+                let a = self.str(&args[0])?;
+                let b = self.str(&args[1])?;
+                let (pa, pb) = (self.path(&a), self.path(&b));
+                let ok = match name {
+                    "filecopy" => pa != pb && std::fs::copy(&pa, &pb).is_ok(),
+                    "filerename" => !pb.exists() && std::fs::rename(&pa, &pb).is_ok(),
+                    // 1 番目のファイルの後ろに 2 番目をつなぐ
+                    _ => {
+                        pa != pb
+                            && OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&pa)
+                                .and_then(|mut out| std::io::copy(&mut File::open(&pb)?, &mut out))
+                                .is_ok()
+                    }
+                };
+                self.set_result(if ok { 0 } else { -1 });
+            }
+            "foldercreate" | "folderdelete" | "foldersearch" => {
+                argc(1, 1)?;
+                let d = self.str(&args[0])?;
+                let p = self.path(&d);
+                let code = match name {
+                    "foldercreate" => {
+                        if std::fs::create_dir_all(&p).is_ok() {
+                            0
+                        } else {
+                            -1
+                        }
+                    }
+                    // 空のフォルダだけ消す（中身ごと消す事故を避ける）
+                    "folderdelete" => {
+                        if std::fs::remove_dir(&p).is_ok() {
+                            0
+                        } else {
+                            -1
+                        }
+                    }
+                    _ => i32::from(p.is_dir()),
+                };
+                self.set_result(code);
             }
             "filesearch" => {
                 argc(1, 1)?;
@@ -1465,6 +1796,259 @@ impl<'h> Interp<'h> {
                 write!(out, "{}", chrono::Local::now().format(&fmt))
                     .map_err(|_| format!("{name}: bad format"))?;
                 self.set_out(&args[0], Value::Str(out))?;
+            }
+            "scpsend" | "scprecv" => {
+                // scpsend <ローカル> <リモート>、scprecv <リモート> <ローカル>。result は 0 成功、1 失敗
+                argc(2, 2)?;
+                let a = self.str(&args[0])?;
+                let b = self.str(&args[1])?;
+                let send = name == "scpsend";
+                let (local, remote) = if send { (a, b) } else { (b, a) };
+                let local = self.path(&local);
+                let stop = Arc::clone(&self.stop);
+                let stopped = move || stop.load(Ordering::SeqCst);
+                self.host.transfer_started(&remote, send);
+                let result = self.host.scp(send, &local, &remote, &stopped);
+                self.host.transfer_finished(result.is_ok());
+                if self.stop.load(Ordering::SeqCst) {
+                    return Err(Fail::Stopped);
+                }
+                self.set_result(i32::from(result.is_err()));
+            }
+            "listbox" => {
+                // listbox <メッセージ> <タイトル> <文字列の配列> [<最初に選ぶ番号>]。result は番号、取り消しは -1
+                argc(3, 4)?;
+                let text = self.str(&args[0])?;
+                let title = self.str(&args[1])?;
+                let Expr::Var(arr) = &args[2] else {
+                    return Err("listbox: array expected".into());
+                };
+                let items: Vec<String> = self
+                    .arrays
+                    .get(arr.as_str())
+                    .ok_or("listbox: array expected")?
+                    .iter()
+                    .map(|v| match v {
+                        Value::Str(s) => s.clone(),
+                        Value::Int(n) => n.to_string(),
+                    })
+                    .collect();
+                let selected = match args.get(3) {
+                    Some(a) => self.int(a)?.max(0) as usize,
+                    None => 0,
+                };
+                let pick = self.host.list_box(&title, &text, &items, selected);
+                self.set_result(pick.map_or(-1, |i| i as i32));
+            }
+            "filenamebox" | "dirnamebox" => {
+                // filenamebox <タイトル> [<1 なら保存> [<最初のフォルダ>]]、dirnamebox <タイトル> [<最初のフォルダ>]
+                argc(1, 3)?;
+                let title = self.str(&args[0])?;
+                let (save, dir_arg) = if name == "filenamebox" {
+                    let save = match args.get(1) {
+                        Some(a) => self.int(a)? != 0,
+                        None => false,
+                    };
+                    (save, args.get(2))
+                } else {
+                    (false, args.get(1))
+                };
+                let dir = match dir_arg {
+                    Some(a) => {
+                        let d = self.str(a)?;
+                        self.path(&d)
+                    }
+                    None => self.base_dir.clone(),
+                };
+                let picked = if name == "filenamebox" {
+                    self.host.file_name_box(&title, save, &dir)
+                } else {
+                    self.host.dir_name_box(&title, &dir)
+                };
+                self.set_result(i32::from(picked.is_some()));
+                if let Some(p) = picked {
+                    self.set_str("inputstr", p);
+                }
+            }
+            "clipb2var" => {
+                // clipb2var <文字列変数> [<何番目の 511 バイトか>]。result は 0 なし、1 全部、2 続きあり
+                argc(1, 2)?;
+                let offset = match args.get(1) {
+                    Some(a) => self.int(a)?.max(0) as usize,
+                    None => 0,
+                };
+                match self.host.clipboard() {
+                    Some(text) => {
+                        const CHUNK: usize = 511;
+                        let b = text.as_bytes();
+                        let start = (offset * CHUNK).min(b.len());
+                        let end = (start + CHUNK).min(b.len());
+                        let part = String::from_utf8_lossy(&b[start..end]).into_owned();
+                        self.set_out(&args[0], Value::Str(part))?;
+                        self.set_result(if end < b.len() { 2 } else { 1 });
+                    }
+                    None => self.set_result(0),
+                }
+            }
+            "var2clipb" => {
+                argc(1, 1)?;
+                let text = self.str(&args[0])?;
+                let ok = self.host.set_clipboard(&text);
+                self.set_result(i32::from(ok));
+            }
+            "sendbroadcast" | "sendlnbroadcast" => {
+                let mut text = String::new();
+                for a in args {
+                    match self.eval(a)? {
+                        Value::Str(t) => text.push_str(&t),
+                        Value::Int(c) => {
+                            if let Some(ch) = char::from_u32(c as u32) {
+                                text.push(ch);
+                            }
+                        }
+                    }
+                }
+                let newline = name == "sendlnbroadcast";
+                if !self.host.broadcast(&text, newline)
+                    && let Some(s) = &self.session
+                {
+                    s.send_text(&text);
+                    if newline {
+                        s.send_line("");
+                    }
+                }
+            }
+            "sendmulticast" => {
+                argc(2, 2)?;
+                let group = self.str(&args[0])?;
+                let text = self.str(&args[1])?;
+                self.host.multicast(&group, &text, false);
+            }
+            "setmulticastname" => {
+                argc(1, 1)?;
+                let group = self.str(&args[0])?;
+                self.host.set_multicast_name(&group);
+            }
+            "getver" => {
+                // getver <文字列変数> [<比べる版>]。比べると result は -1 / 0 / 1（この版が古い / 同じ / 新しい）
+                argc(1, 2)?;
+                let ver = env!("CARGO_PKG_VERSION").to_owned();
+                if let Some(a) = args.get(1) {
+                    let other = match self.eval(a)? {
+                        Value::Str(s) => s,
+                        Value::Int(n) => n.to_string(),
+                    };
+                    self.set_result(match util::compare_versions(&ver, &other) {
+                        std::cmp::Ordering::Less => -1,
+                        std::cmp::Ordering::Equal => 0,
+                        std::cmp::Ordering::Greater => 1,
+                    });
+                }
+                self.set_out(&args[0], Value::Str(ver))?;
+            }
+            "gethostname" => {
+                argc(1, 1)?;
+                let h = self.host_name.clone();
+                self.set_result(i32::from(h.is_empty()));
+                self.set_out(&args[0], Value::Str(h))?;
+            }
+            "getttdir" => {
+                argc(1, 1)?;
+                let d = std::env::current_exe()
+                    .ok()
+                    .and_then(|p| p.parent().map(|d| d.display().to_string()))
+                    .unwrap_or_default();
+                self.set_out(&args[0], Value::Str(d))?;
+            }
+            "getspecialfolder" => {
+                argc(2, 2)?;
+                let which = self.str(&args[1])?;
+                match util::special_folder(&which) {
+                    Some(p) => {
+                        self.set_out(&args[0], Value::Str(p.display().to_string()))?;
+                        self.set_result(1);
+                    }
+                    None => self.set_result(0),
+                }
+            }
+            "uptime" => {
+                argc(1, 1)?;
+                let ms = self.started.elapsed().as_millis().min(i32::MAX as u128) as i32;
+                self.set_out(&args[0], Value::Int(ms))?;
+            }
+            "exec" => {
+                // exec <コマンドライン> [<表示> [<待つ> [<作業フォルダ>]]]。シェルは通さない。
+                // 待つときの result は終了コード、待たないときは 0（起動できなければ -1）
+                argc(1, 4)?;
+                let line = self.str(&args[0])?;
+                let wait = match args.get(2) {
+                    Some(a) => self.int(a)? != 0,
+                    None => false,
+                };
+                let dir = match args.get(3) {
+                    Some(a) => {
+                        let d = self.str(a)?;
+                        self.path(&d)
+                    }
+                    None => self.base_dir.clone(),
+                };
+                let parts = util::split_command_line(&line);
+                let Some((prog, rest)) = parts.split_first() else {
+                    return Err("exec: empty command".into());
+                };
+                let mut cmd = std::process::Command::new(prog);
+                cmd.args(rest).current_dir(dir);
+                let code = if wait {
+                    cmd.status().map(|s| s.code().unwrap_or(-1)).unwrap_or(-1)
+                } else {
+                    cmd.spawn().map(|_| 0).unwrap_or(-1)
+                };
+                self.set_result(code);
+            }
+            "getpassword" | "setpassword" | "ispassword" | "delpassword" => {
+                // getpassword <ファイル> <名前> <変数>：無ければ尋ねて保存する
+                let (min, max) = match name {
+                    "getpassword" | "setpassword" => (3, 3),
+                    _ => (2, 2),
+                };
+                argc(min, max)?;
+                let file = self.str(&args[0])?;
+                let key = self.str(&args[1])?;
+                let path = self.path(&file);
+                let mut store = util::PasswordFile::load(&path);
+                match name {
+                    "getpassword" => {
+                        let pw = match store.get(&key) {
+                            Some(p) => Some(p),
+                            None => {
+                                let asked = self.host.input_box(
+                                    "Multi-Term",
+                                    &format!("Password for {key}"),
+                                    "",
+                                    true,
+                                );
+                                if let Some(p) = &asked {
+                                    store.set(&key, p);
+                                    store.save().map_err(|e| format!("getpassword: {e}"))?;
+                                }
+                                asked
+                            }
+                        };
+                        self.set_result(i32::from(pw.is_some()));
+                        self.set_out(&args[2], Value::Str(pw.unwrap_or_default()))?;
+                    }
+                    "setpassword" => {
+                        let pw = self.str(&args[2])?;
+                        store.set(&key, &pw);
+                        let ok = store.save().is_ok();
+                        self.set_result(i32::from(ok));
+                    }
+                    "ispassword" => self.set_result(i32::from(store.contains(&key))),
+                    _ => {
+                        let ok = store.remove(&key) && store.save().is_ok();
+                        self.set_result(i32::from(ok));
+                    }
+                }
             }
             "getenv" => {
                 argc(2, 2)?;
@@ -1606,48 +2190,5 @@ impl ByteDivert for Divert {
     }
     fn finished(&self) -> bool {
         self.lock().status().is_finished()
-    }
-}
-
-/// CRC-32（IEEE 802.3。zip や Tera Term の crc32 と同じ）。
-fn crc32_update(mut crc: u32, data: &[u8]) -> u32 {
-    static TABLE: std::sync::OnceLock<[u32; 256]> = std::sync::OnceLock::new();
-    let table = TABLE.get_or_init(|| {
-        let mut t = [0u32; 256];
-        for (i, slot) in t.iter_mut().enumerate() {
-            let mut c = i as u32;
-            for _ in 0..8 {
-                c = if c & 1 != 0 {
-                    0xEDB8_8320 ^ (c >> 1)
-                } else {
-                    c >> 1
-                };
-            }
-            *slot = c;
-        }
-        t
-    });
-    for &b in data {
-        crc = table[((crc ^ u32::from(b)) & 0xFF) as usize] ^ (crc >> 8);
-    }
-    crc
-}
-
-fn crc32(data: &[u8]) -> u32 {
-    !crc32_update(!0, data)
-}
-
-/// ファイルの CRC-32。大きなファームウェアでもメモリに読み込まず少しずつ計算する。
-fn crc32_file(path: &Path) -> std::io::Result<u32> {
-    use std::io::Read;
-    let mut f = std::fs::File::open(path)?;
-    let mut buf = vec![0u8; 64 * 1024];
-    let mut crc = !0u32;
-    loop {
-        let n = f.read(&mut buf)?;
-        if n == 0 {
-            return Ok(!crc);
-        }
-        crc = crc32_update(crc, &buf[..n]);
     }
 }
