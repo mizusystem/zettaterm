@@ -261,6 +261,114 @@ impl LogConf {
     }
 }
 
+/// TTProxy の「プロキシの設定」。パスワードは保存しない（`PROXY_PASSWORD` に、この実行の間だけ持つ）。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ProxyConf {
+    /// "none" / "http" / "socks4" / "socks5"
+    pub kind: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+}
+
+impl Default for ProxyConf {
+    fn default() -> Self {
+        Self {
+            kind: "none".into(),
+            host: String::new(),
+            port: 8080,
+            user: String::new(),
+        }
+    }
+}
+
+thread_local! {
+    static PROXY_PASSWORD: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
+}
+
+impl ProxyConf {
+    /// コアに渡す（起動時と、設定を変えたとき）。
+    pub fn apply(&self) {
+        let kind = match self.kind.as_str() {
+            "http" => mt_net::ProxyKind::Http,
+            "socks4" => mt_net::ProxyKind::Socks4,
+            "socks5" => mt_net::ProxyKind::Socks5,
+            _ => {
+                mt_net::proxy::set(None);
+                return;
+            }
+        };
+        if self.host.trim().is_empty() {
+            mt_net::proxy::set(None);
+            return;
+        }
+        let password = PROXY_PASSWORD.with(|p| p.borrow().clone());
+        mt_net::proxy::set(Some(mt_net::Proxy {
+            kind,
+            host: self.host.trim().to_owned(),
+            port: self.port,
+            user: (!self.user.is_empty()).then(|| self.user.clone()),
+            password: (!password.is_empty()).then_some(password),
+        }));
+    }
+}
+
+/// 「設定 > プロキシ...」。
+pub fn proxy_dialog(parent: &gtk::Window) {
+    let c = Settings::load().proxy;
+    let t = |k: &str, f: &str| crate::strings::section("TTProxy", k, f);
+    let (win, content, row) = modal(parent, &t("DLG_SETUP_TITLE", "プロキシの設定"));
+    let kinds = ["none", "http", "socks4", "socks5"];
+    let kind = gtk::DropDown::from_strings(&[&l("使わない"), "HTTP", "SOCKS4", "SOCKS5"]);
+    kind.set_selected(kinds.iter().position(|k| *k == c.kind).unwrap_or(0) as u32);
+    let host = gtk::Entry::new();
+    host.set_text(&c.host);
+    host.set_hexpand(true);
+    let port = gtk::SpinButton::with_range(1.0, 65535.0, 1.0);
+    port.set_value(f64::from(c.port));
+    let user = gtk::Entry::new();
+    user.set_text(&c.user);
+    let password = gtk::PasswordEntry::new();
+    password.set_text(&PROXY_PASSWORD.with(|p| p.borrow().clone()));
+    let grid = gtk::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(10)
+        .build();
+    let rows: [(String, gtk::Widget); 5] = [
+        (t("DLG_SETUP_TYPE", "種類"), kind.clone().upcast()),
+        (t("DLG_SETUP_HOST", "ホスト名"), host.clone().upcast()),
+        (t("DLG_SETUP_PORT", "ポート番号"), port.clone().upcast()),
+        (t("DLG_SETUP_USER", "ユーザ名"), user.clone().upcast()),
+        (t("DLG_SETUP_PASS", "パスワード"), password.clone().upcast()),
+    ];
+    for (i, (k, w)) in rows.into_iter().enumerate() {
+        grid.attach(&label(k), 0, i as i32, 1, 1);
+        grid.attach(&w, 1, i as i32, 1, 1);
+    }
+    content.append(&grid);
+    let note = gtk::Label::new(Some(&l(
+        "Telnet・TCP・内蔵 SSH の接続に使います（ssh_config の ProxyCommand / ProxyJump があればそちら）。パスワードは保存せず、アプリを終了すると消えます。",
+    )));
+    note.set_wrap(true);
+    note.set_xalign(0.0);
+    note.add_css_class("dim-label");
+    content.append(&note);
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut s = Settings::load();
+        s.proxy = ProxyConf {
+            kind: kinds[(kind.selected() as usize).min(3)].into(),
+            host: host.text().trim().to_owned(),
+            port: port.value() as u16,
+            user: user.text().to_string(),
+        };
+        s.save();
+        PROXY_PASSWORD.with(|p| *p.borrow_mut() = password.text().to_string());
+        s.proxy.apply();
+    });
+    win.present();
+}
+
 /// Tera Term の「設定 > その他の設定」のうち、全般・制御シーケンス・表示にある項目。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -589,6 +697,7 @@ pub struct Settings {
     pub look: Look,
     pub ssh: SshConf,
     pub other: OtherConf,
+    pub proxy: ProxyConf,
 }
 
 impl Default for Settings {
@@ -619,6 +728,7 @@ impl Default for Settings {
             look: Look::default(),
             ssh: SshConf::default(),
             other: OtherConf::default(),
+            proxy: ProxyConf::default(),
         }
     }
 }

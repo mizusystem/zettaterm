@@ -421,14 +421,24 @@ async fn open_transport(
                 .map_err(other)?
         } else {
             let addr = (params.host_name.as_str(), params.port);
-            let stream = tokio::time::timeout(timeout, tokio::net::TcpStream::connect(addr))
-                .await
-                .map_err(|_| {
-                    io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        format!("{}: connection timed out", params.host_name),
-                    )
-                })??;
+            let stream = if let Some(proxy) = crate::proxy::current() {
+                // プロキシの設定があれば、そこを通す（ProxyCommand / ProxyJump が無いとき）
+                let (host, port) = (params.host_name.clone(), params.port);
+                let std = tokio::task::spawn_blocking(move || proxy.connect(&host, port, timeout))
+                    .await
+                    .map_err(other)??;
+                std.set_nonblocking(true)?;
+                tokio::net::TcpStream::from_std(std)?
+            } else {
+                tokio::time::timeout(timeout, tokio::net::TcpStream::connect(addr))
+                    .await
+                    .map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            format!("{}: connection timed out", params.host_name),
+                        )
+                    })??
+            };
             client::connect_stream(config, stream, handler)
                 .await
                 .map_err(other)?

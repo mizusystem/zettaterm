@@ -316,6 +316,11 @@ impl TcpTransport {
         if host.is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "host is empty"));
         }
+        // プロキシの設定があれば、そこを通す（名前の解決もプロキシに任せる）
+        if let Some(proxy) = crate::proxy::current() {
+            let stream = proxy.connect(host, port, CONNECT_TIMEOUT)?;
+            return Self::from_stream(stream, mode, size);
+        }
         // "[::1]" のような表記も受け付ける
         let bare = host.trim_start_matches('[').trim_end_matches(']');
         let addrs: Vec<SocketAddr> = (bare, port)
@@ -329,21 +334,23 @@ impl TcpTransport {
         let mut last = io::Error::new(io::ErrorKind::NotFound, format!("{host}: no address"));
         for addr in addrs {
             match TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
-                Ok(stream) => {
-                    stream.set_nodelay(true)?;
-                    let out = stream.try_clone()?;
-                    return Ok(Self {
-                        stream,
-                        mode,
-                        neg: Arc::new(Mutex::new(Negotiation::new(size))),
-                        out: Arc::new(Mutex::new(out)),
-                        closed: Arc::new(AtomicBool::new(false)),
-                    });
-                }
+                Ok(stream) => return Self::from_stream(stream, mode, size),
                 Err(e) => last = e,
             }
         }
         Err(last)
+    }
+
+    fn from_stream(stream: TcpStream, mode: Mode, size: WindowSize) -> io::Result<Self> {
+        stream.set_nodelay(true)?;
+        let out = stream.try_clone()?;
+        Ok(Self {
+            stream,
+            mode,
+            neg: Arc::new(Mutex::new(Negotiation::new(size))),
+            out: Arc::new(Mutex::new(out)),
+            closed: Arc::new(AtomicBool::new(false)),
+        })
     }
 }
 

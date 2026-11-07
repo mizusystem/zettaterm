@@ -94,5 +94,7 @@
   "相手がクリップボードに書き込みました（{} 文字）": "The remote host wrote to the clipboard ({} characters)",
   "接続時・切断時にビープ音を鳴らす": "Beep on connect and disconnect",
   "切断したら画面をクリアする": "Clear the screen when the connection closes",
-  "接続断の前に確認する": "Confirm before disconnecting"
+  "接続断の前に確認する": "Confirm before disconnecting",
+  "使わない": "None",
+  "Telnet・TCP・内蔵 SSH の接続に使います（ssh_config の ProxyCommand / ProxyJump があればそちら）。パスワードは保存せず、アプリを終了すると消えます。": "Used for Telnet, TCP and built-in SSH connections (ProxyCommand / ProxyJump in ssh_config take precedence). The password is not saved and is forgotten when the app quits."
 }

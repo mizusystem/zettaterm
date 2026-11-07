@@ -296,6 +296,10 @@ impl Tabs {
             }),
         );
         add(
+            "setup-proxy",
+            Box::new(|t, _| settings::proxy_dialog(&t.win.clone().upcast())),
+        );
+        add(
             "setup-other",
             Box::new(|t, _| {
                 settings::other_dialog(&t.win.clone().upcast(), apply_other_everywhere)

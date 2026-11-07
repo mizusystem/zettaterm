@@ -151,6 +151,14 @@ fn menu() -> gio::Menu {
         Some("win.setup-other"),
     );
     setup.append(
+        Some(&crate::strings::section(
+            "TTProxy",
+            "MENU_SETUP",
+            "プロキシ...",
+        )),
+        Some("win.setup-proxy"),
+    );
+    setup.append(
         Some(&format!(
             "{}...",
             tt("DLG_TABSHEET_TITLE_COPYPASTE", "コピーと貼り付け")
@@ -342,6 +350,7 @@ fn main() -> glib::ExitCode {
         .build();
     app.connect_startup(|app| {
         app.set_menubar(Some(&menu()));
+        settings::Settings::load().proxy.apply();
         let quit = gio::SimpleAction::new("quit", None);
         let a = app.clone();
         quit.connect_activate(move |_, _| a.quit());

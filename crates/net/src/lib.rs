@@ -6,6 +6,7 @@
 
 pub mod forward;
 pub mod keygen;
+pub mod proxy;
 mod pty;
 pub mod scp;
 mod ssh;
@@ -14,6 +15,7 @@ pub mod ssh_config;
 mod telnet;
 
 pub use forward::Forward;
+pub use proxy::{Proxy, ProxyKind};
 pub use pty::{LocalPty, PtyCommand};
 pub use scp::{ScpJob, ScpProgress, ScpStatus, SshFiles};
 pub use ssh::{SshTarget, hosts_in, ssh_config_hosts};

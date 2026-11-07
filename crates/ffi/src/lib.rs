@@ -510,6 +510,45 @@ pub fn set_ssh_defaults(
     bad
 }
 
+/// プロキシの種類（TTProxy）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ProxyKind {
+    Http,
+    Socks4,
+    Socks5,
+}
+
+/// プロキシの設定（TTProxy の「プロキシの設定」）。
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct ProxySetting {
+    pub kind: ProxyKind,
+    pub host: String,
+    pub port: u16,
+    pub user: Option<String>,
+    pub password: Option<String>,
+}
+
+/// これからの Telnet・TCP・内蔵 SSH の接続に使うプロキシ（None で直接つなぐ）。
+/// ssh_config の ProxyCommand / ProxyJump があればそちらを使う。
+#[uniffi::export]
+pub fn set_proxy(proxy: Option<ProxySetting>) {
+    mt_net::proxy::set(
+        proxy
+            .filter(|p| !p.host.trim().is_empty())
+            .map(|p| mt_net::Proxy {
+                kind: match p.kind {
+                    ProxyKind::Http => mt_net::ProxyKind::Http,
+                    ProxyKind::Socks4 => mt_net::ProxyKind::Socks4,
+                    ProxyKind::Socks5 => mt_net::ProxyKind::Socks5,
+                },
+                host: p.host.trim().to_owned(),
+                port: p.port,
+                user: p.user.filter(|u| !u.is_empty()),
+                password: p.password.filter(|p| !p.is_empty()),
+            }),
+    );
+}
+
 /// SSH 鍵の種類（鍵生成）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum SshKeyKind {

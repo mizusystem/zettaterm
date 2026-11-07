@@ -80,6 +80,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 既定で `printf '\e[3J'` はスクロールバックを消さず、`printf '\e[5 q'` はカーソルを変えない（その他の設定で受け入れにすると効く）
 - [ ] 複数行の貼り付けが行ごとに少し待って送られる（既定 10 ミリ秒）
 - [ ] 「コントロール > ポートのリセット」：シリアルで閉じて開き直し、そのまま使える（ESP32 は DTR/RTS でリセットされることがあるので注意）
+- [ ] 「設定 > プロキシ...」：SOCKS5（例 `ssh -D 1080` で作ったもの）や HTTP プロキシを通して Telnet・内蔵 SSH がつながる。「使わない」に戻すと直接つなぐ
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

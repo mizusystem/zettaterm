@@ -165,7 +165,7 @@
 - [x] **SSH エージェント転送 (`auth-agent-req@openssh.com`)** と要求時確認通知（※macOS / Linux のみ。要求時の確認・通知は未実装）
 - [x] **SSH キープアライブ (HeartBeat)** タスク（無通信時に指定秒間隔で `keepalive@openssh.com` または ignore パケットを送信）
 - [ ] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**
-- [ ] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定
+- [x] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定（※「設定 > プロキシ...」。Telnet・TCP・内蔵 SSH。パスワードは保存しない。TTProxy の URL 表記・ログ・プロンプト文字列は未対応）
 
 ### 3-2. Telnet / TCP (`crates/net/src/telnet.rs`)
 - [x] **Telnet Binary オプション (`TRANSMIT-BINARY`, Option 0)** のネゴシエーション対応（※最初から対応済み。BINARY 中は CR に NUL を付けない）
