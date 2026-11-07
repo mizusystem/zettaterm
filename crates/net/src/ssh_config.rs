@@ -103,8 +103,8 @@ pub fn resolve(
         .or_else(default_config_path)
     {
         Some(path) if path.exists() => {
-            let file = std::fs::File::open(&path)?;
-            let mut reader = io::BufReader::new(file);
+            let text = number_repeated_keys(&std::fs::read_to_string(&path)?);
+            let mut reader = io::BufReader::new(text.as_bytes());
             let mut cfg = SshConfig::default();
             if let Some(h) = &home {
                 cfg = cfg.home_dir(h.clone());
@@ -212,11 +212,25 @@ pub fn resolve(
         })
         .collect();
     for (key, kind) in [("localforward", 'L'), ("dynamicforward", 'D')] {
-        // `LocalForward 8080 host:80` は値が空白で 2 つに分かれて届く
-        if let Some(v) = extra(key)
-            && let Ok(f) = crate::forward::Forward::parse(kind, &v.join(":"))
-        {
-            forwards.push(f);
+        // 行ごとに番号を付けたキーで届く（number_repeated_keys）。番号の順に
+        let mut lines: Vec<(usize, &Vec<String>)> = p
+            .unsupported_fields
+            .iter()
+            .chain(&p.ignored_fields)
+            .filter_map(|(k, v)| {
+                Some((
+                    k.strip_prefix(key)?.strip_prefix(NUMBERED)?.parse().ok()?,
+                    v,
+                ))
+            })
+            .collect();
+        lines.sort_by_key(|(n, _)| *n);
+        lines.dedup_by_key(|(n, _)| *n);
+        for (_, v) in lines {
+            // `LocalForward 8080 host:80` は値が空白で 2 つに分かれて届く
+            if let Ok(f) = crate::forward::Forward::parse(kind, &v.join(":")) {
+                forwards.push(f);
+            }
         }
     }
     forwards.extend(remote);
@@ -330,6 +344,37 @@ impl Tokens {
     }
 }
 
+/// 番号付きのキーの区切り
+const NUMBERED: &str = "-mt-";
+
+/// 何行も書ける `LocalForward` と `DynamicForward` に、行ごとに番号を付けたキーにする
+/// （`localforward-mt-1` など）。ssh2-config は同じキーを 1 つしか持たないため。
+/// Include で読まれるファイルの中は番号が付かないので、そこでは最後の 1 行だけが効く。
+fn number_repeated_keys(text: &str) -> String {
+    let mut n = 0;
+    let mut out = String::with_capacity(text.len() + 64);
+    for line in text.lines() {
+        let body = line.trim_start();
+        let indent = &line[..line.len() - body.len()];
+        let key_len = body
+            .find(|c: char| c.is_whitespace() || c == '=')
+            .unwrap_or(body.len());
+        let key = &body[..key_len];
+        if ["localforward", "dynamicforward"]
+            .iter()
+            .any(|k| key.eq_ignore_ascii_case(k))
+        {
+            n += 1;
+            let key = key.to_ascii_lowercase();
+            out.push_str(&format!("{indent}{key}{NUMBERED}{n}{}", &body[key_len..]));
+        } else {
+            out.push_str(line);
+        }
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,7 +442,7 @@ mod tests {
         let cfg = write(
             dir.path(),
             "config",
-            "Host gw\n  LocalForward 8080 intranet:80\n  DynamicForward 127.0.0.1:1080\n  RemoteForward 2222 localhost:22\n",
+            "Host gw\n  LocalForward 8080 intranet:80\n  DynamicForward 127.0.0.1:1080\n  RemoteForward 2222 localhost:22\n  LocalForward=8443 intranet:443\n  DynamicForward 1081\nHost *\n  LocalForward 9000 all:90\n",
         );
         let p = resolve("gw", None, None, Some(&cfg)).unwrap();
         let specs: Vec<String> = p
@@ -409,7 +454,10 @@ mod tests {
             specs,
             [
                 "Llocalhost:8080:intranet:80",
+                "Llocalhost:8443:intranet:443",
+                "Llocalhost:9000:all:90",
                 "D127.0.0.1:1080",
+                "Dlocalhost:1081",
                 "Rlocalhost:2222:localhost:22"
             ]
         );

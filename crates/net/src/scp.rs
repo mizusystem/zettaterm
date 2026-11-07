@@ -146,12 +146,21 @@ impl SshFiles {
     }
 
     /// リモートのファイル 1 つを `local`（ファイル名）として受け取り、終わるまで待つ。
+    /// `local` が既にあるフォルダ（または `/` で終わる）なら、リモートの名前のままそこへ受け取る。
     pub fn recv_file(
         &self,
         remote: &str,
         local: &Path,
         stopped: &dyn Fn() -> bool,
     ) -> Result<(), String> {
+        let as_dir = local.is_dir() || local.as_os_str().to_string_lossy().ends_with('/');
+        if as_dir {
+            std::fs::create_dir_all(local).map_err(|e| e.to_string())?;
+            return self
+                .download(remote, local.to_path_buf())
+                .wait(stopped)
+                .map(|_| ());
+        }
         let dir = local
             .parent()
             .filter(|d| !d.as_os_str().is_empty())

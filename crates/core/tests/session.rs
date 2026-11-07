@@ -560,6 +560,45 @@ fn zmodem_bytes_after_the_header_go_to_the_transfer_or_back_to_the_screen() {
     assert!(wait_until(|| screen_text(&session).contains("tail")));
 }
 
+/// 第 2 回レビュー N-8：返事が無ければ、その後の受信が無くても時間切れで画面に出す。
+/// 返事を待つ間に相手が開始を送り直しても、もう一度は知らせない。
+#[test]
+fn held_zmodem_bytes_flush_on_their_own_and_resends_are_not_asked_again() {
+    #[derive(Default)]
+    struct Requests(Mutex<usize>);
+    impl SessionListener for Requests {
+        fn on_damage(&self) {}
+        fn on_state(&self, _: SessionState) {}
+        fn on_bell(&self) {}
+        fn on_title(&self, _: String) {}
+        fn on_transfer_request(&self, _: mt_core::TransferRequest) {
+            *self.0.lock().unwrap() += 1;
+        }
+    }
+    let (transport, remote) = MockTransport::pair();
+    let listener = Arc::new(Requests::default());
+    let options = SessionOptions {
+        size: WindowSize::new(40, 4),
+        ..Default::default()
+    };
+    let session = Session::open(Box::new(transport), options, listener.clone()).unwrap();
+    remote.send(b"x**\x18B00000000000000\r\x8a\x11 tail");
+    assert!(wait_until(|| *listener.0.lock().unwrap() == 1));
+    let start = Instant::now();
+    while !screen_text(&session).contains("tail") && start.elapsed() < Duration::from_secs(8) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(screen_text(&session).contains("tail"));
+    remote.send(b"**\x18B00000000000000\r\x8a\x11");
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(*listener.0.lock().unwrap(), 1);
+    // 返事をしたあとの開始は、また知らせる
+    session.decline_transfer();
+    remote.send(b"**\x18B00000000000000\r\x8a\x11");
+    assert!(wait_until(|| *listener.0.lock().unwrap() == 2));
+    session.close();
+}
+
 /// 外部レビュー B-2：JIS（ISO-2022-JP）でも、テキストのログは UTF-8 で読める形になる。
 #[test]
 fn text_log_is_utf8_even_with_jis() {

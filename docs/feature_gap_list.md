@@ -191,7 +191,7 @@
   - `Option` (macOS) / `Alt` (Linux) + マウスドラッグによる矩形領域の選択とコピー
 - [x] **クリッカブル URL**:
   - 端末内の URL 文字列の検出と `Cmd + クリック` / `Ctrl + クリック` によるブラウザ起動
-- [ ] **カーソル描画バリエーション**:
+- [x] **カーソル描画バリエーション**（※形状切替・点滅は実装済み。非フォーカス時の白抜きブロックカーソルのみ未実装）:
   - ブロック（四角）・縦線（バー）・下線（アンダーライン）の形状切替
   - 点滅（ブリンク）の ON/OFF
   - ウィンドウ非フォーカス時の白抜き（中抜き）ブロックカーソル表示
@@ -306,3 +306,43 @@
 - [x] SSH ポートフォワーディング (`-L`, `-R`, `-D`) 設定 UI とトンネリング実装
 - [x] SSH エージェント転送 (`ForwardAgent`)、SSH 鍵生成 GUI、SSH HeartBeat
 - [x] `TERATERM.INI` インポート機能と GUI コマンドライン引数 (`/M=`, `/L=`, `/C=`, `/ssh` 等) のサポート
+
+---
+
+## 8. 実装進捗レビュー結果（2026-11-08 時点）
+
+第 7 章の **Step 1 〜 Step 4（計 18 グループ）がすべて実装完了**し、さらに第 1〜6 章の周辺機能も大部分が Mac 版・Linux (GTK4) 版の双方で実装されたことを確認しました。
+
+### 8-1. 完了が確認された主要領域
+1. **UI・日常操作（Step 1 & 第 1, 2, 4 章）**
+   - 選択時自動コピー (`AutoTextCopy`)、右クリック貼り付け、Option/Alt 矩形選択、折り返し行連結コピー、単語区切り文字 (`DelimList`)
+   - 複数行ペースト確認ダイアログ (`ConfirmChangePaste`) と危険コマンド赤字警告 (`mt_core::paste`)
+   - 「編集」メニュー一式（コピー、テーブルコピー TSV、貼り付け `<CR>`、画面クリア、バッファクリア、選択解除、画面選択、全選択）
+   - 端末内検索バー（正規表現・大小文字区別・前後移動・ハイライト）、縦スクロールバー、クリッカブル URL
+   - 「コントロール」メニュー（端末リセット、リモートタイトルリセット、Telnet `IAC AYT` 送信）
+2. **ログ・設定・シリアル・TTX 相当機能（Step 2 & 第 1, 2, 3, 6 章）**
+   - 自動ログ開始 (`LogAutoStart`)、ファイル名テンプレート展開 (`&h`, `&p`, `&u`, `strftime`)、開始時の画面バッファ一括出力 (`LogIncludeScreenBuffer`)、BOM・プレーンテキスト出力、経過時間タイムスタンプ、サイズ別ログローテーション (`LogRotate`)
+   - ログ中断/再開、コメント付加、ログ表示、バイナリログ再生 (`MENU_FILE_REPLAYLOG`)、ttyrec 録画・再生 (`TTXttyrec` / `TTXttyplay`)、生ファイル受信 (`MENU_FILE_RECVFILE`・無通信自動停止タイマー付き)
+   - フォント・カラーテーマ・カーソル形状（Block / Bar / Underline）および点滅設定、文字コードクイック切替 (`TTXKanjiMenu`)、追加エンコーディング（韓国語・中国語簡体/繁体・ロシア語・西欧等）
+   - シリアル DTR / RTS トグル UI、CTS / DSR / RI / CD ステータスバー表示、可変ブレーク長 (`SendBreakTime`)
+   - ViewMode（閲覧専用ロック）、繰り返しコマンド (`TTXRecurringCommand`)、常に最前面表示（macOS）、キーボード設定（BS/Del・メタキー）、アンサーバック (`Answerback`)
+3. **TTL マクロ（Step 3 & 第 5 章）**
+   - 予約語数が当初の 80 コマンドから **127 コマンド**へ大幅拡充（`wait4all`, `waitn`, `setbaud`, `setflowctrl`, `getmodemstatus`, `scpsend`, `scprecv`, `sendbroadcast` 系, `logwrite` / `logpause` / `logstart` / `loginfo`, `listbox`, `filenamebox`, `dirnamebox`, `clearscreen`, `setecho`, フォルダ・ファイル・シーク・ロック操作一式, `makepath` / `basename` / `dirname`, `getpassword` パスワードファイル一式（難読化。暗号化ではない）, `clipb2var` / `var2clipb`, `exec`, `setexitcode`, `getver`, `gethostname`, `getttdir`, `getspecialfolder`, `uptime`, `crc16` / `crc32` / `checksum*` 等）
+4. **TTSSH・設定ファイル・CLI 引数（Step 4 & 第 3, 6 章）**
+   - SSH ポートフォワーディング (`-L`, `-R`, `-D`)、SSH エージェント転送 (`auth-agent-req@openssh.com`)、SSH HeartBeat、SSH 鍵生成 GUI（Ed25519 / ECDSA / RSA）
+   - `TERATERM.INI` インポータ (`mt_core::ini`) と `ttermpro.exe` 互換 CLI 引数パーサ (`mt_ttl::parse_args`)
+
+### 8-2. 現時点での残存未実装項目（今後の拡張候補）
+優先度の高い主要機能は出揃っており、残りは以下の補助的・詳細な項目のみとなっています。
+
+- **メニュー・ダイアログ系**:
+  - 「ファイル」: ログ記録中フローティング小窓 (`SHOWLOGDIALOG`)、基準ディレクトリ変更 (`CHANGEDIR`)、印刷 (`PRINT`)、全終了 (`EXITALL`)、CLI 引数 `/R=` からのログ再生起動
+  - 「設定」: `TERATERM.INI` 形式でのエクスポート保存 (`MENU_SETUP_SAVE`)、TCP/IP 詳細設定ダイアログ、SSH アルゴリズム優先順ダイアログ、その他の設定（OSC 52 許可設定、マウスイベント通知拒否、ウィンドウ不透明度・背景画像、ANSI 16色個別パレット、行単位ペースト遅延 `PasteDelayPerLine`）
+  - 「コントロール / 転送 / ウィンドウ / ヘルプ」: シリアルポートリセット (`RESETPORT`)、マクロ実行中ステータス小窓 (`SHOW_MACRO`)、Kermit Get / Finish、ウィンドウ整列メニュー、バージョン情報 (`DLG_ABOUT_TITLE`)
+  - 「ブロードキャスト」: リアルタイム 1 文字送信モード、履歴コンボボックス、改行コード選択
+- **プロトコル・端末描画系**:
+  - SSH パスワード期限切れ変更応答 (`PASSWD_CHANGEREQ`)、HTTP/SOCKS プロキシ経由接続 (TTProxy 相当)、X11 転送、UNIX ドメインソケット接続
+  - 端末の非フォーカス時の中抜き（白抜き）ブロックカーソル描画、OSC 52 リモートクリップボード対応
+- **TTL マクロ（残り 14 コマンド）**:
+  - `waitevent`, `kermitget`, `kermitfinish`, `sendkcode`, `logrotate`, `logautoclosemode`, `setdlgpos`, `move`, `resize`, `getttpos`, `getipv4addr`, `getipv6addr`, `restoresetup`, `savesetup`
+

@@ -1032,6 +1032,14 @@ fn scp_upload_and_download_over_the_same_connection() {
     files.recv_file("remote.log", &named, &never).unwrap();
     assert_eq!(std::fs::read(&named).unwrap(), b"from the server\n");
     assert!(files.recv_file("missing.txt", &named, &never).is_err());
+    // 受け取り先がフォルダなら、リモートの名前のままそこへ
+    let into = env.path().join("into");
+    std::fs::create_dir(&into).unwrap();
+    files.recv_file("remote.log", &into, &never).unwrap();
+    assert_eq!(
+        std::fs::read(into.join("remote.log")).unwrap(),
+        b"from the server\n"
+    );
 
     // 無いファイルは理由付きで失敗する
     let job = files.download("missing.txt", out.clone());

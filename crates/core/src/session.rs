@@ -100,6 +100,8 @@ enum WriterMsg {
 }
 
 struct Inner {
+    /// 自分自身（受信が止まっても、とっておいた分を時間切れで端末に出すため）
+    me: std::sync::Weak<Inner>,
     vt: Mutex<Terminal>,
     transport: Mutex<Box<dyn Transport>>,
     tx: Sender<WriterMsg>,
@@ -126,6 +128,7 @@ struct Inner {
     view_only: AtomicBool,
     /// ENQ への返事（Answerback）
     answerback: Mutex<Option<String>>,
+    enq: Mutex<EnqScanner>,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
     recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -150,6 +153,8 @@ struct Route {
     /// 端末には出さず、転送が始まったら最初に渡す
     held: Option<Vec<u8>>,
     held_since: Option<std::time::Instant>,
+    /// `on_transfer_request` で知らせて、まだ返事が無い。その間に相手が開始を送り直しても、もう一度は知らせない
+    asked_at: Option<std::time::Instant>,
 }
 
 /// プロトコルなしで送るファイルの大きさの上限
@@ -159,6 +164,65 @@ pub const SEND_FILE_LIMIT: u64 = 64 << 20;
 const HELD_LIMIT: usize = 256 * 1024;
 /// 返事が無いまま、これより長く待ったら端末に出す（応じない UI や CLI のため）
 const HELD_TIMEOUT: Duration = Duration::from_secs(5);
+/// 返事の無い問い合わせを、これより長くは覚えておかない（応じない UI のあとで、次の転送を知らせられるように）
+const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// 1 回の受信で返すアンサーバックの数の上限（大量の ENQ で送信が溢れないように）
+const MAX_ANSWERBACKS: usize = 16;
+
+/// 受信の中の ENQ を数える。ESC で始まる文字列（OSC・DCS・APC・PM・SOS）の中は数えない。
+/// 受信の塊をまたいでも続きから見る。
+#[derive(Default)]
+struct EnqScanner {
+    state: EnqState,
+}
+
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+enum EnqState {
+    #[default]
+    Ground,
+    Esc,
+    /// 文字列の中。OSC は BEL でも終わる
+    Text {
+        osc: bool,
+    },
+    TextEsc {
+        osc: bool,
+    },
+}
+
+impl EnqScanner {
+    fn scan(&mut self, bytes: &[u8]) -> usize {
+        let mut count = 0;
+        for &b in bytes {
+            self.state = match (self.state, b) {
+                // CAN / SUB は途中のシーケンスを取り消す
+                (_, 0x18 | 0x1a) => EnqState::Ground,
+                (EnqState::Ground, 0x05) => {
+                    count += 1;
+                    EnqState::Ground
+                }
+                (EnqState::Ground, 0x1b) => EnqState::Esc,
+                (EnqState::Ground, _) => EnqState::Ground,
+                (EnqState::Esc, b']') => EnqState::Text { osc: true },
+                (EnqState::Esc, b'P' | b'_' | b'^' | b'X') => EnqState::Text { osc: false },
+                (EnqState::Esc, 0x1b) => EnqState::Esc,
+                (EnqState::Esc, 0x05) => {
+                    count += 1;
+                    EnqState::Esc
+                }
+                (EnqState::Esc, _) => EnqState::Ground,
+                (EnqState::Text { osc: true }, 0x07) => EnqState::Ground,
+                (EnqState::Text { osc }, 0x1b) => EnqState::TextEsc { osc },
+                (EnqState::Text { osc }, _) => EnqState::Text { osc },
+                (EnqState::TextEsc { .. }, b'\\') => EnqState::Ground,
+                (EnqState::TextEsc { osc }, 0x1b) => EnqState::TextEsc { osc },
+                (EnqState::TextEsc { osc }, _) => EnqState::Text { osc },
+            };
+        }
+        count
+    }
+}
 
 /// 受信した文字の写し（`Session::tap`）。文字コード変換の後、改行コード変換の前の文字列で届く。
 /// 捨てると写しも止まる。ファイル転送中の受信は届かない。
@@ -195,7 +259,8 @@ impl Session {
         transport.resize(size)?;
 
         let (tx, rx) = mpsc::channel::<WriterMsg>();
-        let inner = Arc::new(Inner {
+        let inner = Arc::new_cyclic(|me| Inner {
+            me: me.clone(),
             vt: Mutex::new(Terminal::new(size.cols, size.rows, options.scrollback)),
             transport: Mutex::new(transport),
             tx,
@@ -216,6 +281,7 @@ impl Session {
             opened_at: std::time::Instant::now(),
             view_only: AtomicBool::new(false),
             answerback: Mutex::new(None),
+            enq: Mutex::new(EnqScanner::default()),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
@@ -273,12 +339,13 @@ impl Session {
     }
 
     /// ENQ（0x05）を受けたときに返す文字列（Tera Term の「設定 > 端末」の Answerback）。空なら返さない。
+    /// 文字列に ENQ があれば除く（相手が返事をそのまま返すと、応答が続いてしまうため）。
     pub fn set_answerback(&self, text: Option<String>) {
         *self
             .inner
             .answerback
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = text;
+            .unwrap_or_else(|e| e.into_inner()) = text.map(|t| t.replace('\u{5}', ""));
     }
 
     /// 「設定 > キーボード」（BS / Delete キーと Meta）。
@@ -634,6 +701,7 @@ impl Session {
             }
             let first = divert.start();
             self.inner.raw(first);
+            route.asked_at = None;
             // 返事を待つ間に届いていた分（ZMODEM のヘッダから後ろ）を先に渡す
             if let Some(held) = route.held.take() {
                 let out = divert.receive(&held);
@@ -679,7 +747,11 @@ impl Session {
 
     /// 相手の ZMODEM の開始（`on_transfer_request`）に応じないとき。とっておいた受信を端末に出す。
     pub fn decline_transfer(&self) {
-        let held = self.inner.divert().held.take();
+        let held = {
+            let mut route = self.inner.divert();
+            route.asked_at = None;
+            route.held.take()
+        };
         if let Some(bytes) = held {
             self.inner.display(&bytes);
         }
@@ -860,21 +932,62 @@ impl Inner {
             .find(bytes);
         match detected {
             Some((at, rest, request)) => {
+                let route = self.divert();
+                if route.asked_at.is_some_and(|t| t.elapsed() < ASK_TIMEOUT) {
+                    // 前の問い合わせにまだ返事が無い（ダイアログを開いている間の送り直し）。知らせ直さない
+                    drop(route);
+                    self.display(bytes);
+                    return;
+                }
+                drop(route);
                 self.display(&bytes[..at]);
+                let now = std::time::Instant::now();
                 let mut route = self.divert();
                 route.held = Some(rest);
-                route.held_since = Some(std::time::Instant::now());
+                route.held_since = Some(now);
+                route.asked_at = Some(now);
                 drop(route);
+                self.flush_held_later(now);
                 self.listener.on_transfer_request(request);
             }
             None => self.display(bytes),
         }
     }
 
+    /// 返事が無く、その後の受信も無いまま時間が過ぎたら、とっておいた分を端末に出す。
+    fn flush_held_later(&self, since: std::time::Instant) {
+        let me = self.me.clone();
+        let _ = thread::Builder::new()
+            .name("mt-session-held".into())
+            .spawn(move || {
+                thread::sleep(HELD_TIMEOUT + Duration::from_millis(100));
+                let Some(inner) = me.upgrade() else {
+                    return;
+                };
+                let bytes = {
+                    let mut route = inner.divert();
+                    if route.held_since != Some(since) {
+                        return;
+                    }
+                    route.held_since = None;
+                    route.held.take()
+                };
+                if let Some(bytes) = bytes {
+                    inner.display(&bytes);
+                }
+            });
+    }
+
     /// 受信を端末に出す（ログ、文字コード、改行コード、VT）。
     fn display(&self, bytes: &[u8]) {
-        // ENQ（0x05）にはアンサーバックの文字列を返す（Tera Term の Answerback）
-        if bytes.contains(&0x05) {
+        // ENQ（0x05）にはアンサーバックの文字列を返す（Tera Term の Answerback）。
+        // OSC などの文字列の中の 0x05 には応えない。ENQ 1 つにつき 1 回
+        let enqs = self
+            .enq
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .scan(bytes);
+        if enqs > 0 {
             let answer = self
                 .answerback
                 .lock()
@@ -882,9 +995,10 @@ impl Inner {
                 .clone();
             if let Some(a) = answer.filter(|a| !a.is_empty()) {
                 let cs = *self.charset_send.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = self
-                    .tx
-                    .send(WriterMsg::Data(charset::encode_send(cs, a.into_bytes())));
+                let reply = charset::encode_send(cs, a.into_bytes());
+                for _ in 0..enqs.min(MAX_ANSWERBACKS) {
+                    let _ = self.tx.send(WriterMsg::Data(reply.clone()));
+                }
             }
         }
         let decoded = self
@@ -986,5 +1100,22 @@ impl Inner {
             *s = state;
         }
         self.listener.on_state(state);
+    }
+}
+
+#[cfg(test)]
+mod enq_tests {
+    use super::EnqScanner;
+
+    #[test]
+    fn enq_inside_strings_is_ignored() {
+        let mut s = EnqScanner::default();
+        assert_eq!(s.scan(b"a\x05b\x05"), 2);
+        assert_eq!(s.scan(b"\x1b]0;ti\x05tle\x07\x05"), 1);
+        // 塊をまたぐ DCS（ESC \\ で終わる）
+        assert_eq!(s.scan(b"\x1bPq\x05"), 0);
+        assert_eq!(s.scan(b"\x05\x1b\\\x05"), 1);
+        // CAN で取り消し
+        assert_eq!(s.scan(b"\x1b]x\x18\x05"), 1);
     }
 }

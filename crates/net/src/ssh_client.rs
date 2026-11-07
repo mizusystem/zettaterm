@@ -531,7 +531,7 @@ impl client::Handler for Client {
     async fn server_channel_open_forwarded_tcpip(
         &mut self,
         channel: russh::Channel<client::Msg>,
-        _connected_address: &str,
+        connected_address: &str,
         connected_port: u32,
         _originator_address: &str,
         _originator_port: u32,
@@ -540,8 +540,9 @@ impl client::Handler for Client {
     ) -> Result<(), Self::Error> {
         reply.accept().await;
         let targets = Arc::clone(&self.remote_targets);
+        let address = connected_address.to_string();
         tokio::spawn(async move {
-            crate::forward::connect_forwarded(channel, connected_port, &targets).await;
+            crate::forward::connect_forwarded(channel, &address, connected_port, &targets).await;
         });
         Ok(())
     }

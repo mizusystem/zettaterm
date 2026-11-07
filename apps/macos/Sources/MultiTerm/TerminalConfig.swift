@@ -142,7 +142,8 @@ enum KeyboardConfig {
             KeyboardSettings(
                 backspaceSendsBs: d.bool(forKey: "keyboard.bsSendsBs"),
                 deleteSendsDel: d.bool(forKey: "keyboard.delSendsDel"),
-                metaSendsEscape: d.object(forKey: "keyboard.metaEscape") == nil ? true : d.bool(forKey: "keyboard.metaEscape"))
+                // 既定はオフ（Option は Option+¥ で \ を打つなど Mac の文字入力に使うため。ターミナル.app と同じ）
+                metaSendsEscape: d.bool(forKey: "keyboard.metaEscape"))
         }
         set {
             d.set(newValue.backspaceSendsBs, forKey: "keyboard.bsSendsBs")

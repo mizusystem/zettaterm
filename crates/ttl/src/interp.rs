@@ -1879,13 +1879,22 @@ impl<'h> Interp<'h> {
                 };
                 match self.host.clipboard() {
                     Some(text) => {
+                        // 511 バイトずつ。文字の途中では切らない（つなげば元どおりになる）
                         const CHUNK: usize = 511;
-                        let b = text.as_bytes();
-                        let start = (offset * CHUNK).min(b.len());
-                        let end = (start + CHUNK).min(b.len());
-                        let part = String::from_utf8_lossy(&b[start..end]).into_owned();
-                        self.set_out(&args[0], Value::Str(part))?;
-                        self.set_result(if end < b.len() { 2 } else { 1 });
+                        let next = |from: usize| {
+                            let mut end = (from + CHUNK).min(text.len());
+                            while !text.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            end
+                        };
+                        let mut start = 0;
+                        for _ in 0..offset {
+                            start = next(start);
+                        }
+                        let end = next(start);
+                        self.set_out(&args[0], Value::Str(text[start..end].to_owned()))?;
+                        self.set_result(if end < text.len() { 2 } else { 1 });
                     }
                     None => self.set_result(0),
                 }

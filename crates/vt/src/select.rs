@@ -380,7 +380,8 @@ pub fn search(rows: &[Row], re: &Regex) -> Vec<Selection> {
 fn url_regex() -> &'static Regex {
     static RE: std::sync::OnceLock<Regex> = std::sync::OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r#"(?i)\b(?:https?|ftp|sftp|ssh|telnet|file)://[^\s<>"'`{}|\\^]+"#)
+        // file:// は入れない（相手が表示した文字列のクリックで手元のアプリやファイルが開かないように）
+        Regex::new(r#"(?i)\b(?:https?|ftp|sftp|ssh|telnet)://[^\s<>"'`{}|\\^]+"#)
             .expect("URL の正規表現")
     })
 }
@@ -431,10 +432,17 @@ pub fn find_urls(rows: &[Row]) -> Vec<UrlMatch> {
             }
             let s = cell_of(&map, m.start());
             let e = cell_of(&map, m.start() + url.len() - 1);
+            // 全角で終わるなら右半分まで
+            let mut end_cell = e + 1;
+            if end_cell < flat.cells.len()
+                && flat.cells[end_cell].flags & CellFlags::WIDE_SPACER != 0
+            {
+                end_cell += 1;
+            }
             out.push(UrlMatch {
                 range: Selection {
                     start: flat.point(s),
-                    end: flat.point_end(e + 1),
+                    end: flat.point_end(end_cell),
                     block: false,
                 },
                 url: url.to_owned(),
@@ -648,6 +656,18 @@ mod tests {
             Some("https://example.com/a_(b)")
         );
         assert_eq!(url_at(&rows, Point::new(0, 1)), None);
+    }
+
+    #[test]
+    fn url_ending_in_a_wide_character_covers_both_halves() {
+        // "w https://ja.test/日本" : 日 は 18-19、本 は 20-21（終わりは 22）
+        let rows = [row(0, "w https://ja.test/日本 x", 40, false)];
+        let urls = find_urls(&rows);
+        assert_eq!(urls[0].url, "https://ja.test/日本");
+        assert_eq!(urls[0].range.end, Point::new(0, 22));
+        assert!(url_at(&rows, Point::new(0, 21)).is_some());
+        // file:// は開かない
+        assert!(find_urls(&[row(0, "file:///Applications/X.app", 40, false)]).is_empty());
     }
 
     #[test]

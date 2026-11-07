@@ -35,9 +35,10 @@ enum KeyMapping {
         }
     }
 
-    static func modifiers(_ flags: NSEvent.ModifierFlags) -> Modifiers {
-        // Option は Mac の特殊文字入力に使うので、当面 Meta としては扱わない
-        Modifiers(shift: flags.contains(.shift), ctrl: flags.contains(.control), alt: false)
+    /// `meta` は「Option キーをメタキーとして使う」。オフなら Option は Mac の特殊文字入力に使う
+    static func modifiers(_ flags: NSEvent.ModifierFlags, meta: Bool = false) -> Modifiers {
+        Modifiers(shift: flags.contains(.shift), ctrl: flags.contains(.control),
+                  alt: meta && flags.contains(.option))
     }
 
     /// `interpretKeyEvents` から来るコマンドを端末のキーに変換する。

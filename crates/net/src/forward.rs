@@ -190,8 +190,17 @@ impl std::fmt::Display for Forward {
     }
 }
 
-/// 相手から開かれた `forwarded-tcpip` の行き先（相手側で待ち受けているポート → 手元の先）。
-pub(crate) type RemoteTargets = Arc<Mutex<Vec<(u32, String, u16)>>>;
+/// 相手から開かれた `forwarded-tcpip` の行き先
+/// （相手側で待ち受けているアドレスとポート → 手元の先）。
+pub(crate) type RemoteTargets = Arc<Mutex<Vec<RemoteTarget>>>;
+
+#[derive(Clone, Debug)]
+pub(crate) struct RemoteTarget {
+    bind: String,
+    port: u32,
+    host: String,
+    host_port: u16,
+}
 
 /// 転送を始める。待ち受けに失敗したものは、理由を返す（接続は続ける。OpenSSH と同じ）。
 pub(crate) async fn start(
@@ -233,7 +242,12 @@ pub(crate) async fn start(
                     remote_targets
                         .lock()
                         .unwrap_or_else(|e| e.into_inner())
-                        .push((bound, host.clone(), *host_port));
+                        .push(RemoteTarget {
+                            bind: bind.clone(),
+                            port: bound,
+                            host: host.clone(),
+                            host_port: *host_port,
+                        });
                     Ok(())
                 }
                 Err(e) => Err(io::Error::other(e.to_string())),
@@ -255,10 +269,20 @@ enum Target {
     Socks,
 }
 
+/// 接続が切れたかを見る間隔。切れたら待ち受けをやめてポートを空ける
+const CLOSED_POLL: std::time::Duration = std::time::Duration::from_millis(500);
+
 async fn accept_loop(listener: TcpListener, handle: Arc<Handle<Client>>, target: Target) {
     let target = Arc::new(target);
     loop {
-        let Ok((stream, peer)) = listener.accept().await else {
+        if handle.is_closed() {
+            return;
+        }
+        let accepted = tokio::select! {
+            r = listener.accept() => r,
+            () = tokio::time::sleep(CLOSED_POLL) => continue,
+        };
+        let Ok((stream, peer)) = accepted else {
             return;
         };
         if handle.is_closed() {
@@ -316,17 +340,28 @@ async fn relay(mut stream: TcpStream, channel: Channel<Msg>) -> io::Result<()> {
 }
 
 /// 相手から開かれた `forwarded-tcpip` を手元の先へつなぐ（Client のコールバックから呼ぶ）。
+/// 相手が知らせてきたアドレスとポートに当たる転送先。
+/// 同じポートを別のアドレスで待ち受けていればアドレスで分け、
+/// 相手の書き方が違う（`localhost` と `127.0.0.1` など）ときはポートだけで探す。
+fn find_remote(targets: &[RemoteTarget], address: &str, port: u32) -> Option<(String, u16)> {
+    let same_port = || targets.iter().filter(|t| t.port == port);
+    same_port()
+        .find(|t| t.bind == address)
+        .or_else(|| same_port().next())
+        .map(|t| (t.host.clone(), t.host_port))
+}
+
 pub(crate) async fn connect_forwarded(
     channel: Channel<Msg>,
+    connected_address: &str,
     connected_port: u32,
     targets: &RemoteTargets,
 ) {
-    let target = targets
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .find(|t| t.0 == connected_port)
-        .map(|t| (t.1.clone(), t.2));
+    let target = find_remote(
+        &targets.lock().unwrap_or_else(|e| e.into_inner()),
+        connected_address,
+        connected_port,
+    );
     let Some((host, port)) = target else {
         let _ = channel.close().await;
         return;
@@ -448,6 +483,27 @@ async fn socks_reply(s: &mut TcpStream, v: Socks, ok: bool) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remote_targets_are_told_apart_by_address() {
+        let t = |bind: &str, port, host: &str| RemoteTarget {
+            bind: bind.into(),
+            port,
+            host: host.into(),
+            host_port: 80,
+        };
+        let list = [
+            t("127.0.0.1", 8080, "a"),
+            t("192.0.2.10", 8080, "b"),
+            t("", 9090, "c"),
+        ];
+        let host = |addr, port| find_remote(&list, addr, port).map(|(h, _)| h);
+        assert_eq!(host("192.0.2.10", 8080).as_deref(), Some("b"));
+        assert_eq!(host("127.0.0.1", 8080).as_deref(), Some("a"));
+        // 相手の書き方が違っても、ポートが合えばつなぐ
+        assert_eq!(host("0.0.0.0", 9090).as_deref(), Some("c"));
+        assert_eq!(host("127.0.0.1", 1), None);
+    }
 
     #[test]
     fn parse_openssh_forms() {

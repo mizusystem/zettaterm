@@ -523,12 +523,19 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         }
         // 変換中の文字があるときは、Return や矢印も IME に渡す
         if !hasMarkedText() {
+            let meta = KeyboardConfig.saved.metaSendsEscape
+            let mods = KeyMapping.modifiers(flags, meta: meta)
             if let key = KeyMapping.specialKey(keyCode: event.keyCode) {
-                send(key, KeyMapping.modifiers(flags))
+                send(key, mods)
                 return
             }
             if flags.contains(.control), let chars = event.charactersIgnoringModifiers, chars.count == 1 {
-                send(.text(text: chars), KeyMapping.modifiers(flags))
+                send(.text(text: chars), mods)
+                return
+            }
+            // Option をメタキーにしているときは、合成した文字（π など）ではなく元のキーを ESC 付きで送る
+            if mods.alt, let chars = event.charactersIgnoringModifiers, !chars.isEmpty {
+                send(.text(text: chars), mods)
                 return
             }
         }

@@ -262,18 +262,18 @@
 
 ## 3. 実装担当者向け対応チェックリスト
 
-- [ ] **S-1**: `crates/net/src/ssh_config.rs` / `ssh_client.rs` — `ProxyCommand` トークン展開時のホスト名・ユーザー名バリデーション追加
-- [ ] **S-2**: `crates/net/src/ssh_client.rs` — OpenSSH ホスト証明書の検証実装または証明書アルゴリズムの除外
-- [ ] **S-3**: `crates/core/src/session.rs` & UI — ZMODEM 自動受信のオプション化と `ZRQINIT` 検出チャンクの後続バイト保持
-- [ ] **S-4**: `apps/linux/src/window.rs` & `apps/macos/Sources/MultiTerm/MacroSupport.swift` — マクロ SSH パスワードのセッションスコープ化
-- [ ] **S-5**: `crates/net/src/scp.rs` & `crates/xfer` — ファイル転送のストリーミング読み込み、`ChannelIn::line` 長さ上限、シンボリックリンク判定、ファイル名サニタイズ
-- [ ] **S-6**: `crates/vt/src/terminal.rs` — `encode_paste` での C1 制御文字除去
-- [ ] **B-1**: `crates/ttl/src/parse.rs` & `interp.rs` — 多段 1行 `if` の `owner` 解決、`wait_until` の切断検知、`for` の境界値判定、`str*` の UTF-8 文字境界処理
-- [ ] **B-2**: `crates/core/src/session.rs` — `LogFormat::Text` へのデコード後 UTF-8 バイト列の引き渡し
-- [ ] **B-3**: `crates/xfer/src/kermit.rs` — `S` パケット ACK のチェックサム種別固定と `qbin` (`Y` -> `&`) ネゴシエーション修正
-- [ ] **B-4**: `crates/xfer/src/zmodem.rs` — `ZFIN` 時の `now` 使用と `written` カウンタの `u64` 化
-- [ ] **B-5**: `crates/core/src/session.rs` — `Session::open` の `Connected` 設定順序修正、ペースト時のローカルエコー修正、`zmodem.reset()` 追加
-- [ ] **B-6**: `apps/linux/src/window.rs` & `apps/macos/Sources/MultiTerm/TerminalView.swift` — `send_break` の非同期化と `CADisplayLink` の `invalidate` 処理
+- [x] **S-1**: `crates/net/src/ssh_config.rs` / `ssh_client.rs` — `ProxyCommand` トークン展開時のホスト名・ユーザー名バリデーション追加
+- [x] **S-2**: `crates/net/src/ssh_client.rs` — OpenSSH ホスト証明書の検証実装または証明書アルゴリズムの除外
+- [x] **S-3**: `crates/core/src/session.rs` & UI — ZMODEM 自動受信のオプション化と `ZRQINIT` 検出チャンクの後続バイト保持
+- [x] **S-4**: `apps/linux/src/window.rs` & `apps/macos/Sources/MultiTerm/MacroSupport.swift` — マクロ SSH パスワードのセッションスコープ化
+- [x] **S-5**: `crates/net/src/scp.rs` & `crates/xfer` — ファイル転送のストリーミング読み込み、`ChannelIn::line` 長さ上限、シンボリックリンク判定、ファイル名サニタイズ
+- [x] **S-6**: `crates/vt/src/terminal.rs` — `encode_paste` での C1 制御文字除去
+- [x] **B-1**: `crates/ttl/src/parse.rs` & `interp.rs` — 多段 1行 `if` の `owner` 解決、`wait_until` の切断検知、`for` の境界値判定、`str*` の UTF-8 文字境界処理
+- [x] **B-2**: `crates/core/src/session.rs` — `LogFormat::Text` へのデコード後 UTF-8 バイト列の引き渡し
+- [x] **B-3**: `crates/xfer/src/kermit.rs` — `S` パケット ACK のチェックサム種別固定と `qbin` (`Y` -> `&`) ネゴシエーション修正
+- [x] **B-4**: `crates/xfer/src/zmodem.rs` — `ZFIN` 時の `now` 使用と `written` カウンタの `u64` 化
+- [x] **B-5**: `crates/core/src/session.rs` — `Session::open` の `Connected` 設定順序修正、ペースト時のローカルエコー修正、`zmodem.reset()` 追加
+- [x] **B-6**: `apps/linux/src/window.rs` & `apps/macos/Sources/MultiTerm/TerminalView.swift` — `send_break` の非同期化と `CADisplayLink` の `invalidate` 処理
 
 ---
 
@@ -307,3 +307,222 @@
 | B-5 (3) | 軽微 | 受信側で転送が終わったときも ZMODEM の検出をリセット |
 | B-6 (1) | 妥当 | GTK 版のブレーク送信を別スレッドで行う |
 | B-6 (2) | 当たらない | displayLink は 1 つだけ作り、ウィンドウを閉じるとき（`closeSession`）に止めている |
+
+---
+
+## 5. 第2回レビュー（2026-11-08、再監査結果）
+
+コミット `c4ab34a` 〜 `6058d9a`（計 16 コミット）の差分および関連クレート・UI 実装を対象に再監査を実施しました。
+
+### 5.1 初回指摘事項（`S-1`〜`S-6`, `B-1`〜`B-6`）の修正確認
+
+第 4 章の対応方針に基づき、**全 12 項目が適切に修正・テスト追加されていることを確認しました**。
+- `S-1`（`ssh_config::check_name` によるホスト・ユーザー名検証）、`S-2`（`Certificate` 鍵の明示的拒否）、`S-3`（`route.held` 保留バッファ・`decline_transfer` による CAN アボート送信・ZMODEM 自動受信設定）、`S-4`（ワンショットパスワードのセッションスコープ化）、`S-5`（ストリーミング送信・行長上限・シンボリックリンクループ防止・`clean_name` サニタイズ）、`S-6`（`encode_paste` での C0/C1 制御文字除去）はいずれも意図通り機能しており、ユニットテストもパスしています。
+- `B-1`〜`B-6` についても、多段 1 行 `if` のループ解決、切断時の `wait` 脱出、`for` の `checked_add`、テキストログの UTF-8 出力、Kermit `S` パケット ACK の 1 バイトチェックサム固定、ZMODEM `ZFIN` 時刻、`Session::open` 状態遷移・ペースト時のローカルエコー分離・`zmodem.reset()`、GTK 版 `send_break` の非同期化がいずれも解消されています。
+
+---
+
+### 5.2 新規に実装された機能に関する不具合・セキュリティ懸念（`N-1`〜`N-9`）
+
+Step 1〜4 の機能追加（ポート転送、SCP マクロ、`~/.ssh/config` 連携、キーボード設定、TTL 新規コマンド、クリッカブル URL、ZMODEM 確認、アンサーバック等）に伴い、新たに確認された問題点です。
+
+#### N-1. [高〜中] SSH 切断後もローカルポート転送（`-L` / `-D`）の待受ポートが解放されない（ポートリーク）
+
+- **対象箇所**:
+  - `crates/net/src/forward.rs` (`accept_loop`, L252-L276)
+- **問題の詳細**:
+  ローカル転送 (`start_local`) およびダイナミック SOCKS 転送 (`start_dynamic`) の `accept_loop` は以下の構造になっています。
+  ```rust
+  loop {
+      let Ok((stream, peer)) = listener.accept().await else {
+          break;
+      };
+      if handle.is_closed() {
+          break;
+      }
+      ...
+  }
+  ```
+  `listener.accept().await` は新しい TCP 接続が来るまで待機し続けます。そのため、**SSH セッションが切断された後も、そのポートに次の TCP 接続が来るか、`SshTransport`（内部の `Runtime`）自体が Drop されるまで、`TcpListener` がローカルポートを掴み続けます**。
+  切断されたタブを閉じずに残したまま「再接続」や「セッションの複製」を行うと、新しいセッション側で `Address already in use` となりポート転送の開始に失敗します。
+- **修正方針**:
+  - `SshTransport` または `Session` から切断通知用の `CancellationToken` / `tokio::sync::watch` 等を `accept_loop` に渡し、`tokio::select!` で `listener.accept()` と切断通知を同時に待つようにして、SSH 切断時に即座に `TcpListener` を Drop させる。
+
+---
+
+#### N-2. [中] SSH リモートポート転送（`-R`）のルーティング競合と動的ポート (`0`) 非対応
+
+- **対象箇所**:
+  - `crates/net/src/ssh_client.rs` (`RemoteForwards` 定義 L28-L35, `server_channel_open_forwarded_tcpip` L172-L185)
+  - `crates/net/src/forward.rs` (`start_remote`, L211-L237)
+- **問題の詳細**:
+  1. **同一ポート・別バインドアドレスの上書き**:
+     `RemoteForwards` のマップが `HashMap<u16, (String, u16)>`（キーがポート番号のみ）になっており、`server_channel_open_forwarded_tcpip` でも `_connected_address` を見ずに第 3 引数（`connected_port` ※コード上の引数名は `originator_port` となっているが RFC 4254 / russh のシグネチャ上はサーバー側の `connected_port`）だけで検索しています。そのため、`-R 127.0.0.1:8080:hostA:80` と `-R 192.168.1.10:8080:hostB:80` のように異なる `bind_address` で同じポートを指定すると後勝ちで上書きされます。
+  2. **ポート `0`（サーバー側動的割り当て）の不一致**:
+     `tcpip_forward` に `bind_port = 0` を渡した場合、SSH サーバーは割り当てた実際のポート番号を `reply: u32` で返しますが、`start_remote` は `f.bind_port` (`0`) をキーとして `remotes` に登録しているため、着信時にポート番号が一致せず転送されません。
+- **修正方針**:
+  - `start_remote` で `let actual_port = if f.bind_port == 0 { reply as u16 } else { f.bind_port };` を用いて登録する。
+  - マップのキーに `(bind_address, port)` を使うか、ワイルドカード（`""`, `"0.0.0.0"`, `"::"`, `"*"`）へのフォールバック検索を入れる（併せて `ssh_client.rs` L176 の引数名 `originator_port` / `_originator_address` を `connected_port` / `originator_address` に修正しておくと誤読を防げます）。
+
+---
+
+#### N-3. [中] `SshFiles::recv_file`（TTL `scprecv`）で保存先に既存ディレクトリやワイルドカードを指定した際の不具合
+
+- **対象箇所**:
+  - `crates/net/src/scp.rs` (`SshFiles::recv_file`, L149-L168)
+- **問題の詳細**:
+  `recv_file(remote, local)` は以下の実装になっています。
+  ```rust
+  let dir = local.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| Path::new("."));
+  let saved = self.download(remote, dir)?;
+  if let Some(first) = saved.first() && first != local {
+      std::fs::rename(first, local)?;
+  }
+  ```
+  1. **保存先 `local` に既存ディレクトリを指定した場合**:
+     Tera Term の `scprecv '/remote/file.txt' '/tmp'` や `scprecv '/remote/file.txt' './downloads/'` のように保存先ディレクトリを指定すると、`local.parent()`（`/tmp` の場合は `/`）に一旦ダウンロードした上で、`std::fs::rename("/file.txt", "/tmp")` を実行しようとします。結果として親ディレクトリ（`/` 等）への書き込み権限エラーになるか、既存ディレクトリ `/tmp` への `rename` が失敗し、親ディレクトリにファイルが放置されます。
+  2. **リモート名と同名のファイルが親ディレクトリに存在する場合の上書き**:
+     `self.download(remote, dir)` は一度リモート側のベース名（例: `dir/config.txt`）でファイルを作成してから `local`（例: `dir/config_backup.txt`）へリネームするため、すでに `dir/config.txt` が存在していると、別名保存のつもりが既存の `dir/config.txt` を破壊します。
+  3. **ワイルドカード等で複数ファイルを受信した場合**:
+     `saved.first()` のみが `local` にリネームされ、2 つ目以降のファイルは `dir` に散らばります。
+- **修正方針**:
+  - `local.is_dir()` が `true` の場合は、`self.download(remote, local)` をそのまま呼び出してリネームを行わない。
+  - `local` がファイルパス指定（`!local.is_dir()`）の場合は、`download` 側または一時ディレクトリ／一時ファイル名経由で直接 `local` に書き込む。
+
+---
+
+#### N-4. [中] `~/.ssh/config` の複数 `LocalForward` / `RemoteForward` / `DynamicForward` 行の解釈不具合
+
+- **対象箇所**:
+  - `crates/net/src/ssh_config.rs` (`resolve_from`, L214-L234)
+- **問題の詳細**:
+  `ssh2-config` クレートは未知または複数回出現するディレクティブの引数を `unsupported_fields` (`extra()`) の単一 `Vec<String>` にフラットに追加していく場合があります。現在のコードは：
+  ```rust
+  if let Some(v) = params.extra("localforward") {
+      if let Some(f) = Forward::parse(ForwardKind::Local, &v.join(":")) {
+          out.forwards.push(f);
+      }
+  }
+  ```
+  としています。
+  - `DynamicForward 1080` と `DynamicForward 1081` の 2 行が書かれている場合、`v` が `["1080", "1081"]` となり、`v.join(":")` で `"1080:1081"`（バインドアドレス `1080`、ポート `1081` の 1 つの転送設定）に化けます。
+  - `LocalForward 8080 web:80` と `LocalForward 8443 web:443` の 2 行がある場合、`v.join(":")` が `"8080:web:80:8443:web:443"`（6 要素）になり、`Forward::parse` が `None` を返して**すべての LocalForward が無視されます**。
+- **修正方針**:
+  - `DynamicForward` は `v` の各要素（1 トークン＝1 転送設定）ごとに `Forward::parse` を呼ぶ。
+  - `LocalForward` / `RemoteForward` は空白区切り（2 トークンで 1 設定: `bind` と `target`）または `:` 区切り（1 トークンで 1 設定）を考慮し、2 トークン単位（またはトークン内の `:` 数に応じて）でチャンク分けして `Forward::parse` に渡す。
+
+---
+
+#### N-5. [中] macOS 版で「設定 > キーボード」の「Option キーをメタキーとして使う」が機能しない
+
+- **対象箇所**:
+  - `apps/macos/Sources/MultiTerm/KeyMapping.swift` (`modifiers(from:)`, L38-L41)
+  - `apps/macos/Sources/MultiTerm/TerminalView.swift` (`keyDown(with:)`, L518-L536)
+- **問題の詳細**:
+  「設定 > キーボード」ダイアログに「Option キーをメタキーとして使う (`metaSendsEscape`)」が追加され、`Session.setKeyboard` で Rust コアの `KeyboardConfig.meta_sends_escape` に反映されるようになっています（Linux 版は `event_mods` で `ALT_MASK` を渡しているため動作します）。
+  しかし macOS 版では以下の 2 点により Option + キーで `ESC` プレフィックスが送信されません：
+  1. `KeyMapping.modifiers(from:)` が `MTKeyMods(shift: ..., alt: false, ctrl: ...)` と `alt: false` にハードコードされている（コメントに `Option is reserved for character composition on macOS` と残っている）。
+  2. `TerminalView.keyDown(with:)` の L523 で `if !flags.contains(.control), !flags.contains(.command) { interpretKeyEvents([event]); return }` となっており、Option キー押下時は IME / `insertText` ルートに入るが、`insertText` 側では `MTKeyMods(shift: false, alt: false, ctrl: false)` で `encodeKey` を呼んでいるため、Option 合成文字（`¥` や `π` 等）がそのまま送られる。
+- **修正方針**:
+  - `TerminalView`（または `Session`）側で現在の `metaSendsEscape` 設定を参照し、`metaSendsEscape == true` かつ `flags.contains(.option)` の場合は、`interpretKeyEvents` に流さず `event.charactersIgnoringModifiers` と `alt: true` を `KeyMapping.encode`（`mt_session_encode_key`）に渡すようにする。
+
+---
+
+#### N-6. [中] TTL マクロの `clipb2var`（オフセット指定時）および `strcopy` / `strinsert` / `strremove` の UTF-8 マルチバイト文字境界破壊
+
+- **対象箇所**:
+  - `crates/ttl/src/interp.rs` (`clipb2var` L1243-L1283, `strcopy` / `strinsert` / `strremove` L1873-L1892)
+- **問題の詳細**:
+  第 4 章 `B-1 (4)` で「文字列の長さ・位置はバイト単位（Tera Term 5 と同じ）」との方針が示されていますが、中でも `clipb2var` のチャンク分割では実用上の文字化けが発生しやすい状態です。
+  ```rust
+  const CHUNK: usize = 511;
+  let start = (idx * CHUNK).min(bytes.len());
+  let rest = &bytes[start..];
+  let take = rest.len().min(CHUNK);
+  let slice = String::from_utf8_lossy(&rest[..take]).into_owned();
+  ```
+  `CHUNK = 511` は UTF-8 の日本語（1 文字 3 バイト: `511 = 3 * 170 + 1`）で割り切れないため、クリップボードに 512 バイト以上の日本語テキストがある状態で `clipb2var` をオフセット付きで呼ぶと、**チャンク境界の文字が必ず切断されて `U+FFFD`（``）に化けます**。
+- **修正方針**:
+  - インデックス体系をバイト単位に維持する場合でも、`clipb2var` や `fileread` 等でスライスを切り出す際、または `str*` コマンドでスライスする際は、`str::floor_char_boundary` / `ceil_char_boundary` 相当の調整を行うか、文字境界を跨いだ場合の扱いを明確にする。
+
+---
+
+#### N-7. [低〜中] クリッカブル URL (`find_urls`) で末尾が全角文字の場合の右半分セル欠落と、`file://` スキームの扱い
+
+- **対象箇所**:
+  - `crates/vt/src/select.rs` (`find_urls`, L380-L386, L433-L440)
+- **問題の詳細**:
+  1. **末尾全角文字の `WIDE_SPACER` 漏れ**:
+     同じファイル内の `search()` (L380-L386) ではマッチ末尾の次のセルが `CellFlags::WIDE_SPACER` なら `end_cell += 1` として全角文字の右半分も含めていますが、`find_urls()` (L433-L440) にはこの処理がありません。そのため、`https://ja.wikipedia.org/wiki/日本語` のように全角文字で終わる URL の最後の文字の右半分に下線が引かれず、右半分をクリックしても反応しません。
+  2. **`file://` スキームの自動リンク**:
+     `url_regex` が `r"(?:https?|ftp|file)://[^\s<>\"'`\x00-\x1f\x7f]+"` となっており、`file://` もクリッカブルになります。macOS の `NSWorkspace.shared.open(url)` や Linux の `gio::AppInfo::launch_default_for_uri` に `file:///System/Applications/Calculator.app` 等を渡すとローカルアプリやファイルが直接開かれるため、セキュリティ上の意図として `https?` / `ftp` のみに絞るか、このまま `file://` を許可するか確認が望ましいです。
+- **修正方針**:
+  - `find_urls()` の `end_cell` 計算にも `WIDE_SPACER` チェックを追加する。
+  - `file://` をクリッカブル対象から外す場合は正規表現を `(?:https?|ftp)://...` に変更する。
+
+---
+
+#### N-8. [低] ZMODEM 検出時の `route.held` 保留バッファのタイムアウト処理タイミング
+
+- **対象箇所**:
+  - `crates/core/src/session.rs` (`Session::receive`, L839-L854, `Session::tick`, L892-L905)
+- **問題の詳細**:
+  ZMODEM の `ZRQINIT` 検出時に後続バイトを `route.held` に保留し、`HELD_TIMEOUT`（5秒）経過で端末画面へフラッシュする設計（`S-3` 対応）ですが、以下の 2 つのエッジケースがあります：
+  1. **タイムアウト判定が `Session::receive` 内でしか行われない**:
+     `ZRQINIT` を含むチャンクを受信した後、相手側から後続バイトが 1 バイトも送られてこない場合（誤検出時など）、`Session::receive` が呼ばれないため 5 秒経っても `held` が端末に出力されません。
+  2. **ユーザーが確認ダイアログやファイル選択ダイアログを 5 秒以上開いていた場合**:
+     自動受信 OFF 時の確認ダイアログ表示中に相手側の `sz` が約 3〜5 秒周期で `ZRQINIT` を再送してくると、5 秒経過時点で `Session::receive` が `held` を画面に吐き出して `held = None` に戻し、直後の再送 `ZRQINIT` で**もう一度 `on_transfer_request`（確認ダイアログ）が発火**してしまいます。
+- **修正方針**:
+  - `Session::tick()` 内でも `HELD_TIMEOUT` 経過チェックとフラッシュを行うか、自動受信 OFF で確認待ちの間はタイムアウトを延長（またはユーザーの応答 `start_transfer` / `decline_transfer` まで保留）する。
+
+---
+
+#### N-9. [低] ENQ (`0x05`) に対する Answerback の生バイト判定
+
+- **対象箇所**:
+  - `crates/core/src/session.rs` (`Session::display`, L877-L889)
+- **問題の詳細**:
+  ```rust
+  if bytes.contains(&0x05) {
+      let reply = self.inner.answerback.lock().unwrap().clone();
+      if !reply.is_empty() {
+          let _ = self.send(&reply);
+      }
+  }
+  ```
+  `vt.feed()` に渡す前の生バイト列に対して `bytes.contains(&0x05)` で判定しているため、OSC シーケンス等のパラメータ内やバイナリデータ内の `0x05` にも反応するほか、チャンク内に複数の `0x05` があっても 1 回しか応答しない（または逆に `Answerback` 設定値自体に `\x05` が含まれリモートがエコーバックすると無限ループする）可能性があります。
+- **修正方針**:
+  - `vt` パーサの `Execute(0x05)`（C0 制御文字としての ENQ 実行時）でコールバック／応答キューに積むようにし、かつ `set_answerback` 時に `0x05` を除去または拒否するとより安全です。
+
+---
+
+### 5.3 第2回レビュー対応チェックリスト
+
+- [x] **N-1**: `crates/net/src/forward.rs` — SSH 切断時にローカルポート転送 (`-L` / `-D`) の `TcpListener` を即座に閉じてポートを解放する
+- [x] **N-2**: `crates/net/src/ssh_client.rs` & `forward.rs` — リモート転送 (`-R`) の `bind_address` 区別と `bind_port == 0` 時の割り当てポート反映
+- [x] **N-3**: `crates/net/src/scp.rs` — `SshFiles::recv_file` で `local.is_dir()` の判定追加と既存ファイル上書き防止
+- [x] **N-4**: `crates/net/src/ssh_config.rs` — 複数 `LocalForward` / `RemoteForward` / `DynamicForward` 指定時のトークン分割修正
+- [x] **N-5**: `apps/macos/Sources/MultiTerm/TerminalView.swift` & `KeyMapping.swift` — macOS 版 `metaSendsEscape` 有効時の Option + キー ESC 送信対応
+- [x] **N-6**: `crates/ttl/src/interp.rs` — `clipb2var` チャンク切り出し時の UTF-8 文字境界考慮
+- [x] **N-7**: `crates/vt/src/select.rs` — `find_urls` 末尾全角文字の `WIDE_SPACER` 対応（および `file://` スキームの要否確認）
+- [x] **N-8**: `crates/core/src/session.rs` — ZMODEM `route.held` 保留バッファの `tick()` フラッシュと確認ダイアログ表示中の再送考慮
+- [x] **N-9**: `crates/core/src/session.rs` / `crates/vt` — ENQ (`0x05`) Answerback の VT パーサ経由判定と自己ループ防止
+
+### 5.4 対応状況（2026-11-08、メインセッション）
+
+| 指摘 | 判定 | 対応 |
+| --- | --- | --- |
+| N-1 | 妥当 | 待ち受けは 0.5 秒ごとに接続が切れたかを見て、切れていたらやめる（ポートを空ける） |
+| N-2 (1) | 妥当（低） | リモート転送の行き先を待ち受けアドレスとポートで探す。アドレスの書き方が違うときはポートだけで探す。テスト追加 |
+| N-2 (2) | 当たらない | ポート 0 は相手が決めた番号で登録済みだった。引数名も `connected_port` になっていた |
+| N-3 (1) | 妥当 | 受け取り先がフォルダ（または `/` で終わる）なら、リモートの名前のままそこへ受け取る。テスト追加 |
+| N-3 (2) | 当たらない | 受け取りは同じ名前があれば別の名前（`unique_path`）にするので、既存のファイルは壊さない |
+| N-3 (3) | 方針 | `scprecv` は 1 ファイルを受け取るコマンド（Tera Term と同じ）。複数はフォルダ指定で受け取れる |
+| N-4 | 妥当（原因は別） | ssh2-config は知らないキーを HashMap に持つので、同じ Host の中では最後の行だけが残っていた（`:` でつながるのではない）。読む前に `LocalForward` / `DynamicForward` の行ごとに番号付きのキーにする。テスト追加。Include 先のファイルでは従来どおり最後の 1 行だけ |
+| N-5 | 妥当 | 「Option キーをメタキーとして使う」がオンなら、Option + キーを合成文字ではなく ESC + 元のキーで送る。既定はオフに変更（Option+¥ で `\` を打つなど、Mac の文字入力に使うため） |
+| N-6 | 妥当 | `clipb2var` は 511 バイト以内で文字の途中では切らない（つなげば元どおり）。テスト追加。`str*` はバイト単位の方針のまま（B-1 (4)） |
+| N-7 (1) | 妥当 | URL が全角で終わるとき、右半分まで URL にする。テスト追加 |
+| N-7 (2) | 妥当 | `file://` はクリックで開く対象から外した |
+| N-8 (1) | 妥当 | その後の受信が無くても、5 秒で端末に出す（見回りのスレッド）。テスト追加 |
+| N-8 (2) | 妥当 | 返事を待つ間（最長 60 秒）は、相手が送り直した開始を知らせ直さない。テスト追加 |
+| N-9 | 妥当 | alacritty_terminal は ENQ を外に出さないので、受信の中を小さな状態機械で見て、OSC・DCS などの文字列の中の ENQ には応えない。ENQ 1 つにつき 1 回（1 回の受信で 16 回まで）。アンサーバックの文字列から ENQ を除く。テスト追加 |

@@ -738,3 +738,30 @@ messagebox s
     expect(&remote, b"show clock\r");
     session.close();
 }
+
+#[test]
+fn clipb2var_does_not_cut_characters_in_half() {
+    let (session, _remote) = open_mock();
+    // 3 バイトの文字が 200 個（600 バイト）。511 バイトで切ると文字の途中になる
+    let text = "あ".repeat(200);
+    let src = r#"
+clipb2var a 0
+int2str r result
+messagebox r
+messagebox a
+clipb2var b 1
+int2str r result
+messagebox r
+messagebox b
+"#;
+    let mut host = TestHost {
+        clip: Some(text.clone()),
+        ..Default::default()
+    };
+    let out = run(src, &mut host, Some(Arc::clone(&session)));
+    assert_eq!(out[0], "2");
+    assert_eq!(out[2], "1");
+    assert!(!out[1].contains('\u{FFFD}') && !out[3].contains('\u{FFFD}'));
+    assert_eq!(format!("{}{}", out[1], out[3]), text);
+    session.close();
+}
