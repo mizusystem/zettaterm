@@ -67,6 +67,7 @@ pub struct Terminal {
     /// 最後にリサイズした世代。これより前の `since` には全行を返す。
     resize_gen: u64,
     scrollback_limit: usize,
+    keyboard: crate::keys::KeyboardOptions,
 }
 
 impl Terminal {
@@ -91,6 +92,7 @@ impl Terminal {
             line_gens: vec![1; size.rows],
             resize_gen: 1,
             scrollback_limit: scrollback,
+            keyboard: crate::keys::KeyboardOptions::default(),
         }
     }
 
@@ -283,8 +285,14 @@ impl Terminal {
             KeyMode {
                 app_cursor: mode.contains(TermMode::APP_CURSOR),
                 newline_mode: mode.contains(TermMode::LINE_FEED_NEW_LINE),
+                keyboard: self.keyboard,
             },
         )
+    }
+
+    /// 「設定 > キーボード」。
+    pub fn set_keyboard(&mut self, options: crate::keys::KeyboardOptions) {
+        self.keyboard = options;
     }
 
     /// 貼り付け文字列を送信用に変換する。改行は CR に揃え、ブラケットペーストモードなら囲む。

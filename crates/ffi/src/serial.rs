@@ -306,6 +306,15 @@ pub enum Charset {
     EucJp,
     /// ISO-2022-JP
     Jis,
+    EucKr,
+    Gbk,
+    Big5,
+    Koi8R,
+    Windows1251,
+    Ibm866,
+    Windows1252,
+    Iso8859_2,
+    Iso8859_15,
 }
 
 impl From<Charset> for core::Charset {
@@ -315,8 +324,52 @@ impl From<Charset> for core::Charset {
             Charset::ShiftJis => Self::ShiftJis,
             Charset::EucJp => Self::EucJp,
             Charset::Jis => Self::Jis,
+            Charset::EucKr => Self::EucKr,
+            Charset::Gbk => Self::Gbk,
+            Charset::Big5 => Self::Big5,
+            Charset::Koi8R => Self::Koi8R,
+            Charset::Windows1251 => Self::Windows1251,
+            Charset::Ibm866 => Self::Ibm866,
+            Charset::Windows1252 => Self::Windows1252,
+            Charset::Iso8859_2 => Self::Iso8859_2,
+            Charset::Iso8859_15 => Self::Iso8859_15,
         }
     }
+}
+
+impl From<core::Charset> for Charset {
+    fn from(c: core::Charset) -> Self {
+        match c {
+            core::Charset::Utf8 => Self::Utf8,
+            core::Charset::ShiftJis => Self::ShiftJis,
+            core::Charset::EucJp => Self::EucJp,
+            core::Charset::Jis => Self::Jis,
+            core::Charset::EucKr => Self::EucKr,
+            core::Charset::Gbk => Self::Gbk,
+            core::Charset::Big5 => Self::Big5,
+            core::Charset::Koi8R => Self::Koi8R,
+            core::Charset::Windows1251 => Self::Windows1251,
+            core::Charset::Ibm866 => Self::Ibm866,
+            core::Charset::Windows1252 => Self::Windows1252,
+            core::Charset::Iso8859_2 => Self::Iso8859_2,
+            core::Charset::Iso8859_15 => Self::Iso8859_15,
+        }
+    }
+}
+
+/// メニューに出す文字コードの名前。
+#[uniffi::export]
+pub fn charset_label(charset: Charset) -> String {
+    core::Charset::from(charset).label().to_owned()
+}
+
+/// 選べる文字コード（メニューの並び）。
+#[uniffi::export]
+pub fn all_charsets() -> Vec<Charset> {
+    core::Charset::ALL
+        .iter()
+        .map(|c| Charset::from(*c))
+        .collect()
 }
 
 /// 既定値（受信 CR、送信 CR、ローカルエコーなし。TERATERM.INI と同じ）。

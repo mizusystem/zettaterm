@@ -59,6 +59,11 @@ struct TerminalSettingsView: View {
             Toggle(TT.text("DLG_TERM_LOCALECHO", "ローカルエコー:").trimmingCharacters(in: CharacterSet(charactersIn: ":：")),
                    isOn: $config.localEcho)
 
+            HStack {
+                Text(TT.text("DLG_TERM_ANSWERBACK", "応答:"))
+                TextField(L("ENQ を受けたときに返す文字列（空なら返さない）"), text: $config.answerback)
+            }
+
             Text(controller.target?.serialPort != nil
                  ? L("シリアル接続用の設定として保存します。LF だけで改行する機器（ESP32 など）は受信を LF か AUTO にします。")
                  : L("シェル・SSH・Telnet 用の設定として保存します（シリアル用とは別）。通常は受信 CR のままにします。"))

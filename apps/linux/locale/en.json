@@ -81,5 +81,10 @@
   "送る文字列:": "String to send:",
   "続けて改行を送る": "Send a newline after it",
   "止める": "Stop",
-  "始める": "Start"
+  "始める": "Start",
+  "BackSpace キーで DEL（0x7F）を送る（オフなら BS 0x08）": "BackSpace sends DEL (0x7F) (off: BS 0x08)",
+  "Delete キーで DEL（0x7F）を送る（オフなら ESC [3~）": "Delete sends DEL (0x7F) (off: ESC [3~)",
+  "Alt キーをメタキーとして使う（文字の前に ESC を付ける）": "Use Alt as Meta (send ESC before the character)",
+  "Ctrl を押しながら BackSpace を押すと、もう一方を送ります。": "Ctrl+BackSpace sends the other one.",
+  "ENQ を受けたときに返す文字列（空なら返さない）": "String returned on ENQ (none if empty)"
 }

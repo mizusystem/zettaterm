@@ -662,3 +662,25 @@ fn view_only_and_recurring_command() {
     assert!(remote.recv(Duration::from_millis(1300)).is_none());
     session.close();
 }
+
+/// ENQ にアンサーバックを返し、キーボードの設定で BS キーの送るものが変わる。
+#[test]
+fn answerback_and_keyboard_options() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    remote.send(b"\x05");
+    assert!(remote.recv(Duration::from_millis(200)).is_none());
+    session.set_answerback(Some("RTR-01".into()));
+    remote.send(b"x\x05");
+    assert_eq!(remote.recv(WAIT).unwrap(), b"RTR-01");
+    session.key(Key::Backspace, Modifiers::default());
+    assert_eq!(remote.recv(WAIT).unwrap(), [0x7f]);
+    session.set_keyboard(mt_core::KeyboardOptions {
+        backspace_sends_bs: true,
+        ..Default::default()
+    });
+    session.key(Key::Backspace, Modifiers::default());
+    assert_eq!(remote.recv(WAIT).unwrap(), [0x08]);
+    session.close();
+}

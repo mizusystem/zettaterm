@@ -262,6 +262,21 @@ impl Tabs {
             }),
         );
         add(
+            "setup-keyboard",
+            Box::new(|t, _| {
+                settings::keyboard_dialog(&t.win.clone().upcast(), || {
+                    let k = Settings::load().keyboard.core();
+                    ALL.with(|all| {
+                        for p in all.borrow().iter().filter_map(|w| w.upgrade()) {
+                            if let Some(s) = p.view.session() {
+                                s.set_keyboard(k);
+                            }
+                        }
+                    });
+                })
+            }),
+        );
+        add(
             "setup-ssh",
             Box::new(|t, _| settings::ssh_dialog(&t.win.clone().upcast())),
         );
@@ -682,6 +697,11 @@ impl TermWindow {
                     me.auto_start_log(&session, &profile);
                     me.start_modem_polling();
                     me.start_launch_extras(&session);
+                    let saved = Settings::load();
+                    session.set_keyboard(saved.keyboard.core());
+                    session.set_answerback(
+                        (!saved.answerback.is_empty()).then(|| saved.answerback.clone()),
+                    );
                     // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
                     session.set_view_only(me.view_only.get());
                     if let Some((secs, text, nl)) = me.recurring.borrow().clone() {
@@ -722,6 +742,7 @@ impl TermWindow {
             s.save();
             if let Some(session) = me.view.session() {
                 session.set_terminal_settings(conf.core());
+                session.set_answerback((!s.answerback.is_empty()).then(|| s.answerback.clone()));
             }
         });
     }
@@ -1000,7 +1021,7 @@ impl TermWindow {
         let id = if conf.charset_receive == conf.charset_send {
             charset_id(conf.charset_receive)
         } else {
-            ""
+            String::new()
         };
         set("charset", id.to_variant());
     }
@@ -1771,24 +1792,20 @@ impl TermWindow {
     }
 }
 
-/// 「設定 > エンコーディング」のメニューの値。
-pub const CHARSETS: [(mt_core::Charset, &str, &str); 4] = [
-    (mt_core::Charset::Utf8, "utf8", "UTF-8"),
-    (mt_core::Charset::ShiftJis, "sjis", "Shift_JIS"),
-    (mt_core::Charset::EucJp, "eucjp", "EUC-JP"),
-    (mt_core::Charset::Jis, "jis", "JIS"),
-];
-
-fn charset_id(c: mt_core::Charset) -> &'static str {
-    CHARSETS
+/// 「設定 > エンコーディング」のメニューの値（id はメニューの項目の識別）。
+pub fn charsets() -> Vec<(mt_core::Charset, String, &'static str)> {
+    mt_core::Charset::ALL
         .iter()
-        .find(|x| x.0 == c)
-        .map(|x| x.1)
-        .unwrap_or("")
+        .map(|c| (*c, format!("{c:?}").to_lowercase(), c.label()))
+        .collect()
+}
+
+fn charset_id(c: mt_core::Charset) -> String {
+    format!("{c:?}").to_lowercase()
 }
 
 fn charset_from_id(id: &str) -> Option<mt_core::Charset> {
-    CHARSETS.iter().find(|x| x.1 == id).map(|x| x.0)
+    charsets().into_iter().find(|x| x.1 == id).map(|x| x.0)
 }
 
 /// 見た目の設定を、開いているすべてのタブに効かせる。

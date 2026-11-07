@@ -131,6 +131,10 @@ fn menu() -> gio::Menu {
         Some("win.setup-font"),
     );
     setup.append(
+        Some(&tt("MENU_SETUP_KEYBOARD", "キーボード...")),
+        Some("win.setup-keyboard"),
+    );
+    setup.append(
         Some(&tt("MENU_SETUP_SERIALPORT", "シリアルポート...")),
         Some("win.setup-serial"),
     );
@@ -159,7 +163,7 @@ fn menu() -> gio::Menu {
     );
     // 文字コードのクイック切り替え（Tera Term の TTXKanjiMenu）。受信と送信をまとめて変える
     let charsets = gio::Menu::new();
-    for (_, id, name) in crate::window::CHARSETS {
+    for (_, id, name) in crate::window::charsets() {
         let item = gio::MenuItem::new(Some(name), None);
         item.set_action_and_target_value(Some("win.charset"), Some(&id.to_variant()));
         charsets.append_item(&item);

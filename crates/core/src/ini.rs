@@ -104,6 +104,15 @@ fn charset(v: &str) -> Option<Charset> {
         "SJIS" | "SHIFT_JIS" | "SHIFT-JIS" | "CP932" => Charset::ShiftJis,
         "EUC" | "EUC-JP" => Charset::EucJp,
         "JIS" => Charset::Jis,
+        "KS5601" | "EUC-KR" | "CP949" => Charset::EucKr,
+        "GB2312" | "GBK" | "CP936" => Charset::Gbk,
+        "BIG5" | "CP950" => Charset::Big5,
+        "KOI8-R" => Charset::Koi8R,
+        "CP1251" => Charset::Windows1251,
+        "CP866" => Charset::Ibm866,
+        "ISO8859-1" | "ISO-8859-1" | "CP1252" => Charset::Windows1252,
+        "ISO8859-2" | "ISO-8859-2" => Charset::Iso8859_2,
+        "ISO8859-15" | "ISO-8859-15" => Charset::Iso8859_15,
         _ => return None,
     })
 }

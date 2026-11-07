@@ -94,6 +94,7 @@ struct TerminalWindow: View {
                 case .sshSettings: SshSettingsView()
                 case .sshKeyGen: SshKeyGenView()
                 case .recurring: RecurringView(controller: controller)
+                case .keyboardSettings: KeyboardSettingsView()
                 }
             }
             .alert(
@@ -261,6 +262,8 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_SETUP_WINDOW", "ウィンドウ...")) { controller?.sheet = .windowSettings }
                 .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_FONT", "フォント...")) { controller?.sheet = .fontSettings }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_SETUP_KEYBOARD", "キーボード...")) { controller?.sheet = .keyboardSettings }
                 .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_SERIALPORT", "シリアルポート...")) { controller?.sheet = .serialSettings }
                 .disabled(controller == nil)

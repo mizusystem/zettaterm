@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import MTCore
 
 /// 「設定 > 端末」のうち、接続に効く項目（改行コード、ローカルエコー）。
@@ -13,15 +14,9 @@ struct TerminalConfig: Codable, Hashable, Sendable {
     /// 相手との間の文字コード（Tera Term の「エンコーディング-受信 / 送信」）
     enum CharsetChoice: String, Codable, CaseIterable, Sendable {
         case utf8, shiftJis, eucJp, jis
+        case eucKr, gbk, big5, koi8R, windows1251, ibm866, windows1252, iso88592, iso885915
 
-        var label: String {
-            switch self {
-            case .utf8: return "UTF-8"
-            case .shiftJis: return "Shift_JIS"
-            case .eucJp: return "EUC-JP"
-            case .jis: return "JIS"
-            }
-        }
+        var label: String { charsetLabel(charset: core) }
 
         var core: Charset {
             switch self {
@@ -29,7 +24,20 @@ struct TerminalConfig: Codable, Hashable, Sendable {
             case .shiftJis: return .shiftJis
             case .eucJp: return .eucJp
             case .jis: return .jis
+            case .eucKr: return .eucKr
+            case .gbk: return .gbk
+            case .big5: return .big5
+            case .koi8R: return .koi8R
+            case .windows1251: return .windows1251
+            case .ibm866: return .ibm866
+            case .windows1252: return .windows1252
+            case .iso88592: return .iso88592
+            case .iso885915: return .iso885915
             }
+        }
+
+        init(_ c: Charset) {
+            self = Self.allCases.first { $0.core == c } ?? .utf8
         }
     }
 
@@ -38,6 +46,8 @@ struct TerminalConfig: Codable, Hashable, Sendable {
     var localEcho = false
     var charsetReceive: CharsetChoice = .utf8
     var charsetSend: CharsetChoice = .utf8
+    /// ENQ を受けたときに返す文字列（Tera Term の Answerback）
+    var answerback = ""
 
     init(receive: Receive = .cr, send: Send = .cr, localEcho: Bool = false,
          charsetReceive: CharsetChoice = .utf8, charsetSend: CharsetChoice = .utf8) {
@@ -56,6 +66,7 @@ struct TerminalConfig: Codable, Hashable, Sendable {
         localEcho = try c.decodeIfPresent(Bool.self, forKey: .localEcho) ?? false
         charsetReceive = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetReceive) ?? .utf8
         charsetSend = try c.decodeIfPresent(CharsetChoice.self, forKey: .charsetSend) ?? .utf8
+        answerback = try c.decodeIfPresent(String.self, forKey: .answerback) ?? ""
     }
 
     var settings: TerminalSettings {
@@ -119,5 +130,56 @@ struct TerminalConfig: Codable, Hashable, Sendable {
         if let data = try? JSONEncoder().encode(self) {
             UserDefaults.standard.set(data, forKey: Self.key(scope))
         }
+    }
+}
+
+/// 「設定 > キーボード」（Tera Term の BSKey / DelKey / MetaKey）。全ウィンドウで共通。
+enum KeyboardConfig {
+    private static var d: UserDefaults { .standard }
+
+    static var saved: KeyboardSettings {
+        get {
+            KeyboardSettings(
+                backspaceSendsBs: d.bool(forKey: "keyboard.bsSendsBs"),
+                deleteSendsDel: d.bool(forKey: "keyboard.delSendsDel"),
+                metaSendsEscape: d.object(forKey: "keyboard.metaEscape") == nil ? true : d.bool(forKey: "keyboard.metaEscape"))
+        }
+        set {
+            d.set(newValue.backspaceSendsBs, forKey: "keyboard.bsSendsBs")
+            d.set(newValue.deleteSendsDel, forKey: "keyboard.delSendsDel")
+            d.set(newValue.metaSendsEscape, forKey: "keyboard.metaEscape")
+        }
+    }
+}
+
+/// 「設定 > キーボード」。
+struct KeyboardSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var k = KeyboardConfig.saved
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(TT.text("DLG_KEYB_TITLE", "キーボード")).font(.headline)
+            Text(TT.text("DLG_KEYB_TRANSMIT", "DELを送信するキー:")).foregroundStyle(.secondary)
+            Toggle(L("BackSpace キーで DEL（0x7F）を送る（オフなら BS 0x08）"), isOn: Binding(
+                get: { !k.backspaceSendsBs }, set: { k.backspaceSendsBs = !$0 }))
+            Toggle(L("Delete キーで DEL（0x7F）を送る（オフなら ESC [3~）"), isOn: $k.deleteSendsDel)
+            Toggle(L("Option キーをメタキーとして使う（文字の前に ESC を付ける）"), isOn: $k.metaSendsEscape)
+            Text(L("Ctrl を押しながら BackSpace を押すと、もう一方を送ります。"))
+                .font(.callout).foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button(TT.text("BTN_CANCEL", "キャンセル")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(TT.text("BTN_OK", "OK")) {
+                    KeyboardConfig.saved = k
+                    for c in SessionRegistry.shared.controllers { c.view.session?.setKeyboard(keyboard: k) }
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 460)
     }
 }

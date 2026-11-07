@@ -124,6 +124,8 @@ struct Inner {
     opened_at: std::time::Instant,
     /// 閲覧専用（TTXViewMode）。キー入力と貼り付けを送らない
     view_only: AtomicBool,
+    /// ENQ への返事（Answerback）
+    answerback: Mutex<Option<String>>,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
     recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -213,6 +215,7 @@ impl Session {
             terminal: Mutex::new(options.terminal),
             opened_at: std::time::Instant::now(),
             view_only: AtomicBool::new(false),
+            answerback: Mutex::new(None),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
@@ -267,6 +270,20 @@ impl Session {
             self.inner.echo(plain.as_bytes());
         }
         self.send_wire(bytes);
+    }
+
+    /// ENQ（0x05）を受けたときに返す文字列（Tera Term の「設定 > 端末」の Answerback）。空なら返さない。
+    pub fn set_answerback(&self, text: Option<String>) {
+        *self
+            .inner
+            .answerback
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = text;
+    }
+
+    /// 「設定 > キーボード」（BS / Delete キーと Meta）。
+    pub fn set_keyboard(&self, options: mt_vt::KeyboardOptions) {
+        self.inner.vt().set_keyboard(options);
     }
 
     /// 閲覧専用にする（TTXViewMode）。キー入力と貼り付けを送らない（マクロの送信は通す）。
@@ -851,6 +868,20 @@ impl Inner {
 
     /// 受信を端末に出す（ログ、文字コード、改行コード、VT）。
     fn display(&self, bytes: &[u8]) {
+        // ENQ（0x05）にはアンサーバックの文字列を返す（Tera Term の Answerback）
+        if bytes.contains(&0x05) {
+            let answer = self
+                .answerback
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Some(a) = answer.filter(|a| !a.is_empty()) {
+                let cs = *self.charset_send.lock().unwrap_or_else(|e| e.into_inner());
+                let _ = self
+                    .tx
+                    .send(WriterMsg::Data(charset::encode_send(cs, a.into_bytes())));
+            }
+        }
         let decoded = self
             .decoder
             .lock()

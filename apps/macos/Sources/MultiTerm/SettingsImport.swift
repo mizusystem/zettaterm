@@ -93,12 +93,7 @@ enum SettingsImport {
     }
 
     private static func choice(_ c: Charset) -> TerminalConfig.CharsetChoice {
-        switch c {
-        case .utf8: return .utf8
-        case .shiftJis: return .shiftJis
-        case .eucJp: return .eucJp
-        case .jis: return .jis
-        }
+        TerminalConfig.CharsetChoice(c)
     }
 
     /// 起動引数やホスト一覧の接続先を、このアプリの接続先に。

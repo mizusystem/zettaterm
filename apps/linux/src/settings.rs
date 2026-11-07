@@ -14,6 +14,77 @@ use serde::{Deserialize, Serialize};
 use crate::dialogs::modal;
 use crate::strings::{l, tt};
 
+/// 「設定 > キーボード」（Tera Term の BSKey / DelKey / MetaKey）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct KeyboardConf {
+    pub backspace_sends_bs: bool,
+    pub delete_sends_del: bool,
+    pub meta_sends_escape: bool,
+}
+
+impl Default for KeyboardConf {
+    fn default() -> Self {
+        let k = mt_core::KeyboardOptions::default();
+        Self {
+            backspace_sends_bs: k.backspace_sends_bs,
+            delete_sends_del: k.delete_sends_del,
+            meta_sends_escape: k.meta_sends_escape,
+        }
+    }
+}
+
+impl KeyboardConf {
+    pub fn core(self) -> mt_core::KeyboardOptions {
+        mt_core::KeyboardOptions {
+            backspace_sends_bs: self.backspace_sends_bs,
+            delete_sends_del: self.delete_sends_del,
+            meta_sends_escape: self.meta_sends_escape,
+        }
+    }
+}
+
+/// 「設定 > キーボード」。OK で保存して `applied()`。
+pub fn keyboard_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
+    let current = Settings::load().keyboard;
+    let (win, content, row) = modal(parent, &tt("DLG_KEYB_TITLE", "キーボード"));
+    let check = |text: String, on: bool| {
+        let c = gtk::CheckButton::with_label(&text);
+        c.set_active(on);
+        content.append(&c);
+        c
+    };
+    let bs = check(
+        l("BackSpace キーで DEL（0x7F）を送る（オフなら BS 0x08）"),
+        !current.backspace_sends_bs,
+    );
+    let del = check(
+        l("Delete キーで DEL（0x7F）を送る（オフなら ESC [3~）"),
+        current.delete_sends_del,
+    );
+    let meta = check(
+        l("Alt キーをメタキーとして使う（文字の前に ESC を付ける）"),
+        current.meta_sends_escape,
+    );
+    let note = gtk::Label::new(Some(&l(
+        "Ctrl を押しながら BackSpace を押すと、もう一方を送ります。",
+    )));
+    note.set_xalign(0.0);
+    note.add_css_class("dim-label");
+    content.append(&note);
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut s = Settings::load();
+        s.keyboard = KeyboardConf {
+            backspace_sends_bs: !bs.is_active(),
+            delete_sends_del: del.is_active(),
+            meta_sends_escape: meta.is_active(),
+        };
+        s.save();
+        applied();
+    });
+    win.present();
+}
+
 /// TTSSH の「SSH」（キープアライブ）と「SSH 転送」。内蔵 SSH の接続すべてに効く。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -264,6 +335,10 @@ pub struct Settings {
     pub zmodem_auto_receive: bool,
     pub copy_paste: CopyPaste,
     pub log: LogConf,
+    /// ENQ を受けたときに返す文字列（Answerback。空なら返さない）
+    pub answerback: String,
+    /// 「設定 > キーボード」
+    pub keyboard: KeyboardConf,
     /// ファイル受信で、この秒数データが来なければ止める（0 は止めない）
     pub raw_receive_idle: u32,
     /// 繰り返しコマンドの前回の値
@@ -285,6 +360,8 @@ impl Default for Settings {
             zmodem_auto_receive: true,
             copy_paste: CopyPaste::default(),
             log: LogConf::default(),
+            answerback: String::new(),
+            keyboard: KeyboardConf::default(),
             raw_receive_idle: 0,
             recurring_secs: 60,
             recurring_text: String::new(),
@@ -379,12 +456,7 @@ fn buttons(win: &gtk::Window, row: &gtk::Box, ok_label: &str, ok: impl Fn() + 's
     win.set_default_widget(Some(&okb));
 }
 
-const CHARSETS: [(Charset, &str); 4] = [
-    (Charset::Utf8, "UTF-8"),
-    (Charset::ShiftJis, "Shift_JIS"),
-    (Charset::EucJp, "EUC-JP"),
-    (Charset::Jis, "JIS"),
-];
+const CHARSETS: [Charset; 13] = Charset::ALL;
 
 /// 「設定 > 端末」。OK で `apply(新しい設定)`。
 pub fn terminal_dialog(
@@ -419,8 +491,8 @@ pub fn terminal_dialog(
             .position(|v| *v == current.newline_send)
             .unwrap_or(0),
     );
-    let names: Vec<String> = CHARSETS.iter().map(|c| c.1.to_owned()).collect();
-    let pos = |c: Charset| CHARSETS.iter().position(|x| x.0 == c).unwrap_or(0);
+    let names: Vec<String> = CHARSETS.iter().map(|c| c.label().to_owned()).collect();
+    let pos = |c: Charset| CHARSETS.iter().position(|x| *x == c).unwrap_or(0);
     let kin = dropdown(&names, pos(current.charset_receive));
     let kout = dropdown(&names, pos(current.charset_send));
     let echo = gtk::CheckButton::with_label(
@@ -453,15 +525,23 @@ pub fn terminal_dialog(
     );
     grid.attach(&kout, 1, 4, 1, 1);
     grid.attach(&echo, 1, 5, 1, 1);
+    let answerback = gtk::Entry::new();
+    answerback.set_placeholder_text(Some(&l("ENQ を受けたときに返す文字列（空なら返さない）")));
+    answerback.set_text(&Settings::load().answerback);
+    grid.attach(&label(tt("DLG_TERM_ANSWERBACK", "応答:")), 0, 6, 1, 1);
+    grid.attach(&answerback, 1, 6, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut saved = Settings::load();
+        saved.answerback = answerback.text().to_string();
+        saved.save();
         apply(TermConf {
             newline_receive: rcv_vals[(rcv.selected() as usize).min(rcv_vals.len() - 1)],
             newline_send: send_vals[(send.selected() as usize).min(send_vals.len() - 1)],
             local_echo: echo.is_active(),
-            charset_receive: CHARSETS[(kin.selected() as usize).min(3)].0,
-            charset_send: CHARSETS[(kout.selected() as usize).min(3)].0,
+            charset_receive: CHARSETS[(kin.selected() as usize).min(CHARSETS.len() - 1)],
+            charset_send: CHARSETS[(kout.selected() as usize).min(CHARSETS.len() - 1)],
         })
     });
     win.present();

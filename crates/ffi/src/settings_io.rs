@@ -63,12 +63,7 @@ fn newline_send(n: core::NewlineSend) -> NewlineSend {
 }
 
 fn charset(c: core::Charset) -> Charset {
-    match c {
-        core::Charset::Utf8 => Charset::Utf8,
-        core::Charset::ShiftJis => Charset::ShiftJis,
-        core::Charset::EucJp => Charset::EucJp,
-        core::Charset::Jis => Charset::Jis,
-    }
+    c.into()
 }
 
 /// TERATERM.INI を読む（UTF-8 か Shift_JIS）。

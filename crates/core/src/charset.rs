@@ -9,7 +9,10 @@
 
 use std::borrow::Cow;
 
-use encoding_rs::{Decoder, EUC_JP, Encoding, SHIFT_JIS};
+use encoding_rs::{
+    BIG5, Decoder, EUC_JP, EUC_KR, Encoding, GBK, IBM866, ISO_8859_2, ISO_8859_15, KOI8_R,
+    SHIFT_JIS, WINDOWS_1251, WINDOWS_1252,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -21,6 +24,79 @@ pub enum Charset {
     EucJp,
     /// ISO-2022-JP
     Jis,
+    /// 韓国語（KS X 1001 / CP949。Tera Term の KS5601）
+    EucKr,
+    /// 簡体字中国語（GB2312 / CP936）
+    Gbk,
+    /// 繁体字中国語（CP950）
+    Big5,
+    /// ロシア語
+    Koi8R,
+    Windows1251,
+    /// CP866
+    Ibm866,
+    /// 西欧（ISO-8859-1 の上位互換）
+    Windows1252,
+    /// 中欧
+    Iso8859_2,
+    /// 西欧（ユーロ記号入り）
+    Iso8859_15,
+}
+
+impl Charset {
+    /// 選べる文字コード（メニューの並び）。
+    pub const ALL: [Charset; 13] = [
+        Charset::Utf8,
+        Charset::ShiftJis,
+        Charset::EucJp,
+        Charset::Jis,
+        Charset::EucKr,
+        Charset::Gbk,
+        Charset::Big5,
+        Charset::Koi8R,
+        Charset::Windows1251,
+        Charset::Ibm866,
+        Charset::Windows1252,
+        Charset::Iso8859_2,
+        Charset::Iso8859_15,
+    ];
+
+    /// メニューに出す名前。
+    pub fn label(self) -> &'static str {
+        match self {
+            Charset::Utf8 => "UTF-8",
+            Charset::ShiftJis => "Shift_JIS",
+            Charset::EucJp => "EUC-JP",
+            Charset::Jis => "JIS",
+            Charset::EucKr => "EUC-KR (KS5601)",
+            Charset::Gbk => "GBK (GB2312)",
+            Charset::Big5 => "Big5",
+            Charset::Koi8R => "KOI8-R",
+            Charset::Windows1251 => "Windows-1251",
+            Charset::Ibm866 => "CP866",
+            Charset::Windows1252 => "Windows-1252 (Latin-1)",
+            Charset::Iso8859_2 => "ISO-8859-2",
+            Charset::Iso8859_15 => "ISO-8859-15",
+        }
+    }
+
+    /// encoding_rs の変換（UTF-8 と JIS は自前なので None）。
+    fn encoding(self) -> Option<&'static Encoding> {
+        Some(match self {
+            Charset::Utf8 | Charset::Jis => return None,
+            Charset::ShiftJis => SHIFT_JIS,
+            Charset::EucJp => EUC_JP,
+            Charset::EucKr => EUC_KR,
+            Charset::Gbk => GBK,
+            Charset::Big5 => BIG5,
+            Charset::Koi8R => KOI8_R,
+            Charset::Windows1251 => WINDOWS_1251,
+            Charset::Ibm866 => IBM866,
+            Charset::Windows1252 => WINDOWS_1252,
+            Charset::Iso8859_2 => ISO_8859_2,
+            Charset::Iso8859_15 => ISO_8859_15,
+        })
+    }
 }
 
 /// 受信側の変換器。
@@ -37,11 +113,10 @@ enum Inner {
 
 impl ReceiveDecoder {
     pub fn new(charset: Charset) -> Self {
-        let inner = match charset {
-            Charset::Utf8 => Inner::Utf8,
-            Charset::ShiftJis => Inner::Legacy(SHIFT_JIS.new_decoder_without_bom_handling()),
-            Charset::EucJp => Inner::Legacy(EUC_JP.new_decoder_without_bom_handling()),
-            Charset::Jis => Inner::Jis(JisDecoder::default()),
+        let inner = match (charset, charset.encoding()) {
+            (Charset::Jis, _) => Inner::Jis(JisDecoder::default()),
+            (_, Some(e)) => Inner::Legacy(e.new_decoder_without_bom_handling()),
+            (_, None) => Inner::Utf8,
         };
         Self { charset, inner }
     }
@@ -146,11 +221,10 @@ impl JisDecoder {
 
 /// 送信データ（UTF-8）を相手の文字コードにする。ASCII はそのまま、表せない文字は `?` にする。
 pub fn encode_send(charset: Charset, bytes: Vec<u8>) -> Vec<u8> {
-    let encoding: &'static Encoding = match charset {
-        Charset::Utf8 => return bytes,
-        Charset::ShiftJis => SHIFT_JIS,
-        Charset::EucJp => EUC_JP,
-        Charset::Jis => return encode_jis(&String::from_utf8_lossy(&bytes)),
+    let encoding: &'static Encoding = match (charset, charset.encoding()) {
+        (Charset::Jis, _) => return encode_jis(&String::from_utf8_lossy(&bytes)),
+        (_, Some(e)) => e,
+        (_, None) => return bytes,
     };
     if bytes.is_ascii() {
         return bytes;
@@ -297,5 +371,30 @@ mod tests {
             let encoded = encode_send(cs, text.as_bytes().to_vec());
             assert_eq!(decode_all(cs, &[&encoded]), text, "{cs:?}");
         }
+    }
+
+    #[test]
+    fn other_languages_round_trip() {
+        for (cs, text) in [
+            (Charset::EucKr, "안녕하세요"),
+            (Charset::Gbk, "你好"),
+            (Charset::Big5, "繁體"),
+            (Charset::Koi8R, "Привет"),
+            (Charset::Windows1251, "Привет"),
+            (Charset::Ibm866, "Привет"),
+            (Charset::Windows1252, "café €"),
+            (Charset::Iso8859_2, "Łódź"),
+            (Charset::Iso8859_15, "€uro"),
+        ] {
+            let sent = encode_send(cs, text.as_bytes().to_vec());
+            assert!(!sent.contains(&b'?'), "{cs:?}");
+            let mut d = ReceiveDecoder::new(cs);
+            assert_eq!(
+                String::from_utf8(d.decode(&sent).into_owned()).unwrap(),
+                text,
+                "{cs:?}"
+            );
+        }
+        assert_eq!(Charset::ALL.len(), 13);
     }
 }

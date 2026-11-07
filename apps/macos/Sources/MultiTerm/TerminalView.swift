@@ -28,6 +28,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     var textSession: Session? { session ?? closedSession }
     /// 次に接続するときの改行コードとローカルエコー
     var terminalSettings = defaultTerminalSettings()
+    /// ENQ への返事（次の接続から）
+    var answerback = ""
     /// SSH の認証・ホスト鍵確認の問い合わせ先
     var prompter: SshPrompter?
     private var bridge: SessionBridge?
@@ -247,6 +249,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         self.bridge = bridge
         session = opened
         opened.setAppearance(appearance: AppearanceConfig.saved.appearance)
+        opened.setKeyboard(keyboard: KeyboardConfig.saved)
+        opened.setAnswerback(text: answerback)
         // 待っている間にウィンドウの大きさが変わっていれば合わせる
         let now = geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
         if now != size {

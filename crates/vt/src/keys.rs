@@ -43,13 +43,35 @@ impl Modifiers {
 pub(crate) struct KeyMode {
     pub app_cursor: bool,
     pub newline_mode: bool,
+    pub keyboard: KeyboardOptions,
+}
+
+/// Tera Term の「設定 > キーボード」。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KeyboardOptions {
+    /// BackSpace キーで BS（0x08）を送る（オフなら DEL 0x7F。Tera Term の BSKey）
+    pub backspace_sends_bs: bool,
+    /// Delete キーで DEL（0x7F）を送る（オフなら ESC [ 3 ~。Tera Term の DelKey）
+    pub delete_sends_del: bool,
+    /// Alt（Mac は Option）を押した文字の前に ESC を付ける（Tera Term の MetaKey）
+    pub meta_sends_escape: bool,
+}
+
+impl Default for KeyboardOptions {
+    fn default() -> Self {
+        Self {
+            backspace_sends_bs: false,
+            delete_sends_del: false,
+            meta_sends_escape: true,
+        }
+    }
 }
 
 pub(crate) fn encode(key: &Key, mods: Modifiers, mode: KeyMode) -> Vec<u8> {
     let mut out = Vec::new();
     match key {
         Key::Text(text) => {
-            if mods.alt {
+            if mods.alt && mode.keyboard.meta_sends_escape {
                 out.push(0x1b);
             }
             let mut chars = text.chars();
@@ -70,10 +92,12 @@ pub(crate) fn encode(key: &Key, mods: Modifiers, mode: KeyMode) -> Vec<u8> {
         Key::Tab if mods.shift => out.extend_from_slice(b"\x1b[Z"),
         Key::Tab => out.push(b'\t'),
         Key::Backspace => {
-            if mods.alt {
+            if mods.alt && mode.keyboard.meta_sends_escape {
                 out.push(0x1b);
             }
-            out.push(if mods.ctrl { 0x08 } else { 0x7f });
+            // Ctrl を押していれば、設定と逆の方を送る（どちらも打てるように）
+            let bs = mode.keyboard.backspace_sends_bs != mods.ctrl;
+            out.push(if bs { 0x08 } else { 0x7f });
         }
         Key::Escape => out.push(0x1b),
         Key::Up => cursor_key(&mut out, b'A', mods, mode.app_cursor),
@@ -83,6 +107,9 @@ pub(crate) fn encode(key: &Key, mods: Modifiers, mode: KeyMode) -> Vec<u8> {
         Key::Home => cursor_key(&mut out, b'H', mods, mode.app_cursor),
         Key::End => cursor_key(&mut out, b'F', mods, mode.app_cursor),
         Key::Insert => tilde_key(&mut out, 2, mods),
+        Key::Delete if mode.keyboard.delete_sends_del && mods.xterm_param().is_none() => {
+            out.push(0x7f)
+        }
         Key::Delete => tilde_key(&mut out, 3, mods),
         Key::PageUp => tilde_key(&mut out, 5, mods),
         Key::PageDown => tilde_key(&mut out, 6, mods),
@@ -141,6 +168,7 @@ mod tests {
             &key,
             mods,
             KeyMode {
+                keyboard: KeyboardOptions::default(),
                 app_cursor,
                 newline_mode: false,
             },
@@ -199,5 +227,30 @@ mod tests {
         assert_eq!(enc(Key::F(1), NONE, false), b"\x1bOP");
         assert_eq!(enc(Key::F(5), NONE, false), b"\x1b[15~");
         assert_eq!(enc(Key::F(12), NONE, false), b"\x1b[24~");
+    }
+
+    #[test]
+    fn keyboard_options() {
+        let opts = KeyboardOptions {
+            backspace_sends_bs: true,
+            delete_sends_del: true,
+            meta_sends_escape: false,
+        };
+        let enc = |k: Key, m: Modifiers| {
+            encode(
+                &k,
+                m,
+                KeyMode {
+                    app_cursor: false,
+                    newline_mode: false,
+                    keyboard: opts,
+                },
+            )
+        };
+        assert_eq!(enc(Key::Backspace, NONE), [0x08]);
+        assert_eq!(enc(Key::Backspace, CTRL), [0x7f]);
+        assert_eq!(enc(Key::Delete, NONE), [0x7f]);
+        assert_eq!(enc(Key::Delete, CTRL), b"\x1b[3;5~");
+        assert_eq!(enc(Key::Text("a".into()), ALT), b"a");
     }
 }

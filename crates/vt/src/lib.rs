@@ -9,7 +9,7 @@ pub mod select;
 mod terminal;
 mod types;
 
-pub use keys::{Key, Modifiers};
+pub use keys::{Key, KeyboardOptions, Modifiers};
 pub use palette::themes;
 pub use select::{Point, SearchQuery, Selection, UrlMatch};
 pub use terminal::{Terminal, VtEvent};

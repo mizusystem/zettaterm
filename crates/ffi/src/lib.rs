@@ -220,6 +220,17 @@ pub struct Cursor {
     pub blinking: bool,
 }
 
+/// 「設定 > キーボード」（Tera Term の BSKey / DelKey / MetaKey）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct KeyboardSettings {
+    /// BackSpace キーで BS（0x08）を送る（オフなら DEL 0x7F）
+    pub backspace_sends_bs: bool,
+    /// Delete キーで DEL（0x7F）を送る（オフなら ESC [ 3 ~）
+    pub delete_sends_del: bool,
+    /// Alt（Option）を押した文字の前に ESC を付ける
+    pub meta_sends_escape: bool,
+}
+
 /// 見た目の設定（「設定 > ウィンドウ」の色とカーソル形状）。色は 0xRRGGBB、`ansi` は 16 色。
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
 pub struct Appearance {
@@ -793,6 +804,21 @@ impl Session {
     /// スクロールバックも含めて消す。
     pub fn clear_buffer(&self) {
         self.inner.clear_buffer();
+    }
+
+    /// ENQ への返事（Answerback）。空なら返さない。
+    pub fn set_answerback(&self, text: String) {
+        self.inner
+            .set_answerback((!text.is_empty()).then_some(text));
+    }
+
+    /// 「設定 > キーボード」。
+    pub fn set_keyboard(&self, keyboard: KeyboardSettings) {
+        self.inner.set_keyboard(core::KeyboardOptions {
+            backspace_sends_bs: keyboard.backspace_sends_bs,
+            delete_sends_del: keyboard.delete_sends_del,
+            meta_sends_escape: keyboard.meta_sends_escape,
+        });
     }
 
     /// 閲覧専用（TTXViewMode）。キー入力と貼り付けを送らない。

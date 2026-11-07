@@ -10,7 +10,7 @@ final class TerminalController: ObservableObject {
     enum Sheet: String, Identifiable {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
         case recurring
-        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings, sshKeyGen
+        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings, sshKeyGen, keyboardSettings
         var id: String { rawValue }
     }
 
@@ -123,6 +123,7 @@ final class TerminalController: ObservableObject {
             serialConfig = config
         }
         view.terminalSettings = TerminalConfig.saved(TerminalConfig.scope(for: target)).settings
+        view.answerback = TerminalConfig.saved(TerminalConfig.scope(for: target)).answerback
         Task {
             do {
                 try await view.connect(target.profile)
@@ -210,6 +211,8 @@ final class TerminalController: ObservableObject {
         objectWillChange.send()
         view.terminalSettings = config.settings
         view.session?.setTerminalSettings(settings: config.settings)
+        view.answerback = config.answerback
+        view.session?.setAnswerback(text: config.answerback)
     }
 
     func disconnect() {
