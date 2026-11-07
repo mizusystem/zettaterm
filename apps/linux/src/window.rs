@@ -233,6 +233,35 @@ impl Tabs {
         add("log-stop", Box::new(|_, me| me.stop_log()));
         add("log-comment", Box::new(|_, me| me.comment_log()));
         add(
+            "import-ini",
+            Box::new(|t, me| {
+                let parent: gtk::Window = t.win.clone().upcast();
+                let me = Rc::clone(me);
+                gtk::FileDialog::new().open(
+                    Some(&parent.clone()),
+                    None::<&gio::Cancellable>,
+                    move |r| {
+                        let Some(path) = r.ok().and_then(|f| f.path()) else {
+                            return;
+                        };
+                        let text = match mt_core::ini::read_ini(&path) {
+                            Ok(ini) => {
+                                let n = settings::apply_ini(&ini);
+                                crate::term::reload_conf();
+                                apply_look_everywhere();
+                                lf(
+                                    "{} を読み込みました（接続先 {} 件）。",
+                                    &[&path.display(), &n],
+                                )
+                            }
+                            Err(e) => e.to_string(),
+                        };
+                        dialogs::message(&me.parent(), "Multi-Term", &text, || {});
+                    },
+                );
+            }),
+        );
+        add(
             "setup-ssh",
             Box::new(|t, _| settings::ssh_dialog(&t.win.clone().upcast())),
         );
@@ -351,6 +380,9 @@ pub struct TermWindow {
     log_paused: Cell<bool>,
     /// マクロの setmulticastname（sendmulticast の宛先の名前）
     multicast_name: RefCell<Option<String>>,
+    /// 起動引数の /L=（ファイル, 追記）と /M=。接続できてから始める
+    launch_log: RefCell<Option<(String, bool)>>,
+    launch_macro: RefCell<Option<std::path::PathBuf>>,
     /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
     modem: Cell<Option<mt_core::ModemLines>>,
     modem_timer: RefCell<Option<glib::SourceId>>,
@@ -447,6 +479,8 @@ impl TermWindow {
             logging: Cell::new(false),
             log_paused: Cell::new(false),
             multicast_name: RefCell::new(None),
+            launch_log: RefCell::new(None),
+            launch_macro: RefCell::new(None),
             modem: Cell::new(None),
             modem_timer: RefCell::new(None),
             lines_label,
@@ -610,6 +644,7 @@ impl TermWindow {
                     me.log_paused.set(false);
                     me.auto_start_log(&session, &profile);
                     me.start_modem_polling();
+                    me.start_launch_extras(&session);
                     me.sync_menu_state();
                     me.view.area.grab_focus();
                     me.notify_waiters(Some(session));
@@ -700,6 +735,45 @@ impl TermWindow {
             }
             Err(e) => dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {}),
         });
+    }
+
+    /// 起動引数（ttermpro と同じ書き方）：/W= のタイトル、接続先、/L= のログ、/M= のマクロ。
+    pub fn launch(self: &Rc<Self>, l: mt_ttl::Launch) {
+        if let Some(t) = l.title {
+            *self.macro_title.borrow_mut() = Some(t);
+            self.update_title();
+        }
+        *self.launch_log.borrow_mut() = l.log;
+        let macro_file = l.macro_file.map(std::path::PathBuf::from);
+        match l.connect {
+            Some(spec) => {
+                if let ConnectSpec::Ssh(s) = &spec {
+                    *self.next_password.borrow_mut() = s.password.clone();
+                }
+                *self.launch_macro.borrow_mut() = macro_file;
+                self.connect(Self::macro_connect_profile(spec), true);
+            }
+            None => match macro_file {
+                Some(m) => self.run_macro(m),
+                None => self.show_connect_dialog(),
+            },
+        }
+    }
+
+    fn start_launch_extras(self: &Rc<Self>, session: &Arc<mt_core::Session>) {
+        if let Some((path, append)) = self.launch_log.borrow_mut().take() {
+            let mut opts = Settings::load().log.options(path.into());
+            opts.append = append;
+            opts.include_screen = false;
+            match session.log_start(&opts) {
+                Ok(()) => self.logging.set(true),
+                Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),
+            }
+        }
+        let m = self.launch_macro.borrow_mut().take();
+        if let Some(m) = m {
+            self.run_macro(m);
+        }
     }
 
     /// 「設定 > ログ」の自動開始。標準のフォルダとファイル名で始める。
@@ -1265,7 +1339,7 @@ impl TermWindow {
         }
     }
 
-    fn macro_connect_profile(spec: ConnectSpec) -> ConnectionProfile {
+    pub fn macro_connect_profile(spec: ConnectSpec) -> ConnectionProfile {
         match spec {
             ConnectSpec::Serial { port, baud } => {
                 let mut settings = mt_core::SerialSettings::default();

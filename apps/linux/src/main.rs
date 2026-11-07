@@ -1,8 +1,10 @@
 //! Multi-Term の Linux 版（GTK4）。コアと同じ Rust なので FFI を通らず直接リンクする。
 //!
 //! ```text
-//! multiterm                 「新しい接続」ダイアログから始める
-//! multiterm --macro x.ttl   起動してすぐマクロを実行する
+//! multiterm                          「新しい接続」ダイアログから始める
+//! multiterm host /ssh /W=router      Tera Term（ttermpro）と同じ書き方でつなぐ
+//! multiterm /C=/dev/ttyUSB0 /BAUD=115200 /L=console.log
+//! multiterm /M=x.ttl                 起動してすぐマクロを実行する（--macro x.ttl も可）
 //! ```
 
 mod bridge;
@@ -139,6 +141,10 @@ fn menu() -> gio::Menu {
         Some(&crate::strings::ssh("MENU_SSH", "SSH...")),
         Some("win.setup-ssh"),
     );
+    setup.append(
+        Some(&tt("MENU_SETUP_RESTORE", "設定の読み込み...")),
+        Some("win.import-ini"),
+    );
     // 文字コードのクイック切り替え（Tera Term の TTXKanjiMenu）。受信と送信をまとめて変える
     let charsets = gio::Menu::new();
     for (_, id, name) in crate::window::CHARSETS {
@@ -206,17 +212,36 @@ fn menu() -> gio::Menu {
 }
 
 fn main() -> glib::ExitCode {
-    // --macro は GTK に渡さずに自分で読む
+    // 起動引数は ttermpro と同じ書き方（host /ssh /M=x.ttl /L=log.txt /W=title /F=TERATERM.INI）。
+    // GTK には渡さずに自分で読む（--macro x.ttl は前の版の書き方）
     let mut args: Vec<String> = std::env::args().collect();
-    let macro_path = args
-        .iter()
-        .position(|a| a == "--macro")
-        .and_then(|i| {
-            let p = args.get(i + 1).cloned();
-            args.drain(i..(i + 2).min(args.len()));
-            p
-        })
-        .map(std::path::PathBuf::from);
+    let program = args.remove(0);
+    if let Some(i) = args.iter().position(|a| a == "--macro")
+        && let Some(p) = args.get(i + 1).cloned()
+    {
+        args.drain(i..i + 2);
+        args.push(format!("/M={p}"));
+    }
+    let launch = if args.is_empty() {
+        None
+    } else {
+        match mt_ttl::parse_args(&args) {
+            Ok(l) => Some(l),
+            Err(e) => {
+                eprintln!("multiterm: {e}");
+                return glib::ExitCode::FAILURE;
+            }
+        }
+    };
+    if let Some(ini) = launch.as_ref().and_then(|l| l.ini.clone()) {
+        match mt_core::ini::read_ini(std::path::Path::new(&ini)) {
+            Ok(i) => {
+                settings::apply_ini(&i);
+            }
+            Err(e) => eprintln!("multiterm: {ini}: {e}"),
+        }
+    }
+    let args = vec![program];
 
     let app = gtk::Application::builder()
         .application_id("dev.multiterm.MultiTerm")
@@ -252,8 +277,8 @@ fn main() -> glib::ExitCode {
         let tabs = Tabs::new(app);
         let pane = tabs.add();
         tabs.win.present();
-        match &macro_path {
-            Some(p) => pane.run_macro(p.clone()),
+        match launch.clone() {
+            Some(l) => pane.launch(l),
             None => pane.show_connect_dialog(),
         }
     });

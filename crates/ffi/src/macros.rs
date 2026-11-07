@@ -154,19 +154,24 @@ struct HostAdapter {
     ffi_session: Option<Arc<Session>>,
 }
 
+/// TTL や起動引数の接続先を、UI に渡す形に。
+pub(crate) fn macro_connect(spec: ConnectSpec) -> MacroConnect {
+    match spec {
+        ConnectSpec::Serial { port, baud } => MacroConnect::Serial { port, baud },
+        ConnectSpec::Telnet { host, port } => MacroConnect::Telnet { host, port },
+        ConnectSpec::Tcp { host, port } => MacroConnect::Tcp { host, port },
+        ConnectSpec::Ssh(s) => MacroConnect::Ssh {
+            host: s.host,
+            port: s.port,
+            user: s.user,
+            password: s.password,
+        },
+    }
+}
+
 impl Host for HostAdapter {
     fn connect(&mut self, spec: &ConnectSpec) -> Result<Arc<core::Session>, String> {
-        let target = match spec.clone() {
-            ConnectSpec::Serial { port, baud } => MacroConnect::Serial { port, baud },
-            ConnectSpec::Telnet { host, port } => MacroConnect::Telnet { host, port },
-            ConnectSpec::Tcp { host, port } => MacroConnect::Tcp { host, port },
-            ConnectSpec::Ssh(s) => MacroConnect::Ssh {
-                host: s.host,
-                port: s.port,
-                user: s.user,
-                password: s.password,
-            },
-        };
+        let target = macro_connect(spec.clone());
         let session = self
             .host
             .connect(target)

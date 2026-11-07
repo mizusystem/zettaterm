@@ -105,6 +105,96 @@ fn split_host(s: &str) -> Result<(String, Option<u16>), String> {
     }
 }
 
+/// `ssh://user@host:port` / `telnet://host:port` を `user@host:port /ssh` の形に直す。
+fn url_to_words(w: &str) -> Option<Vec<String>> {
+    let (scheme, rest) = w.split_once("://")?;
+    let rest = rest.trim_end_matches('/');
+    let opt = match scheme.to_ascii_lowercase().as_str() {
+        "ssh" | "ssh2" => "/ssh",
+        "telnet" => "/telnet",
+        _ => return None,
+    };
+    Some(vec![rest.to_owned(), opt.to_owned()])
+}
+
+/// Tera Term（ttermpro）の起動引数。接続先の書き方は `connect` と同じ。
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Launch {
+    /// 接続先（ホストか /C= があるとき）
+    pub connect: Option<ConnectSpec>,
+    /// `/M=` 起動してすぐ実行するマクロ
+    pub macro_file: Option<String>,
+    /// `/L=`（上書き）/ `/LA=`（追記）起動と同時に取るログ。(ファイル, 追記)
+    pub log: Option<(String, bool)>,
+    /// `/W=` ウィンドウのタイトル
+    pub title: Option<String>,
+    /// `/F=` 読み込む設定ファイル（TERATERM.INI）
+    pub ini: Option<String>,
+    /// `/R=` 再生するログ（バイナリのログを端末に流す）
+    pub replay: Option<String>,
+}
+
+/// 起動引数（OS から 1 つずつ渡されたもの）を読む。
+pub fn parse_args(args: &[String]) -> Result<Launch, String> {
+    let line: Vec<String> = args
+        .iter()
+        .map(|a| {
+            if a.contains(char::is_whitespace) {
+                // `/W=My Title` のような値の空白を保つ
+                match a.split_once('=') {
+                    Some((k, v)) if a.starts_with('/') => format!("{k}=\"{v}\""),
+                    _ => format!("\"{a}\""),
+                }
+            } else {
+                a.clone()
+            }
+        })
+        .collect();
+    parse_command_line(&line.join(" "))
+}
+
+/// 起動引数の 1 行（`TERATERM.INI` の [Hosts] の書き方も同じ）を読む。
+pub fn parse_command_line(line: &str) -> Result<Launch, String> {
+    let mut launch = Launch::default();
+    let mut rest: Vec<String> = Vec::new();
+    let mut target = false;
+    for w in words(line) {
+        if let Some(opt) = w.strip_prefix('/') {
+            let (key, value) = match opt.split_once('=') {
+                Some((k, v)) => (k.to_ascii_lowercase(), Some(v.to_owned())),
+                None => (opt.to_ascii_lowercase(), None),
+            };
+            match (key.as_str(), value) {
+                ("m", Some(v)) => launch.macro_file = Some(v),
+                ("l", Some(v)) => launch.log = Some((v, false)),
+                ("la", Some(v)) => launch.log = Some((v, true)),
+                ("w", Some(v)) => launch.title = Some(v),
+                ("f", Some(v)) => launch.ini = Some(v),
+                ("r", Some(v)) => launch.replay = Some(v),
+                ("c", _) => {
+                    target = true;
+                    rest.push(w);
+                }
+                _ => rest.push(w),
+            }
+        } else if let Some(parts) = url_to_words(&w) {
+            target = true;
+            rest.extend(parts);
+        } else {
+            target = true;
+            rest.push(if w.contains(char::is_whitespace) {
+                format!("\"{w}\"")
+            } else {
+                w
+            });
+        }
+    }
+    if target {
+        launch.connect = Some(parse_connect(&rest.join(" "))?);
+    }
+    Ok(launch)
+}
+
 pub fn parse_connect(spec: &str) -> Result<ConnectSpec, String> {
     let mut serial: Option<String> = None;
     let mut baud = None;
@@ -114,7 +204,14 @@ pub fn parse_connect(spec: &str) -> Result<ConnectSpec, String> {
     let mut ssh: Option<bool> = None;
     let mut telnet: Option<bool> = None;
     let mut ssh_spec = SshSpec::default();
+    let mut all = Vec::new();
     for w in words(spec) {
+        match url_to_words(&w) {
+            Some(parts) => all.extend(parts),
+            None => all.push(w),
+        }
+    }
+    for w in all {
         if let Some(opt) = w.strip_prefix('/') {
             let (key, value) = match opt.split_once('=') {
                 Some((k, v)) => (k.to_ascii_lowercase(), Some(v.to_owned())),
@@ -185,6 +282,48 @@ pub fn parse_connect(spec: &str) -> Result<ConnectSpec, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_line() {
+        let l = parse_command_line(
+            r#"ssh://admin@r1.example.com:2222 /M=login.ttl /LA="my log.txt" /W="Core SW""#,
+        )
+        .unwrap();
+        match l.connect {
+            Some(ConnectSpec::Ssh(s)) => {
+                assert_eq!(s.host, "admin@r1.example.com");
+                assert_eq!(s.port, Some(2222));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(l.macro_file.as_deref(), Some("login.ttl"));
+        assert_eq!(l.log, Some(("my log.txt".into(), true)));
+        assert_eq!(l.title.as_deref(), Some("Core SW"));
+
+        // 接続先が無ければマクロだけ
+        let l = parse_command_line("/M=x.ttl").unwrap();
+        assert!(l.connect.is_none());
+        let l = parse_args(&[
+            "/C=/dev/cu.usb".into(),
+            "/BAUD=9600".into(),
+            "/W=Lab Router".into(),
+        ])
+        .unwrap();
+        assert_eq!(
+            l.connect,
+            Some(ConnectSpec::Serial {
+                port: "/dev/cu.usb".into(),
+                baud: Some(9600)
+            })
+        );
+        assert_eq!(l.title.as_deref(), Some("Lab Router"));
+        assert!(matches!(
+            parse_command_line("telnet://10.0.0.1:2323")
+                .unwrap()
+                .connect,
+            Some(ConnectSpec::Telnet { port: 2323, .. })
+        ));
+    }
 
     #[test]
     fn forms() {

@@ -5,6 +5,7 @@
 
 pub mod auth;
 pub mod charset;
+pub mod ini;
 pub mod log;
 pub mod mock;
 pub mod newline;

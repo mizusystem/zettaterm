@@ -7,7 +7,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 | パス | パッケージ名 | 責務 |
 | --- | --- | --- |
-| `crates/core` | `mt-core` | Session、Transport の抽象、文字コード・改行変換、ログ、プロファイル（INI インポートは未実装） |
+| `crates/core` | `mt-core` | Session、Transport の抽象、文字コード・改行変換、ログ、プロファイル、TERATERM.INI のインポート |
 | `crates/vt` | `mt-vt` | VT エミュレーション、画面グリッド、変更行の追跡、スクロールバック |
 | `crates/serial` | `mt-serial` | ポート制御、任意ボーレート、デバイス列挙とホットプラグ、自動再接続 |
 | `crates/net` | `mt-net` | SSH（外部 ssh を PTY 起動 → 後で russh）、Telnet、ローカル PTY |
@@ -33,7 +33,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 - UI に依存するコードは `crates/` に入れない
 - OS 固有コード（`cfg(target_os)`）は `crates/serial` と `crates/net` の中に閉じる。他のクレートには書かない
 - `crates/` 配下は macOS・Linux・Windows の 3 環境で `cargo test` を通す。Linux と Windows は GitHub Actions（`.github/workflows/ci.yml`）、macOS はこの Mac で `scripts/ci-macos.sh`（push 前に回す。GitHub で回すときは `macos.yml` を手動実行）
-- 設定ファイルは TOML。`TERATERM.INI` のインポートは `core` に置く予定（未実装）
+- 設定ファイルは TOML。`TERATERM.INI` は `mt_core::ini` で読み、各 UI が自分の設定に移す（「設定 > 設定の読み込み」と起動引数 `/F=`）
 - Tera Term のコードは持ってこない。仕様・UI 文言・設定キーは参照してよい（BSD-3-Clause、`THIRD_PARTY.md` に表示）
 
 ## API 契約（メインセッションの持ち物）
@@ -105,7 +105,7 @@ UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）から
 
 SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`mt_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。
 
-SSH SCP（TTSSH の「ファイル > SSH SCP」）は `crates/net/src/scp.rs`。内蔵 SSH の接続に exec チャネルを足して相手の `scp -t` / `scp -f` と話すので、端末は使ったまま転送できる（フォルダは `-r` で中身ごと）。テストサーバーは本物の scp を起動して相互転送を確かめる（`tests/support/exec.rs`、test-sshd も同じ）。
+ポート転送（-L / -R / -D、ssh_config の LocalForward なども）は `crates/net/src/forward.rs`、設定は「設定 > SSH...」。SSH SCP（TTSSH の「ファイル > SSH SCP」）は `crates/net/src/scp.rs`。内蔵 SSH の接続に exec チャネルを足して相手の `scp -t` / `scp -f` と話すので、端末は使ったまま転送できる（フォルダは `-r` で中身ごと）。テストサーバーは本物の scp を起動して相互転送を確かめる（`tests/support/exec.rs`、test-sshd も同じ）。
 
 ```bash
 cargo test -p mt-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
@@ -123,6 +123,6 @@ Kermit は C-Kermit（openkermit 11 系。`brew install openkermit`）と相互�
 
 `mt` コマンドの配布は `.github/workflows/release-cli.yml`（`v*` のタグで Linux / Windows / macOS 向けをビルドし、GitHub Releases に下書きで置く。手動実行はビルドだけ）。
 
-TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`、macOS は「コントロール > マクロ」（ffi の `run_macro` と `MacroHost`）。`connect` 直後のプロンプトを取りこぼさないよう、マクロは `Session::tap_with_history` で直前の受信から見る。
+TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。起動引数（ttermpro と同じ `host /ssh /M= /L= /W= /F=`）は `connect` と同じ書き方なので `mt_ttl::parse_args` で読む。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`、macOS は「コントロール > マクロ」（ffi の `run_macro` と `MacroHost`）。`connect` 直後のプロンプトを取りこぼさないよう、マクロは `Session::tap_with_history` で直前の受信から見る。
 
 接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。

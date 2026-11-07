@@ -20,7 +20,7 @@
 | Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
 | Step 2（ログ・設定・シリアル） | 完了（2026-11-06）。Linux 版は画面での確認が未了、信号線は実機での確認が未了 |
 | Step 3（TTL） | ほぼ完了（2026-11-07）。残りは `waitevent` `kermitget` `kermitfinish` `sendkcode` `setdlgpos` `move` `resize` `getttpos` `logrotate` `logautoclosemode` `getipv4addr` `getipv6addr` `restoresetup` `savesetup` |
-| Step 4（TTSSH・設定互換） | 未着手 |
+| Step 4（TTSSH・設定互換） | 進行中：ポート転送・キープアライブ・INI インポート・起動引数は済み。残りはエージェント転送と鍵生成 |
 
 ## 目次
 
@@ -68,7 +68,7 @@
 - [ ] **TCP/IP (`MENU_SETUP_TCPIP`)**: ホストリストの追加・並べ替え・削除、履歴表示有無、自動ウィンドウクローズ、デフォルトポート、Telnet Keep-Alive、端末タイプ (`TermType`) (`DLG_TCPIP_TITLE`)
 - [ ] **全般 (`MENU_SETUP_GENERAL`)**: UI 表示言語の切り替え、デフォルト接続ポート（TCP/IP または シリアル） (`DLG_GEN_TITLE`)
 - [ ] **その他の設定 (`MENU_SETUP_ADDITION`)**: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
-- [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)** / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**
+- [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)**（※読み込みは TERATERM.INI のインポートとして実装済み） / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**
 - [ ] **TTSSH 追加設定ダイアログ**:
   - [ ] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**: 暗号・KEX・MAC・ホスト鍵・署名アルゴリズムの優先順位リスト、圧縮レベル、HeartBeat（キープアライブ）、書き込みバッファサイズ
   - [ ] **SSH 認証... (`MENU_SSH_AUTH` / `DLG_AUTHSETUP_TITLE`)**: デフォルトユーザー名、デフォルト認証方式、秘密鍵ファイル指定、Pageant / `ssh-agent` 連携、エージェント転送確認
@@ -255,10 +255,10 @@
 ## 6. 設定ファイル互換・CLI 引数・標準プラグイン (TTX) 相当機能
 
 ### 6-1. `TERATERM.INI` のインポート／エクスポート
-- [ ] `crates/core` にて既存の `TERATERM.INI` を読み込み、プロファイル・シリアル設定・端末設定・色設定・SSH 設定へ変換するインポータの実装
+- [x] `crates/core` にて既存の `TERATERM.INI` を読み込み、プロファイル・シリアル設定・端末設定・色設定・SSH 設定へ変換するインポータの実装
 
 ### 6-2. GUI アプリのコマンドライン引数互換
-- [ ] 本家 `ttermpro.exe` と互換性のある起動引数パーサの実装：
+- [x] 本家 `ttermpro.exe` と互換性のある起動引数パーサの実装（※`/R=` のログ再生は未実装）：
   - `<host>:<port>` / `ssh://user@host:port`
   - `/C=<port>` (シリアルポート番号またはデバイスパス) / `/BAUD=<speed>`
   - `/ssh` / `/telnet`
@@ -304,4 +304,4 @@
 ### Step 4: TTSSH 高度機能・設定互換
 - [x] SSH ポートフォワーディング (`-L`, `-R`, `-D`) 設定 UI とトンネリング実装
 - [ ] SSH エージェント転送 (`ForwardAgent`)、SSH 鍵生成 GUI、SSH HeartBeat
-- [ ] `TERATERM.INI` インポート機能と GUI コマンドライン引数 (`/M=`, `/L=`, `/C=`, `/ssh` 等) のサポート
+- [x] `TERATERM.INI` インポート機能と GUI コマンドライン引数 (`/M=`, `/L=`, `/C=`, `/ssh` 等) のサポート

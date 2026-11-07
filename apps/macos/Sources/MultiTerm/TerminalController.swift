@@ -42,6 +42,9 @@ final class TerminalController: ObservableObject {
     /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
     @Published private(set) var modemLines: ModemLines?
     private var modemTimer: Timer?
+    /// 起動引数の /L= と /M=（接続できてから始める）
+    private var launchLog: (String, Bool)?
+    private var launchMacro: URL?
     @Published private(set) var remoteTitle = ""
     @Published private(set) var target: ConnectTarget?
     @Published var sheet: Sheet?
@@ -87,6 +90,12 @@ final class TerminalController: ObservableObject {
     // MARK: 接続
 
     func open(_ request: ConnectRequest?) {
+        // 起動引数（ttermpro と同じ書き方）があれば、最初のウィンドウで 1 回だけ使う
+        if request == nil, let launch = SettingsImport.pending {
+            SettingsImport.pending = nil
+            applyLaunch(launch)
+            return
+        }
         switch request?.target ?? .dialog {
         case .dialog: sheet = .newConnection
         case let .connect(target): connect(target)
@@ -122,6 +131,7 @@ final class TerminalController: ObservableObject {
                 if remember { HostStore.shared.add(target) }
                 autoStartLog()
                 startModemPolling()
+                startLaunchExtras()
             } catch is CancellationError {
                 prompter.setOneTimePassword(nil)
                 return
@@ -132,6 +142,39 @@ final class TerminalController: ObservableObject {
                 report(error)
             }
             focusTerminal()
+        }
+    }
+
+    /// 起動引数の /W=（タイトル）、接続先、/L=（ログ）、/M=（マクロ）。
+    private func applyLaunch(_ l: LaunchOptions) {
+        if let t = l.title { macroTitle = t }
+        launchLog = l.logFile.map { ($0, l.logAppend) }
+        launchMacro = l.macroFile.map { URL(fileURLWithPath: $0) }
+        if let c = l.connect, let target = SettingsImport.target(c) {
+            if case let .ssh(_, _, _, password) = c { prompter.setOneTimePassword(password) }
+            connect(target)
+        } else {
+            if l.connect != nil { errorMessage = L("起動引数の接続先はこの OS では開けません。") }
+            if let m = launchMacro {
+                launchMacro = nil
+                runMacro(m)
+            } else {
+                sheet = .newConnection
+            }
+        }
+    }
+
+    /// 起動引数の接続が終わったら始めるログとマクロ。
+    private func startLaunchExtras() {
+        if let (path, append) = launchLog {
+            launchLog = nil
+            var options = LogOptionsView.savedOptions(path: path)
+            options.append = append
+            startLog(options)
+        }
+        if let m = launchMacro {
+            launchMacro = nil
+            runMacro(m)
         }
     }
 

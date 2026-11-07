@@ -92,5 +92,8 @@
   "1 行に 1 つ。L はローカル（L 8080:intranet:80）、R はリモート（R 2222:localhost:22）、D は SOCKS プロキシ（D 1080）。~/.ssh/config の LocalForward なども効きます。": "One per line. L is local (L 8080:intranet:80), R is remote (R 2222:localhost:22), D is a SOCKS proxy (D 1080). LocalForward and the like in ~/.ssh/config also apply.",
   "読めない行があります: %@": "Some lines could not be read: %@",
   "次の接続から効きます。": "Takes effect from the next connection.",
-  "接続しましたが、次はうまくいきませんでした。\n%@": "Connected, but the following did not work:\n%@"
+  "接続しましたが、次はうまくいきませんでした。\n%@": "Connected, but the following did not work:\n%@",
+  "Tera Term の設定ファイル（TERATERM.INI）を選んでください。": "Choose a Tera Term settings file (TERATERM.INI).",
+  "%@ を読み込みました（接続先 %@ 件）。": "Imported %@ (%@ hosts).",
+  "起動引数の接続先はこの OS では開けません。": "The connection in the launch arguments cannot be opened on this OS."
 }

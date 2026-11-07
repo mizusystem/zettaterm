@@ -24,12 +24,14 @@ pub use macros::{MacroConnect, MacroHost, MacroRun, run_macro};
 pub use scp::ScpHandle;
 pub use transfer::{TransferHandle, TransferProgress, TransferProtocol, TransferStatus};
 mod serial;
+mod settings_io;
 pub use history::{HostHistory, ssh_config_hosts};
 pub use serial::{
     Charset, DeviceListener, DeviceWatcher, FlowControl, LogOptions, LogStatus, LogTimestamp,
     NewlineReceive, NewlineSend, Parity, SerialDevice, SerialSettings, StopBits, TerminalSettings,
     default_serial_settings, default_terminal_settings, list_serial_devices,
 };
+pub use settings_io::{IniImport, LaunchOptions, import_teraterm_ini, parse_launch_args};
 
 uniffi::setup_scaffolding!();
 

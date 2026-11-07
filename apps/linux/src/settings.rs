@@ -1003,3 +1003,101 @@ pub fn ssh_dialog(parent: &gtk::Window) {
     win.set_default_widget(Some(&ok));
     win.present();
 }
+
+/// TERATERM.INI から読めた設定を、この版の設定に移す。足した接続先の数を返す。
+pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
+    let mut s = Settings::load();
+    if let Some(ser) = ini.serial {
+        s.serial = ser;
+    }
+    if let Some(d) = ini.delay {
+        s.delay = d;
+    }
+    // Tera Term ではシリアルとそれ以外で共通なので両方に
+    for t in [&mut s.terminal, &mut s.terminal_serial] {
+        if let Some(n) = ini.newline_receive {
+            t.newline_receive = n;
+        }
+        if let Some(n) = ini.newline_send {
+            t.newline_send = n;
+        }
+        if let Some(e) = ini.local_echo {
+            t.local_echo = e;
+        }
+        if let Some(c) = ini.charset_receive {
+            t.charset_receive = c;
+        }
+        if let Some(c) = ini.charset_send {
+            t.charset_send = c;
+        }
+    }
+    if let Some(fg) = ini.foreground {
+        s.look.foreground = fg;
+    }
+    if let Some(bg) = ini.background {
+        s.look.background = bg;
+    }
+    if let Some(shape) = &ini.cursor_shape {
+        s.look.cursor_shape = match shape.as_str() {
+            "vertical" => "beam",
+            "horizontal" => "underline",
+            _ => "block",
+        }
+        .to_owned();
+    }
+    if let Some((name, px)) = &ini.font {
+        // Tera Term の高さはピクセル（96 dpi）。ポイントに直す
+        let pt = ((*px as f64) * 72.0 / 96.0).round().clamp(6.0, 72.0);
+        s.look.font = format!("{name} {pt}");
+    }
+    if let Some(n) = &ini.log_default_name {
+        s.log.name = n.clone();
+    }
+    if let Some(p) = ini.log_default_path.as_ref().filter(|p| !p.contains('\\')) {
+        s.log.folder = p.clone();
+    }
+    for (slot, v) in [
+        (&mut s.log.auto_start, ini.log_auto_start),
+        (&mut s.log.binary, ini.log_binary),
+        (&mut s.log.append, ini.log_append),
+        (&mut s.log.timestamp, ini.log_timestamp),
+        (&mut s.log.utc, ini.log_timestamp_utc),
+        (&mut s.copy_paste.auto_copy, ini.auto_text_copy),
+        (&mut s.copy_paste.confirm_paste, ini.confirm_change_paste),
+        (&mut s.copy_paste.clickable_url, ini.clickable_url),
+        (
+            &mut s.copy_paste.trim_trailing_newline,
+            ini.trim_trailing_nl,
+        ),
+        (&mut s.copy_paste.right_click_paste, ini.right_click_paste),
+        (&mut s.copy_paste.middle_click_paste, ini.middle_click_paste),
+    ] {
+        if let Some(v) = v {
+            *slot = v;
+        }
+    }
+    if let Some(d) = &ini.delim_list {
+        s.copy_paste.delimiters = d.clone();
+    }
+    if let Some(k) = ini.ssh_keepalive {
+        s.ssh.keepalive = k;
+    }
+    if !ini.ssh_forwards.is_empty() {
+        s.ssh.forwards = ini.ssh_forwards.clone();
+    }
+    s.save();
+    let mut n = 0;
+    for h in ini.hosts.iter().rev() {
+        if let Some(spec) = mt_ttl::parse_command_line(h).ok().and_then(|l| l.connect) {
+            let profile = crate::window::TermWindow::macro_connect_profile(spec);
+            // Windows の COMn はこの OS では開けない
+            if matches!(&profile, ConnectionProfile::Serial { port, .. } if port.to_ascii_uppercase().starts_with("COM"))
+            {
+                continue;
+            }
+            crate::connect::remember(&profile);
+            n += 1;
+        }
+    }
+    n
+}

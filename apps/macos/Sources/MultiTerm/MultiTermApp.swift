@@ -25,6 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in _ = DeviceStore.shared }
         // 内蔵 SSH のキープアライブとポート転送
         SshSettings.apply()
+        // ttermpro と同じ起動引数（open MultiTerm.app --args host /ssh /M=x.ttl など）
+        SettingsImport.readLaunchArguments()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -258,6 +260,10 @@ struct TerminalCommands: Commands {
             .disabled(controller == nil)
             Button(TT.text("DLG_FOPT_TITLE", "ログ") + "...") { controller?.sheet = .logSettings }
                 .disabled(controller == nil)
+            Button(TT.text("MENU_SETUP_RESTORE", "設定の読み込み...")) {
+                SettingsImport.chooseAndImport(controller)
+            }
+            Divider()
             // TTSSH の「SSH...」と「SSH 転送...」をまとめたもの
             Button(TT.text("MENU_SSH", "SSH...", section: "TTSSH")) { controller?.sheet = .sshSettings }
                 .disabled(controller == nil)
