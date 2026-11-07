@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
         // デバイス監視を早めに始めて、最初のダイアログで一覧が出ているようにする
         Task { @MainActor in _ = DeviceStore.shared }
+        // 内蔵 SSH のキープアライブとポート転送
+        SshSettings.apply()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -87,6 +89,7 @@ struct TerminalWindow: View {
                 case .logComment: LogCommentView(controller: controller)
                 case .windowSettings: WindowSettingsView()
                 case .fontSettings: FontSettingsView()
+                case .sshSettings: SshSettingsView()
                 }
             }
             .alert(
@@ -254,6 +257,9 @@ struct TerminalCommands: Commands {
             }
             .disabled(controller == nil)
             Button(TT.text("DLG_FOPT_TITLE", "ログ") + "...") { controller?.sheet = .logSettings }
+                .disabled(controller == nil)
+            // TTSSH の「SSH...」と「SSH 転送...」をまとめたもの
+            Button(TT.text("MENU_SSH", "SSH...", section: "TTSSH")) { controller?.sheet = .sshSettings }
                 .disabled(controller == nil)
 
             Divider()

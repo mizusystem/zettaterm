@@ -232,6 +232,10 @@ impl Tabs {
         add("log", Box::new(|_, me| me.start_log()));
         add("log-stop", Box::new(|_, me| me.stop_log()));
         add("log-comment", Box::new(|_, me| me.comment_log()));
+        add(
+            "setup-ssh",
+            Box::new(|t, _| settings::ssh_dialog(&t.win.clone().upcast())),
+        );
         add("log-view", Box::new(|_, me| me.view_log()));
         add(
             "setup-log",
@@ -555,8 +559,9 @@ impl TermWindow {
         let terminal = Settings::load().terminal_for(Some(&profile)).core();
         std::thread::spawn(move || {
             let mut files = None;
-            let result = connect::open_transport(&p, size, prompter, &mut files).and_then(
-                |(transport, send_delay)| {
+            let mut warnings = Vec::new();
+            let result = connect::open_transport(&p, size, prompter, &mut files, &mut warnings)
+                .and_then(|(transport, send_delay)| {
                     let options = SessionOptions {
                         size,
                         send_delay,
@@ -564,9 +569,12 @@ impl TermWindow {
                         ..Default::default()
                     };
                     mt_core::Session::open(transport, options, listener)
-                },
+                });
+            let _ = tx.send_blocking(
+                result
+                    .map(|s| (s, files, warnings))
+                    .map_err(|e| e.to_string()),
             );
-            let _ = tx.send_blocking(result.map(|s| (s, files)).map_err(|e| e.to_string()));
         });
         let me = Rc::clone(self);
         glib::spawn_future_local(async move {
@@ -574,13 +582,24 @@ impl TermWindow {
             // 使われなかった /passwd= は、ここで消す（後の接続に持ち越さない）
             prompter_done.forget_password();
             if me.attempt.get() != attempt {
-                if let Ok((s, _)) = result {
+                if let Ok((s, _, _)) = result {
                     s.close();
                 }
                 return;
             }
             match result {
-                Ok((session, files)) => {
+                Ok((session, files, warnings)) => {
+                    if !warnings.is_empty() {
+                        dialogs::message(
+                            &me.parent(),
+                            "Multi-Term",
+                            &lf(
+                                "接続しましたが、次はうまくいきませんでした。\n{}",
+                                &[&warnings.join("\n")],
+                            ),
+                            || {},
+                        );
+                    }
                     *me.files.borrow_mut() = files;
                     me.view.attach(Arc::clone(&session));
                     me.status.set(Status::Connected);

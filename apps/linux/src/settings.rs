@@ -14,6 +14,25 @@ use serde::{Deserialize, Serialize};
 use crate::dialogs::modal;
 use crate::strings::{l, tt};
 
+/// TTSSH の「SSH」（キープアライブ）と「SSH 転送」。内蔵 SSH の接続すべてに効く。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshConf {
+    /// 秒。0 なら送らない
+    pub keepalive: u64,
+    /// `L 8080:host:80` / `R 2222:localhost:22` / `D 1080` の形
+    pub forwards: Vec<String>,
+}
+
+impl Default for SshConf {
+    fn default() -> Self {
+        Self {
+            keepalive: 60,
+            forwards: Vec::new(),
+        }
+    }
+}
+
 /// 「設定 > ウィンドウ」（配色・カーソル）と「設定 > フォント」。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -220,6 +239,7 @@ pub struct Settings {
     pub copy_paste: CopyPaste,
     pub log: LogConf,
     pub look: Look,
+    pub ssh: SshConf,
 }
 
 impl Default for Settings {
@@ -234,6 +254,7 @@ impl Default for Settings {
             copy_paste: CopyPaste::default(),
             log: LogConf::default(),
             look: Look::default(),
+            ssh: SshConf::default(),
         }
     }
 }
@@ -898,5 +919,87 @@ pub fn font_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             applied();
         }
     });
+    win.present();
+}
+
+/// 「設定 > SSH...」：キープアライブとポート転送（TTSSH の「SSH」と「SSH 転送」をまとめたもの）。
+pub fn ssh_dialog(parent: &gtk::Window) {
+    let current = Settings::load().ssh;
+    let (win, content, row) = modal(parent, &crate::strings::ssh("DLG_SSHSETUP_TITLE", "設定"));
+    let ka_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    ka_row.append(&gtk::Label::new(Some(&crate::strings::ssh(
+        "DLG_SSHSETUP_HEARTBEAT",
+        "Keepalive",
+    ))));
+    let keepalive = gtk::SpinButton::with_range(0.0, 3600.0, 1.0);
+    keepalive.set_value(current.keepalive as f64);
+    ka_row.append(&keepalive);
+    ka_row.append(&gtk::Label::new(Some(&crate::strings::ssh(
+        "DLG_SSHSETUP_HEARTBEAT_UNIT",
+        "秒(0を指定すると無効)",
+    ))));
+    content.append(&ka_row);
+
+    let caption = gtk::Label::new(Some(&crate::strings::ssh(
+        "DLG_FWDSETUP_LIST",
+        "ポート転送",
+    )));
+    caption.set_xalign(0.0);
+    content.append(&caption);
+    let note = gtk::Label::new(Some(&l(
+        "1 行に 1 つ。L はローカル（L 8080:intranet:80）、R はリモート（R 2222:localhost:22）、D は SOCKS プロキシ（D 1080）。~/.ssh/config の LocalForward なども効きます。",
+    )));
+    note.set_wrap(true);
+    note.set_xalign(0.0);
+    note.add_css_class("dim-label");
+    content.append(&note);
+    let text = gtk::TextView::new();
+    text.set_monospace(true);
+    text.buffer().set_text(&current.forwards.join("\n"));
+    content.append(
+        &gtk::ScrolledWindow::builder()
+            .min_content_height(120)
+            .child(&text)
+            .build(),
+    );
+    let error = gtk::Label::new(None);
+    error.set_xalign(0.0);
+    error.add_css_class("error");
+    error.set_visible(false);
+    content.append(&error);
+
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let ok = gtk::Button::with_label(&tt("BTN_OK", "OK"));
+    ok.add_css_class("suggested-action");
+    row.append(&cancel);
+    row.append(&ok);
+    let w = win.clone();
+    cancel.connect_clicked(move |_| w.close());
+    let w = win.clone();
+    ok.connect_clicked(move |_| {
+        let buf = text.buffer();
+        let lines: Vec<String> = buf
+            .text(&buf.start_iter(), &buf.end_iter(), false)
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_owned)
+            .collect();
+        let (_, bad) = mt_net::forward::parse_list(&lines);
+        if !bad.is_empty() {
+            error.set_text(&crate::strings::lf(
+                "読めない行があります: {}",
+                &[&bad.join(", ")],
+            ));
+            error.set_visible(true);
+            return;
+        }
+        let mut s = Settings::load();
+        s.ssh.keepalive = keepalive.value() as u64;
+        s.ssh.forwards = lines;
+        s.save();
+        w.close();
+    });
+    win.set_default_widget(Some(&ok));
     win.present();
 }

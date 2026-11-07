@@ -373,6 +373,26 @@ pub struct ModemLines {
     pub rts: bool,
 }
 
+/// 内蔵 SSH の接続に使う設定（TTSSH の「SSH」「SSH 転送」）。全ウィンドウで共通。
+static SSH_DEFAULTS: std::sync::Mutex<(Vec<mt_net::Forward>, u64)> =
+    std::sync::Mutex::new((Vec::new(), 0));
+
+fn ssh_defaults() -> (Vec<mt_net::Forward>, u64) {
+    SSH_DEFAULTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// 次からの内蔵 SSH の接続に使うポート転送（`L 8080:host:80` / `R ...` / `D 1080` の形）と
+/// キープアライブの間隔（秒、0 で送らない）。読めなかった転送の書き方を返す。
+#[uniffi::export]
+pub fn set_ssh_defaults(forwards: Vec<String>, keepalive_secs: u32) -> Vec<String> {
+    let (parsed, bad) = mt_net::forward::parse_list(&forwards);
+    *SSH_DEFAULTS.lock().unwrap_or_else(|e| e.into_inner()) = (parsed, u64::from(keepalive_secs));
+    bad
+}
+
 /// ダブルクリックで単語を区切る文字の既定値（Tera Term の DelimList）。
 #[uniffi::export]
 pub fn default_word_delimiters() -> String {
@@ -512,6 +532,8 @@ pub struct Session {
     inner: Arc<core::Session>,
     /// 内蔵 SSH のときだけ。SSH SCP に使う
     files: Option<mt_net::SshFiles>,
+    /// 接続はできたが、うまくいかなかったこと（始められなかったポート転送など）
+    warnings: Vec<String>,
 }
 
 #[uniffi::export]
@@ -531,6 +553,7 @@ impl Session {
         let size = core::WindowSize::new(cols, rows);
         let mut send_delay = core::SendDelay::default();
         let mut files = None;
+        let mut warnings = Vec::new();
         let transport: Box<dyn core::Transport> = match profile {
             Profile::LocalShell { program, args, cwd } => {
                 let cmd = PtyCommand {
@@ -565,15 +588,19 @@ impl Session {
                 user,
                 system_ssh: false,
             } => {
+                let defaults = ssh_defaults();
                 let options = SshOptions {
                     host,
                     port,
                     user,
                     config_path: None,
+                    forwards: defaults.0,
+                    keepalive_secs: Some(defaults.1),
                 };
                 let prompter = Arc::new(auth::PrompterAdapter(prompter));
                 let transport = SshTransport::connect(&options, size, prompter)?;
                 files = transport.files();
+                warnings = transport.warnings().to_vec();
                 Box::new(transport)
             }
             Profile::Telnet { host, port, ip } => Box::new(TcpTransport::telnet(
@@ -593,7 +620,11 @@ impl Session {
             ..Default::default()
         };
         let inner = core::Session::open(transport, options, Arc::new(ListenerAdapter(listener)))?;
-        Ok(Arc::new(Self { inner, files }))
+        Ok(Arc::new(Self {
+            inner,
+            files,
+            warnings,
+        }))
     }
 
     pub fn write(&self, bytes: Vec<u8>) {
@@ -812,6 +843,11 @@ impl Session {
     }
 
     /// SSH SCP が使えるか（内蔵の SSH で接続しているときだけ）。
+    /// 接続はできたが、うまくいかなかったこと（始められなかったポート転送など）。
+    pub fn warnings(&self) -> Vec<String> {
+        self.warnings.clone()
+    }
+
     pub fn can_scp(&self) -> bool {
         self.files.is_some()
     }

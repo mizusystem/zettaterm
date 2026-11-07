@@ -135,6 +135,10 @@ fn menu() -> gio::Menu {
         Some(&format!("{}...", tt("DLG_FOPT_TITLE", "ログ"))),
         Some("win.setup-log"),
     );
+    setup.append(
+        Some(&crate::strings::ssh("MENU_SSH", "SSH...")),
+        Some("win.setup-ssh"),
+    );
     // 文字コードのクイック切り替え（Tera Term の TTXKanjiMenu）。受信と送信をまとめて変える
     let charsets = gio::Menu::new();
     for (_, id, name) in crate::window::CHARSETS {

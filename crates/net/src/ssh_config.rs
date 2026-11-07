@@ -46,6 +46,8 @@ pub struct SshParams {
     pub strict: StrictHostKeyChecking,
     /// 先頭が書き込み先
     pub known_hosts: Vec<PathBuf>,
+    /// LocalForward / DynamicForward（それぞれ最後の 1 行だけ）と RemoteForward（すべて）
+    pub forwards: Vec<crate::forward::Forward>,
 }
 
 impl SshParams {
@@ -193,7 +195,32 @@ pub fn resolve(
         .and_then(|v| v.first().cloned())
         .is_some_and(|v| v.eq_ignore_ascii_case("yes"));
 
+    let mut forwards = Vec::new();
+    // RemoteForward は ssh2-config が解釈して全行を持っている（行き先の無い SOCKS 形式は未対応）
+    let remote: Vec<crate::forward::Forward> = p
+        .remote_forward
+        .iter()
+        .filter_map(|r| {
+            let text = r.to_string();
+            crate::forward::Forward::parse(
+                'R',
+                &text.split_whitespace().collect::<Vec<_>>().join(":"),
+            )
+            .ok()
+        })
+        .collect();
+    for (key, kind) in [("localforward", 'L'), ("dynamicforward", 'D')] {
+        // `LocalForward 8080 host:80` は値が空白で 2 つに分かれて届く
+        if let Some(v) = extra(key)
+            && let Ok(f) = crate::forward::Forward::parse(kind, &v.join(":"))
+        {
+            forwards.push(f);
+        }
+    }
+    forwards.extend(remote);
+
     Ok(SshParams {
+        forwards,
         alias,
         host_name,
         port,
@@ -359,6 +386,30 @@ mod tests {
         assert_eq!(p.proxy_command.as_deref(), Some("nc 10.0.0.5 2222"));
         assert_eq!(p.connect_timeout, Some(Duration::from_secs(7)));
         assert_eq!(p.server_alive_interval, Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn port_forwards_from_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = write(
+            dir.path(),
+            "config",
+            "Host gw\n  LocalForward 8080 intranet:80\n  DynamicForward 127.0.0.1:1080\n  RemoteForward 2222 localhost:22\n",
+        );
+        let p = resolve("gw", None, None, Some(&cfg)).unwrap();
+        let specs: Vec<String> = p
+            .forwards
+            .iter()
+            .map(|f| format!("{}{}", f.kind(), f.spec()))
+            .collect();
+        assert_eq!(
+            specs,
+            [
+                "Llocalhost:8080:intranet:80",
+                "D127.0.0.1:1080",
+                "Rlocalhost:2222:localhost:22"
+            ]
+        );
     }
 
     #[test]

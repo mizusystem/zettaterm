@@ -258,6 +258,46 @@ impl server::Handler for Server {
         Ok(())
     }
 
+    /// リモート転送（-R）：このサーバーで待ち受け、来た接続を forwarded-tcpip でクライアントへ渡す。
+    async fn tcpip_forward(
+        &mut self,
+        address: &str,
+        port: &mut u32,
+        session: &mut server::Session,
+    ) -> Result<bool, Self::Error> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("tcpip-forward {address}:{port}"));
+        let Ok(listener) = tokio::net::TcpListener::bind(("127.0.0.1", *port as u16)).await else {
+            return Ok(false);
+        };
+        let bound = u32::from(listener.local_addr().unwrap().port());
+        *port = bound;
+        let handle = session.handle();
+        let address = address.to_owned();
+        tokio::spawn(async move {
+            while let Ok((mut tcp, peer)) = listener.accept().await {
+                let Ok(channel) = handle
+                    .channel_open_forwarded_tcpip(
+                        address.clone(),
+                        bound,
+                        peer.ip().to_string(),
+                        u32::from(peer.port()),
+                    )
+                    .await
+                else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut stream = channel.into_stream();
+                    let _ = tokio::io::copy_bidirectional(&mut stream, &mut tcp).await;
+                });
+            }
+        });
+        Ok(true)
+    }
+
     #[allow(clippy::too_many_arguments)]
     async fn pty_request(
         &mut self,
@@ -1207,5 +1247,128 @@ fn changing_the_user_in_the_dialog_reconnects() {
     let log = server.log.lock().unwrap();
     assert!(!log.iter().any(|l| l.starts_with("user change")), "{log:?}");
     assert!(log.iter().any(|l| l == "password kt"), "{log:?}");
+    session.close();
+}
+
+// ---------------------------------------------------------------- ポート転送
+
+/// 1 行ずつ "echo:" を付けて返す TCP サーバー（転送の行き先）。
+fn echo_server() -> u16 {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    std::thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            std::thread::spawn(move || {
+                let mut out = stream.try_clone().unwrap();
+                for line in BufReader::new(stream).lines().map_while(Result::ok) {
+                    let _ = writeln!(out, "echo:{line}");
+                }
+            });
+        }
+    });
+    port
+}
+
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+fn round_trip(stream: &mut std::net::TcpStream, text: &str) -> String {
+    use std::io::{BufRead, BufReader, Write};
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    writeln!(stream, "{text}").unwrap();
+    let mut line = String::new();
+    BufReader::new(stream.try_clone().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    line.trim_end().to_owned()
+}
+
+#[test]
+fn local_remote_and_dynamic_forwarding() {
+    use mt_net::Forward;
+    use std::io::{Read, Write};
+    let client = random_key();
+    let server = start_server(random_key(), vec![client.public_key().clone()]);
+    let env = Env::new();
+    env.trust(&server);
+    let key = write_key(env.path(), "id_test", &client);
+    let config = env.config(&server, Some(&key), "");
+    let echo = echo_server();
+    let (local, remote, socks) = (free_port(), free_port(), free_port());
+    // すでに使われているポートへの転送は、理由を残して接続は続ける
+    let busy = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let busy_port = busy.local_addr().unwrap().port();
+    let options = SshOptions {
+        host: "test".into(),
+        config_path: Some(config.to_path_buf()),
+        forwards: vec![
+            Forward::parse('L', &format!("127.0.0.1:{local}:127.0.0.1:{echo}")).unwrap(),
+            Forward::parse('R', &format!("{remote}:127.0.0.1:{echo}")).unwrap(),
+            Forward::parse('D', &format!("127.0.0.1:{socks}")).unwrap(),
+            Forward::parse('L', &format!("127.0.0.1:{busy_port}:127.0.0.1:{echo}")).unwrap(),
+        ],
+        keepalive_secs: Some(30),
+        ..Default::default()
+    };
+    let prompter: Arc<dyn AuthPrompter> = Arc::new(Scripted::default());
+    let transport = SshTransport::connect(&options, WindowSize::new(80, 24), prompter).unwrap();
+    assert_eq!(transport.warnings().len(), 1, "{:?}", transport.warnings());
+    assert!(transport.warnings()[0].contains(&busy_port.to_string()));
+    let session = open(transport);
+    wait_for(&session, "welcome");
+
+    // -L：手元のポート → サーバー経由で echo へ
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", local)).unwrap();
+    assert_eq!(round_trip(&mut s, "local"), "echo:local");
+    assert!(
+        server
+            .log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l == &format!("direct-tcpip 127.0.0.1:{echo}"))
+    );
+
+    // -R：サーバーのポート → クライアント経由で echo へ
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", remote)).unwrap();
+    assert_eq!(round_trip(&mut s, "remote"), "echo:remote");
+
+    // -D：SOCKS5 で行き先を名前で指定
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", socks)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    s.write_all(&[5, 1, 0]).unwrap();
+    let mut r = [0u8; 2];
+    s.read_exact(&mut r).unwrap();
+    assert_eq!(r, [5, 0]);
+    let name = b"localhost";
+    let mut req = vec![5, 1, 0, 3, name.len() as u8];
+    req.extend_from_slice(name);
+    req.extend_from_slice(&echo.to_be_bytes());
+    s.write_all(&req).unwrap();
+    let mut r = [0u8; 10];
+    s.read_exact(&mut r).unwrap();
+    assert_eq!(r[1], 0, "SOCKS5 reply {r:?}");
+    assert_eq!(round_trip(&mut s, "socks5"), "echo:socks5");
+
+    // -D：SOCKS4
+    let mut s = std::net::TcpStream::connect(("127.0.0.1", socks)).unwrap();
+    s.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    let mut req = vec![4, 1];
+    req.extend_from_slice(&echo.to_be_bytes());
+    req.extend_from_slice(&[127, 0, 0, 1, 0]);
+    s.write_all(&req).unwrap();
+    let mut r = [0u8; 8];
+    s.read_exact(&mut r).unwrap();
+    assert_eq!(r[1], 90);
+    assert_eq!(round_trip(&mut s, "socks4"), "echo:socks4");
+    drop(busy);
     session.close();
 }

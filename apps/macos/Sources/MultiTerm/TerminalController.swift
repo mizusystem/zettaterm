@@ -9,7 +9,7 @@ final class TerminalController: ObservableObject {
 
     enum Sheet: String, Identifiable {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
-        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings
+        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings
         var id: String { rawValue }
     }
 
@@ -115,6 +115,10 @@ final class TerminalController: ObservableObject {
                 prompter.setOneTimePassword(nil)
                 guard current == attempt else { return }
                 status = .connected
+                // 始められなかったポート転送など（接続はできている）
+                if let warnings = view.session?.warnings(), !warnings.isEmpty {
+                    errorMessage = L("接続しましたが、次はうまくいきませんでした。\n%@", warnings.joined(separator: "\n"))
+                }
                 if remember { HostStore.shared.add(target) }
                 autoStartLog()
                 startModemPolling()

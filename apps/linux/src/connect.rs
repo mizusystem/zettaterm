@@ -40,6 +40,7 @@ pub fn open_transport(
     size: WindowSize,
     prompter: Arc<dyn AuthPrompter>,
     files: &mut Option<mt_net::SshFiles>,
+    warnings: &mut Vec<String>,
 ) -> io::Result<(Box<dyn Transport>, SendDelay)> {
     Ok(match profile {
         ConnectionProfile::LocalShell => (
@@ -79,14 +80,18 @@ pub fn open_transport(
             user,
             system_ssh: false,
         } => {
+            let ssh = crate::settings::Settings::load().ssh;
             let options = SshOptions {
                 host: host.clone(),
                 port: *port,
                 user: user.clone(),
                 config_path: None,
+                forwards: mt_net::forward::parse_list(&ssh.forwards).0,
+                keepalive_secs: Some(ssh.keepalive),
             };
             let transport = SshTransport::connect(&options, size, prompter)?;
             *files = transport.files();
+            warnings.extend_from_slice(transport.warnings());
             (Box::new(transport), SendDelay::default())
         }
         ConnectionProfile::Telnet { host, port } => (

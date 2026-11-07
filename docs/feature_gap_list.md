@@ -72,7 +72,7 @@
 - [ ] **TTSSH 追加設定ダイアログ**:
   - [ ] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**: 暗号・KEX・MAC・ホスト鍵・署名アルゴリズムの優先順位リスト、圧縮レベル、HeartBeat（キープアライブ）、書き込みバッファサイズ
   - [ ] **SSH 認証... (`MENU_SSH_AUTH` / `DLG_AUTHSETUP_TITLE`)**: デフォルトユーザー名、デフォルト認証方式、秘密鍵ファイル指定、Pageant / `ssh-agent` 連携、エージェント転送確認
-  - [ ] **SSH 転送... (`MENU_SSH_FORWARD` / `DLG_FWDSETUP_TITLE`)**: ポートフォワーディング（ローカル `-L` / リモート `-R` / ダイナミック `-D`）の一覧・追加・編集・削除、X11 転送設定
+  - [x] **SSH 転送... (`MENU_SSH_FORWARD` / `DLG_FWDSETUP_TITLE`)**（※1 行 1 つの文字で編集する。X11 転送は未実装）: ポートフォワーディング（ローカル `-L` / リモート `-R` / ダイナミック `-D`）の一覧・追加・編集・削除、X11 転送設定
   - [ ] **SSH 鍵生成... (`MENU_SSH_KEYGEN` / `DLG_KEYGEN_TITLE`)**: RSA / ECDSA / Ed25519 鍵ペア生成、パスフレーズ設定、OpenSSH / PuTTY / SSH2 形式での公開鍵・秘密鍵保存
 
 ### 1-4. 「コントロール (Control)」メニュー (`MENU_CONTROL`)
@@ -156,13 +156,13 @@
 ## 3. 通信・プロトコル層の不足機能 (`mt-net` / `mt-serial`)
 
 ### 3-1. SSH (`crates/net/src/ssh_client.rs`)
-- [ ] **ポートフォワーディング（トンネリング）の実装**:
+- [x] **ポートフォワーディング（トンネリング）の実装**（※X11 転送は未実装）:
   - ローカル転送 (`-L` / `direct-tcpip`)
   - リモート転送 (`-R` / `tcpip-forward`)
   - ダイナミック SOCKS4/5 転送 (`-D`)
   - X11 フォワーディング
 - [ ] **SSH エージェント転送 (`auth-agent-req@openssh.com`)** と要求時確認通知
-- [ ] **SSH キープアライブ (HeartBeat)** タスク（無通信時に指定秒間隔で `keepalive@openssh.com` または ignore パケットを送信）
+- [x] **SSH キープアライブ (HeartBeat)** タスク（無通信時に指定秒間隔で `keepalive@openssh.com` または ignore パケットを送信）
 - [ ] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**
 - [ ] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定
 
@@ -302,6 +302,6 @@
 - [x] `getpassword`, `setpassword`, `clipb2var`, `var2clipb`, `exec`, `wait4all`, `setexitcode`
 
 ### Step 4: TTSSH 高度機能・設定互換
-- [ ] SSH ポートフォワーディング (`-L`, `-R`, `-D`) 設定 UI とトンネリング実装
+- [x] SSH ポートフォワーディング (`-L`, `-R`, `-D`) 設定 UI とトンネリング実装
 - [ ] SSH エージェント転送 (`ForwardAgent`)、SSH 鍵生成 GUI、SSH HeartBeat
 - [ ] `TERATERM.INI` インポート機能と GUI コマンドライン引数 (`/M=`, `/L=`, `/C=`, `/ssh` 等) のサポート

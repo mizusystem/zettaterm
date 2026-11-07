@@ -43,6 +43,11 @@ pub struct SshOptions {
     pub user: Option<String>,
     /// None なら ~/.ssh/config
     pub config_path: Option<PathBuf>,
+    /// ポート転送（ssh_config の LocalForward などに足す）
+    pub forwards: Vec<crate::forward::Forward>,
+    /// 無通信のときに送るキープアライブの間隔（秒。TTSSH の HeartBeat）。ssh_config の
+    /// ServerAliveInterval があればそちらが優先。None か 0 なら送らない
+    pub keepalive_secs: Option<u64>,
 }
 
 enum Command {
@@ -58,6 +63,8 @@ pub struct SshTransport {
     received: Option<std_mpsc::Receiver<Vec<u8>>>,
     /// SCP など、同じ接続の上に別のチャネルを開くため
     handle: Arc<Handle<Client>>,
+    /// 始められなかったポート転送の理由
+    warnings: Vec<String>,
 }
 
 impl SshTransport {
@@ -67,31 +74,60 @@ impl SshTransport {
         size: WindowSize,
         prompter: Arc<dyn AuthPrompter>,
     ) -> io::Result<Self> {
-        let params = ssh_config::resolve(
+        let mut params = ssh_config::resolve(
             &options.host,
             options.port,
             options.user.as_deref(),
             options.config_path.as_deref(),
         )?;
+        if params.server_alive_interval.is_none() {
+            params.server_alive_interval = options
+                .keepalive_secs
+                .filter(|s| *s > 0)
+                .map(Duration::from_secs);
+        }
+        let mut forwards = params.forwards.clone();
+        for f in &options.forwards {
+            if !forwards.contains(f) {
+                forwards.push(f.clone());
+            }
+        }
+        let remote_targets: crate::forward::RemoteTargets = Arc::default();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("mt-ssh")
             .enable_all()
             .build()?;
         let config_path = options.config_path.clone();
-        let (handle, channel) =
-            runtime.block_on(open_shell(params, config_path, size, prompter))?;
+        let (handle, channel) = runtime.block_on(open_shell(
+            params,
+            config_path,
+            size,
+            prompter,
+            Arc::clone(&remote_targets),
+        ))?;
 
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
         let (data_tx, data_rx) = std_mpsc::channel();
         let handle = Arc::new(handle);
+        let warnings = runtime.block_on(crate::forward::start(
+            Arc::clone(&handle),
+            &forwards,
+            &remote_targets,
+        ));
         runtime.spawn(pump(Arc::clone(&handle), channel, cmd_rx, data_tx));
         Ok(Self {
             runtime: Some(runtime),
             commands: cmd_tx,
             received: Some(data_rx),
             handle,
+            warnings,
         })
+    }
+
+    /// 始められなかったポート転送の理由（使っているポートなど）。接続そのものは続いている。
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     /// この接続でファイルをやり取りする窓口（SCP）。接続が閉じると使えなくなる。
@@ -231,8 +267,9 @@ async fn open_shell(
     config_path: Option<PathBuf>,
     size: WindowSize,
     prompter: Arc<dyn AuthPrompter>,
+    remote_targets: crate::forward::RemoteTargets,
 ) -> io::Result<(Handle<Client>, russh::Channel<client::Msg>)> {
-    let handle = connect_host(params, config_path, prompter, 0).await?;
+    let handle = connect_host(params, config_path, prompter, 0, remote_targets).await?;
     let channel = handle.channel_open_session().await.map_err(other)?;
     channel
         .request_pty(
@@ -256,14 +293,21 @@ fn connect_host(
     config_path: Option<PathBuf>,
     prompter: Arc<dyn AuthPrompter>,
     depth: usize,
+    remote_targets: crate::forward::RemoteTargets,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<Handle<Client>>> + Send>> {
     Box::pin(async move {
         let mut params = params;
         // 認証ダイアログでユーザー名を変えたときの答え（つなぎ直して最初に使う）
         let mut pending: Option<AuthResponse> = None;
         for _ in 0..=MAX_USER_CHANGES {
-            let (mut handle, banner) =
-                open_transport(&params, config_path.clone(), Arc::clone(&prompter), depth).await?;
+            let (mut handle, banner) = open_transport(
+                &params,
+                config_path.clone(),
+                Arc::clone(&prompter),
+                depth,
+                Arc::clone(&remote_targets),
+            )
+            .await?;
             match authenticate(&mut handle, &params, &prompter, &banner, pending.take()).await {
                 Ok(()) => return Ok(handle),
                 Err(AuthFail::Io(e)) => return Err(e),
@@ -300,6 +344,7 @@ async fn open_transport(
     config_path: Option<PathBuf>,
     prompter: Arc<dyn AuthPrompter>,
     depth: usize,
+    remote_targets: crate::forward::RemoteTargets,
 ) -> io::Result<(Handle<Client>, Arc<Mutex<Option<String>>>)> {
     {
         let config = Arc::new(client::Config {
@@ -318,6 +363,7 @@ async fn open_transport(
             banner: Arc::clone(&banner),
             proxy: None,
             jump: None,
+            remote_targets,
         };
         let timeout = params.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
 
@@ -341,8 +387,14 @@ async fn open_transport(
                 jump.proxy_jump = rest.to_vec();
             }
             jump.proxy_command = None;
-            let jump_handle =
-                connect_host(jump, config_path.clone(), Arc::clone(&prompter), depth + 1).await?;
+            let jump_handle = connect_host(
+                jump,
+                config_path.clone(),
+                Arc::clone(&prompter),
+                depth + 1,
+                Arc::default(),
+            )
+            .await?;
             let channel = jump_handle
                 .channel_open_direct_tcpip(
                     params.host_name.clone(),
@@ -437,10 +489,31 @@ pub(crate) struct Client {
     proxy: Option<tokio::process::Child>,
     /// ProxyJump の踏み台の接続（接続中は生かしておく）
     jump: Option<Handle<Client>>,
+    /// リモート転送（-R）で相手から開かれたチャネルの行き先
+    remote_targets: crate::forward::RemoteTargets,
 }
 
 impl client::Handler for Client {
     type Error = russh::Error;
+
+    /// リモート転送（-R）：相手で待ち受けているポートに来た接続を、手元の先へつなぐ。
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        _connected_address: &str,
+        connected_port: u32,
+        _originator_address: &str,
+        _originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        reply.accept().await;
+        let targets = Arc::clone(&self.remote_targets);
+        tokio::spawn(async move {
+            crate::forward::connect_forwarded(channel, connected_port, &targets).await;
+        });
+        Ok(())
+    }
 
     async fn auth_banner(
         &mut self,

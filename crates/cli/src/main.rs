@@ -135,6 +135,7 @@ impl Host for CliHost {
                     port: ssh.port,
                     user: ssh.user.clone(),
                     config_path: None,
+                    ..Default::default()
                 };
                 let prompter = Arc::new(CliPrompter(ssh.clone()));
                 let t = SshTransport::connect(&options, size, prompter)
