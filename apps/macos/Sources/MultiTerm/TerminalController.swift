@@ -90,6 +90,10 @@ final class TerminalController: ObservableObject {
     /// 接続中（再接続待ちを含む）のシリアルポート
     var serialPort: String? { status == .disconnected ? nil : target?.serialPort }
     var isSerialConnected: Bool { serialPort != nil }
+    var isTelnet: Bool {
+        if case .telnet = target, isConnected { return true }
+        return false
+    }
     var isConnected: Bool { status == .connected || status == .reconnecting }
 
     // MARK: 接続

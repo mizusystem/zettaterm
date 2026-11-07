@@ -21,6 +21,8 @@ const WONT: u8 = 252;
 const WILL: u8 = 251;
 const SB: u8 = 250;
 const SE: u8 = 240;
+const NOP: u8 = 241;
+const AYT: u8 = 246;
 
 const OPT_BINARY: u8 = 0;
 const OPT_ECHO: u8 = 1;
@@ -274,6 +276,30 @@ impl TcpTransport {
         Ok(t)
     }
 
+    /// 無通信でも `interval` ごとに IAC NOP を送る（Tera Term の TelKeepAliveInterval）。
+    /// 途中の機器に無通信で切られないように。接続が閉じたら止まる。
+    pub fn start_keepalive(&self, interval: Duration) {
+        if self.mode != Mode::Telnet || interval.is_zero() {
+            return;
+        }
+        let (out, closed) = (Arc::clone(&self.out), Arc::clone(&self.closed));
+        let _ = std::thread::Builder::new()
+            .name("mt-telnet-keepalive".into())
+            .spawn(move || {
+                let mut waited = Duration::ZERO;
+                while !closed.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(200));
+                    waited += Duration::from_millis(200);
+                    if waited >= interval {
+                        waited = Duration::ZERO;
+                        if lock(&out).write_all(&[IAC, NOP]).is_err() {
+                            return;
+                        }
+                    }
+                }
+            });
+    }
+
     /// 生の TCP で接続する（Tera Term の「その他」）。バイト列を変換しない。
     pub fn raw(host: &str, port: u16, ip: IpVersion, size: WindowSize) -> io::Result<Self> {
         Self::connect(host, port, ip, size, Mode::Raw)
@@ -351,6 +377,16 @@ impl Transport for TcpTransport {
             mode: self.mode,
             neg: Arc::clone(&self.neg),
         }))
+    }
+
+    fn are_you_there(&mut self) -> io::Result<()> {
+        if self.mode != Mode::Telnet {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "AYT is only for Telnet",
+            ));
+        }
+        lock(&self.out).write_all(&[IAC, AYT])
     }
 
     fn resize(&mut self, size: WindowSize) -> io::Result<()> {
@@ -648,6 +684,22 @@ mod tests {
 
         drop(server);
         assert!(wait_until(|| session.state() == SessionState::Closed));
+    }
+
+    #[test]
+    fn ayt_and_keepalive_nop() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut transport =
+            TcpTransport::telnet("127.0.0.1", port, IpVersion::Auto, WindowSize::new(80, 24))
+                .unwrap();
+        let (mut server, _) = listener.accept().unwrap();
+        read_at_least(&mut server, 9);
+        transport.are_you_there().unwrap();
+        assert_eq!(read_at_least(&mut server, 2), [IAC, AYT]);
+        transport.start_keepalive(Duration::from_millis(300));
+        assert_eq!(read_at_least(&mut server, 2), [IAC, NOP]);
+        transport.close().unwrap();
     }
 
     #[test]

@@ -80,7 +80,7 @@
 - [x] **端末リセット (`MENU_CONTROL_RESET`)**: VT パーサ状態、スクロール領域、文字セット、タブストップ、属性のリセット
 - [x] **リモートタイトルリセット (`MENU_CONTROL_RESETTITLE`)**: OSC 0/2 で変更されたタイトルを初期タイトルに戻す
 - [ ] **ポートのリセット (`MENU_CONTROL_RESETPORT`)**: シリアル通信バッファのクリアとポート再初期化
-- [ ] **AYT 送信 (`MENU_CONTROL_AREYOUTHERE`)** (`Alt+T`): Telnet の `IAC AYT` 送信
+- [x] **AYT 送信 (`MENU_CONTROL_AREYOUTHERE`)** (`Alt+T`): Telnet の `IAC AYT` 送信
 - [ ] **マクロウィンドウの表示 (`MENU_CONTROL_SHOW_MACRO`)**: 実行中マクロの詳細・ポーズ制御
 - [ ] **TEK ウィンドウを開く / 閉じる (`MENU_CONTROL_OPENTEK` / `CLOSETEK`)**（※設計書では優先度低）
 
@@ -169,8 +169,8 @@
 
 ### 3-2. Telnet / TCP (`crates/net/src/telnet.rs`)
 - [ ] **Telnet Binary オプション (`TRANSMIT-BINARY`, Option 0)** のネゴシエーション対応
-- [ ] **Telnet Keep-Alive (`TelKeepAliveInterval`)**: 定期的な `IAC NOP` (`0xFF 0xF1`) 送信
-- [ ] **Telnet `IAC AYT` (Are You There)** 送信メソッドの公開
+- [x] **Telnet Keep-Alive (`TelKeepAliveInterval`)**（※値は TERATERM.INI の読み込みから。設定画面は未実装）: 定期的な `IAC NOP` (`0xFF 0xF1`) 送信
+- [x] **Telnet `IAC AYT` (Are You There)** 送信メソッドの公開
 - [ ] **名前付きパイプ (Windows Named Pipe) / UNIX ドメインソケット接続**（VMware / VirtualBox / QEMU の仮想シリアルポート直結用）
 
 ### 3-3. シリアルポート (`crates/serial/src/port.rs`)

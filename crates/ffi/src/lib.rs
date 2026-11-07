@@ -389,6 +389,15 @@ pub struct ModemLines {
     pub rts: bool,
 }
 
+/// Telnet のキープアライブ（秒。0 で送らない。Tera Term の TelKeepAliveInterval）
+static TELNET_KEEPALIVE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// 次からの Telnet の接続で、無通信でも `secs` 秒ごとに IAC NOP を送る（0 で送らない）。
+#[uniffi::export]
+pub fn set_telnet_keepalive(secs: u32) {
+    TELNET_KEEPALIVE.store(secs, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// 内蔵 SSH の接続に使う設定（TTSSH の「SSH」「SSH 転送」）。全ウィンドウで共通。
 static SSH_DEFAULTS: std::sync::Mutex<(Vec<mt_net::Forward>, u64, bool)> =
     std::sync::Mutex::new((Vec::new(), 0, false));
@@ -673,12 +682,19 @@ impl Session {
                 warnings = transport.warnings().to_vec();
                 Box::new(transport)
             }
-            Profile::Telnet { host, port, ip } => Box::new(TcpTransport::telnet(
-                &host,
-                port.unwrap_or(mt_net::TELNET_PORT),
-                ip.into(),
-                size,
-            )?),
+            Profile::Telnet { host, port, ip } => {
+                let t = TcpTransport::telnet(
+                    &host,
+                    port.unwrap_or(mt_net::TELNET_PORT),
+                    ip.into(),
+                    size,
+                )?;
+                let secs = TELNET_KEEPALIVE.load(std::sync::atomic::Ordering::SeqCst);
+                if secs > 0 {
+                    t.start_keepalive(std::time::Duration::from_secs(u64::from(secs)));
+                }
+                Box::new(t)
+            }
             Profile::Tcp { host, port, ip } => {
                 Box::new(TcpTransport::raw(&host, port, ip.into(), size)?)
             }
@@ -819,6 +835,11 @@ impl Session {
             delete_sends_del: keyboard.delete_sends_del,
             meta_sends_escape: keyboard.meta_sends_escape,
         });
+    }
+
+    /// Telnet の AYT（「コントロール > AYT 送信」）。Telnet 以外は Err。
+    pub fn are_you_there(&self) -> Result<(), MtError> {
+        Ok(self.inner.are_you_there()?)
     }
 
     /// 閲覧専用（TTXViewMode）。キー入力と貼り付けを送らない。

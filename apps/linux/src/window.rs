@@ -197,6 +197,14 @@ impl Tabs {
         add("find-prev", Box::new(|_, me| me.view.find_step(false)));
         add("reset-terminal", Box::new(|_, me| me.view.reset_terminal()));
         add(
+            "ayt",
+            Box::new(|_, me| {
+                if let Some(s) = me.view.session() {
+                    let _ = s.are_you_there();
+                }
+            }),
+        );
+        add(
             "reset-title",
             Box::new(|_, me| {
                 me.remote_title.borrow_mut().clear();

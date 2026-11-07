@@ -83,6 +83,10 @@ enum SettingsImport {
 
         // SSH
         if let k = ini.sshKeepalive { SshSettings.keepalive = Int(k) }
+        if let t = ini.telnetKeepalive {
+            d.set(Int(t), forKey: "telnet.keepalive")
+            setTelnetKeepalive(secs: t)
+        }
         if !ini.sshForwards.isEmpty { SshSettings.forwards = ini.sshForwards }
         SshSettings.apply()
 

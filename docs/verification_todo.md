@@ -58,6 +58,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「設定 > キーボード...」：BackSpace / Delete で送るもの、Option をメタキーにするか
 - [ ] 「設定 > 端末...」の応答（アンサーバック）と、増えた文字コード（EUC-KR、GBK、Big5、KOI8-R など）
 - [ ] 「コントロール > リモートタイトルリセット」「常に最前面に表示」（Mac のみ）
+- [ ] Telnet で「コントロール > AYT送信」：相手（Cisco など）が `[Yes]` を返す
 
 ## Linux（GTK）版
 

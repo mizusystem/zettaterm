@@ -57,6 +57,8 @@ pub struct IniSettings {
     pub middle_click_paste: Option<bool>,
     // ---- TTSSH
     pub ssh_keepalive: Option<u64>,
+    /// `TelKeepAliveInterval`（秒）
+    pub telnet_keepalive: Option<u32>,
     /// `DefaultForwarding`（`L 8080:host:80` の形に直したもの）
     pub ssh_forwards: Vec<String>,
     // ---- ホスト一覧（[Hosts] の Host1..。コマンドラインの形のまま）
@@ -227,6 +229,7 @@ pub fn parse_ini(text: &str) -> IniSettings {
         Some((c.trim().parse().ok()?, r.trim().parse().ok()?))
     });
     s.scroll_buffer = get("scrollbuffsize").and_then(|v| v.parse().ok());
+    s.telnet_keepalive = get("telkeepaliveinterval").and_then(|v| v.parse().ok());
 
     // 見た目
     if let Some(v) = get("vtcolor") {

@@ -339,6 +339,8 @@ pub struct Settings {
     pub answerback: String,
     /// 「設定 > キーボード」
     pub keyboard: KeyboardConf,
+    /// Telnet のキープアライブ（秒。0 で送らない。TelKeepAliveInterval）
+    pub telnet_keepalive: u32,
     /// ファイル受信で、この秒数データが来なければ止める（0 は止めない）
     pub raw_receive_idle: u32,
     /// 繰り返しコマンドの前回の値
@@ -363,6 +365,7 @@ impl Default for Settings {
             answerback: String::new(),
             keyboard: KeyboardConf::default(),
             raw_receive_idle: 0,
+            telnet_keepalive: 0,
             recurring_secs: 60,
             recurring_text: String::new(),
             recurring_newline: true,
@@ -1230,6 +1233,9 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(k) = ini.ssh_keepalive {
         s.ssh.keepalive = k;
+    }
+    if let Some(t) = ini.telnet_keepalive {
+        s.telnet_keepalive = t;
     }
     if !ini.ssh_forwards.is_empty() {
         s.ssh.forwards = ini.ssh_forwards.clone();

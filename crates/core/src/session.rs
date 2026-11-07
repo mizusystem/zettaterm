@@ -545,6 +545,11 @@ impl Session {
         self.inner.transport()?.send_break(ms)
     }
 
+    /// Telnet の AYT（「コントロール > AYT 送信」）。Telnet 以外は Unsupported。
+    pub fn are_you_there(&self) -> io::Result<()> {
+        self.inner.transport()?.are_you_there()
+    }
+
     pub fn set_lines(&self, dtr: bool, rts: bool) -> io::Result<()> {
         self.inner.transport()?.set_lines(dtr, rts)
     }

@@ -210,6 +210,10 @@ fn menu() -> gio::Menu {
         Some("win.reset-title"),
     );
     control.append(
+        Some(&tt("MENU_CONTROL_AREYOUTHERE", "AYT送信")),
+        Some("win.ayt"),
+    );
+    control.append(
         Some(&tt("MENU_CONTROL_SENDBREAK", "ブレーク送信")),
         Some("win.send-break"),
     );

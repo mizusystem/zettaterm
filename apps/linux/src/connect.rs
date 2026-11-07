@@ -95,15 +95,19 @@ pub fn open_transport(
             warnings.extend_from_slice(transport.warnings());
             (Box::new(transport), SendDelay::default())
         }
-        ConnectionProfile::Telnet { host, port } => (
-            Box::new(TcpTransport::telnet(
+        ConnectionProfile::Telnet { host, port } => {
+            let t = TcpTransport::telnet(
                 host,
                 port.unwrap_or(mt_net::TELNET_PORT),
                 IpVersion::Auto,
                 size,
-            )?),
-            SendDelay::default(),
-        ),
+            )?;
+            let secs = crate::settings::Settings::load().telnet_keepalive;
+            if secs > 0 {
+                t.start_keepalive(std::time::Duration::from_secs(u64::from(secs)));
+            }
+            (Box::new(t), SendDelay::default())
+        }
         ConnectionProfile::Tcp { host, port } => (
             Box::new(TcpTransport::raw(host, *port, IpVersion::Auto, size)?),
             SendDelay::default(),

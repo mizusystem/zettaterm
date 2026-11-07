@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in _ = DeviceStore.shared }
         // 内蔵 SSH のキープアライブとポート転送
         SshSettings.apply()
+        setTelnetKeepalive(secs: UInt32(clamping: UserDefaults.standard.integer(forKey: "telnet.keepalive")))
         // ttermpro と同じ起動引数（open MultiTerm.app --args host /ssh /M=x.ttl など）
         SettingsImport.readLaunchArguments()
     }
@@ -318,6 +319,8 @@ struct TerminalCommands: Commands {
                 .disabled(controller?.view.textSession == nil)
             Button(TT.text("MENU_CONTROL_RESETTITLE", "リモートタイトルリセット")) { controller?.resetRemoteTitle() }
                 .disabled(controller == nil)
+            Button(TT.text("MENU_CONTROL_AREYOUTHERE", "AYT 送信")) { try? controller?.view.session?.areYouThere() }
+                .disabled(controller?.isTelnet != true)
             Toggle(TT.text("MENU_ALWAYSONTOP", "常に最前面に表示", section: "TTXAlwaysOnTop"), isOn: Binding(
                 get: { controller?.alwaysOnTop == true },
                 set: { controller?.alwaysOnTop = $0 }

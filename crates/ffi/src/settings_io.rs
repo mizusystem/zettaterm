@@ -40,6 +40,7 @@ pub struct IniImport {
     pub right_click_paste: Option<bool>,
     pub middle_click_paste: Option<bool>,
     pub ssh_keepalive: Option<u32>,
+    pub telnet_keepalive: Option<u32>,
     pub ssh_forwards: Vec<String>,
     /// [Hosts] の接続先（読めたものだけ）
     pub hosts: Vec<MacroConnect>,
@@ -116,6 +117,7 @@ pub fn import_teraterm_ini(path: String) -> Result<IniImport, MtError> {
         right_click_paste: s.right_click_paste,
         middle_click_paste: s.middle_click_paste,
         ssh_keepalive: s.ssh_keepalive.map(|k| k.min(u64::from(u32::MAX)) as u32),
+        telnet_keepalive: s.telnet_keepalive,
         ssh_forwards: s.ssh_forwards,
         hosts,
     })

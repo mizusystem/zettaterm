@@ -72,6 +72,11 @@ pub trait Transport: Send + 'static {
         Err(unsupported("send_break"))
     }
 
+    /// Telnet の Are You There（IAC AYT）を送る。Telnet 以外は未対応。
+    fn are_you_there(&mut self) -> io::Result<()> {
+        Err(unsupported("are_you_there"))
+    }
+
     /// DTR / RTS 線を設定する。シリアル以外は未対応。
     fn set_lines(&mut self, _dtr: bool, _rts: bool) -> io::Result<()> {
         Err(unsupported("set_lines"))
