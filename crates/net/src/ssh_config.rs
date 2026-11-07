@@ -48,6 +48,8 @@ pub struct SshParams {
     pub known_hosts: Vec<PathBuf>,
     /// LocalForward / DynamicForward（それぞれ最後の 1 行だけ）と RemoteForward（すべて）
     pub forwards: Vec<crate::forward::Forward>,
+    /// ForwardAgent
+    pub forward_agent: bool,
 }
 
 impl SshParams {
@@ -220,6 +222,7 @@ pub fn resolve(
     forwards.extend(remote);
 
     Ok(SshParams {
+        forward_agent: p.forward_agent.unwrap_or(false),
         forwards,
         alias,
         host_name,

@@ -5,6 +5,7 @@
 //! OS 分岐は `cfg(target_os)` でこのクレート内に閉じる。
 
 pub mod forward;
+pub mod keygen;
 mod pty;
 pub mod scp;
 mod ssh;

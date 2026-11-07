@@ -265,6 +265,10 @@ impl Tabs {
             "setup-ssh",
             Box::new(|t, _| settings::ssh_dialog(&t.win.clone().upcast())),
         );
+        add(
+            "ssh-keygen",
+            Box::new(|t, _| settings::keygen_dialog(&t.win.clone().upcast())),
+        );
         add("log-view", Box::new(|_, me| me.view_log()));
         add(
             "setup-log",

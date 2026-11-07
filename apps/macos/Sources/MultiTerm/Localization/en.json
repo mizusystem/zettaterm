@@ -95,5 +95,9 @@
   "接続しましたが、次はうまくいきませんでした。\n%@": "Connected, but the following did not work:\n%@",
   "Tera Term の設定ファイル（TERATERM.INI）を選んでください。": "Choose a Tera Term settings file (TERATERM.INI).",
   "%@ を読み込みました（接続先 %@ 件）。": "Imported %@ (%@ hosts).",
-  "起動引数の接続先はこの OS では開けません。": "The connection in the launch arguments cannot be opened on this OS."
+  "起動引数の接続先はこの OS では開けません。": "The connection in the launch arguments cannot be opened on this OS.",
+  "接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。": "Lets you authenticate with your local ssh-agent keys when you ssh onward from the server. Use it only with servers you trust.",
+  "公開鍵: %@": "Public key: %@",
+  "公開鍵をコピー": "Copy Public Key",
+  "パスフレーズが一致しません。": "The passphrases do not match."
 }

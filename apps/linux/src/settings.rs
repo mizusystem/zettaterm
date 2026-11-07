@@ -22,6 +22,8 @@ pub struct SshConf {
     pub keepalive: u64,
     /// `L 8080:host:80` / `R 2222:localhost:22` / `D 1080` の形
     pub forwards: Vec<String>,
+    /// エージェント転送（オフでも ssh_config の ForwardAgent yes は効く）
+    pub forward_agent: bool,
 }
 
 impl Default for SshConf {
@@ -29,6 +31,7 @@ impl Default for SshConf {
         Self {
             keepalive: 60,
             forwards: Vec::new(),
+            forward_agent: false,
         }
     }
 }
@@ -939,6 +942,15 @@ pub fn ssh_dialog(parent: &gtk::Window) {
         "秒(0を指定すると無効)",
     ))));
     content.append(&ka_row);
+    let agent = gtk::CheckButton::with_label(&crate::strings::ssh(
+        "DLG_SSHSETUP_FORWARDAGENT",
+        "エージェント転送を有効にする",
+    ));
+    agent.set_active(current.forward_agent);
+    agent.set_tooltip_text(Some(&l(
+        "接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。",
+    )));
+    content.append(&agent);
 
     let caption = gtk::Label::new(Some(&crate::strings::ssh(
         "DLG_FWDSETUP_LIST",
@@ -997,6 +1009,7 @@ pub fn ssh_dialog(parent: &gtk::Window) {
         let mut s = Settings::load();
         s.ssh.keepalive = keepalive.value() as u64;
         s.ssh.forwards = lines;
+        s.ssh.forward_agent = agent.is_active();
         s.save();
         w.close();
     });
@@ -1100,4 +1113,139 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
         }
     }
     n
+}
+
+/// 「設定 > SSH 鍵生成...」（TTSSH の鍵生成）。OpenSSH の形式で書く。
+pub fn keygen_dialog(parent: &gtk::Window) {
+    use crate::strings::ssh;
+    use mt_net::keygen::KeyKind;
+    let (win, content, row) = modal(parent, &ssh("DLG_KEYGEN_TITLE", "鍵生成"));
+    let kinds = [
+        (KeyKind::Ed25519, "Ed25519"),
+        (KeyKind::EcdsaP256, "ECDSA (P-256)"),
+        (KeyKind::EcdsaP384, "ECDSA (P-384)"),
+        (KeyKind::EcdsaP521, "ECDSA (P-521)"),
+        (KeyKind::Rsa(3072), "RSA 3072"),
+        (KeyKind::Rsa(4096), "RSA 4096"),
+    ];
+    let names: Vec<String> = kinds.iter().map(|k| k.1.to_owned()).collect();
+    let kind = dropdown(&names, 0);
+    let default_path = |k: KeyKind| {
+        gtk::glib::home_dir()
+            .join(".ssh")
+            .join(k.default_file_name())
+            .display()
+            .to_string()
+    };
+    let comment = gtk::Entry::new();
+    comment.set_text(&format!(
+        "{}@{}",
+        crate::connect::local_user(),
+        gtk::glib::host_name()
+    ));
+    let pass = gtk::PasswordEntry::new();
+    let pass2 = gtk::PasswordEntry::new();
+    let path = gtk::Entry::new();
+    path.set_text(&default_path(kinds[0].0));
+    path.set_hexpand(true);
+    {
+        let path = path.clone();
+        kind.connect_selected_notify(move |d| {
+            let k = kinds[(d.selected() as usize).min(kinds.len() - 1)].0;
+            if path.text().contains("/.ssh/id_") {
+                path.set_text(&default_path(k));
+            }
+        });
+    }
+    let grid = gtk::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(10)
+        .build();
+    for (i, (text, w)) in [
+        (
+            ssh("DLG_KEYGEN_KEYTYPE", "鍵の種類"),
+            kind.clone().upcast::<gtk::Widget>(),
+        ),
+        (
+            ssh("DLG_KEYGEN_COMMENT", "コメント:"),
+            comment.clone().upcast(),
+        ),
+        (
+            ssh("DLG_KEYGEN_PASSPHRASE", "鍵のパスフレーズ:"),
+            pass.clone().upcast(),
+        ),
+        (
+            ssh("DLG_KEYGEN_PASSPHRASE2", "パスフレーズの確認:"),
+            pass2.clone().upcast(),
+        ),
+        (
+            ssh("DLG_KEYGEN_SAVEPRIVATE", "秘密鍵の保存"),
+            path.clone().upcast(),
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        grid.attach(&label(text), 0, i as i32, 1, 1);
+        grid.attach(&w, 1, i as i32, 1, 1);
+    }
+    content.append(&grid);
+    let message = gtk::Label::new(None);
+    message.set_xalign(0.0);
+    message.set_wrap(true);
+    message.set_selectable(true);
+    content.append(&message);
+
+    let close = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    let generate = gtk::Button::with_label(&ssh("DLG_KEYGEN_GENERATE", "生成"));
+    generate.add_css_class("suggested-action");
+    row.append(&close);
+    row.append(&generate);
+    let w = win.clone();
+    close.connect_clicked(move |_| w.close());
+    generate.connect_clicked(move |b| {
+        if pass.text() != pass2.text() {
+            message.set_text(&l("パスフレーズが一致しません。"));
+            return;
+        }
+        let k = kinds[(kind.selected() as usize).min(kinds.len() - 1)].0;
+        let (c, p, file) = (
+            comment.text().to_string(),
+            pass.text().to_string(),
+            path.text().to_string(),
+        );
+        b.set_sensitive(false);
+        message.set_text(&ssh("MSG_KEYGEN_GENERATING", "鍵を生成しています。"));
+        let (tx, rx) = async_channel::bounded(1);
+        // RSA は数秒かかるので別スレッドで
+        std::thread::spawn(move || {
+            let r = mt_net::keygen::generate(k, &c, &p).and_then(|key| {
+                let pub_path = mt_net::keygen::save(&key, std::path::Path::new(&file))?;
+                Ok((key, pub_path))
+            });
+            let _ = tx.send_blocking(r.map_err(|e| e.to_string()));
+        });
+        let (message, b) = (message.clone(), b.clone());
+        gtk::glib::spawn_future_local(async move {
+            let Ok(r) = rx.recv().await else { return };
+            match r {
+                Ok((key, pub_path)) => {
+                    message.set_text(&format!(
+                        "{}\n{}\n{}\n{}",
+                        ssh("MSG_KEYGEN_GENERATED", "鍵を生成しました。"),
+                        key.fingerprint,
+                        pub_path.display(),
+                        key.public
+                    ));
+                    b.set_visible(false);
+                }
+                Err(e) => {
+                    message.set_text(&e);
+                    b.set_sensitive(true);
+                }
+            }
+        });
+    });
+    win.set_default_widget(Some(&generate));
+    win.present();
 }

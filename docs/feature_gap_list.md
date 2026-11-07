@@ -20,7 +20,7 @@
 | Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
 | Step 2（ログ・設定・シリアル） | 完了（2026-11-06）。Linux 版は画面での確認が未了、信号線は実機での確認が未了 |
 | Step 3（TTL） | ほぼ完了（2026-11-07）。残りは `waitevent` `kermitget` `kermitfinish` `sendkcode` `setdlgpos` `move` `resize` `getttpos` `logrotate` `logautoclosemode` `getipv4addr` `getipv6addr` `restoresetup` `savesetup` |
-| Step 4（TTSSH・設定互換） | 進行中：ポート転送・キープアライブ・INI インポート・起動引数は済み。残りはエージェント転送と鍵生成 |
+| Step 4（TTSSH・設定互換） | 完了（2026-11-07）。エージェント転送は実際の ssh-agent での確認が未了 |
 
 ## 目次
 
@@ -73,7 +73,7 @@
   - [ ] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**: 暗号・KEX・MAC・ホスト鍵・署名アルゴリズムの優先順位リスト、圧縮レベル、HeartBeat（キープアライブ）、書き込みバッファサイズ
   - [ ] **SSH 認証... (`MENU_SSH_AUTH` / `DLG_AUTHSETUP_TITLE`)**: デフォルトユーザー名、デフォルト認証方式、秘密鍵ファイル指定、Pageant / `ssh-agent` 連携、エージェント転送確認
   - [x] **SSH 転送... (`MENU_SSH_FORWARD` / `DLG_FWDSETUP_TITLE`)**（※1 行 1 つの文字で編集する。X11 転送は未実装）: ポートフォワーディング（ローカル `-L` / リモート `-R` / ダイナミック `-D`）の一覧・追加・編集・削除、X11 転送設定
-  - [ ] **SSH 鍵生成... (`MENU_SSH_KEYGEN` / `DLG_KEYGEN_TITLE`)**: RSA / ECDSA / Ed25519 鍵ペア生成、パスフレーズ設定、OpenSSH / PuTTY / SSH2 形式での公開鍵・秘密鍵保存
+  - [x] **SSH 鍵生成... (`MENU_SSH_KEYGEN` / `DLG_KEYGEN_TITLE`)**（※OpenSSH 形式のみ。PuTTY / SSH2 形式は未実装）: RSA / ECDSA / Ed25519 鍵ペア生成、パスフレーズ設定、OpenSSH / PuTTY / SSH2 形式での公開鍵・秘密鍵保存
 
 ### 1-4. 「コントロール (Control)」メニュー (`MENU_CONTROL`)
 - [x] **端末リセット (`MENU_CONTROL_RESET`)**: VT パーサ状態、スクロール領域、文字セット、タブストップ、属性のリセット
@@ -161,7 +161,7 @@
   - リモート転送 (`-R` / `tcpip-forward`)
   - ダイナミック SOCKS4/5 転送 (`-D`)
   - X11 フォワーディング
-- [ ] **SSH エージェント転送 (`auth-agent-req@openssh.com`)** と要求時確認通知
+- [x] **SSH エージェント転送 (`auth-agent-req@openssh.com`)** と要求時確認通知（※macOS / Linux のみ。要求時の確認・通知は未実装）
 - [x] **SSH キープアライブ (HeartBeat)** タスク（無通信時に指定秒間隔で `keepalive@openssh.com` または ignore パケットを送信）
 - [ ] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**
 - [ ] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定
@@ -303,5 +303,5 @@
 
 ### Step 4: TTSSH 高度機能・設定互換
 - [x] SSH ポートフォワーディング (`-L`, `-R`, `-D`) 設定 UI とトンネリング実装
-- [ ] SSH エージェント転送 (`ForwardAgent`)、SSH 鍵生成 GUI、SSH HeartBeat
+- [x] SSH エージェント転送 (`ForwardAgent`)、SSH 鍵生成 GUI、SSH HeartBeat
 - [x] `TERATERM.INI` インポート機能と GUI コマンドライン引数 (`/M=`, `/L=`, `/C=`, `/ssh` 等) のサポート

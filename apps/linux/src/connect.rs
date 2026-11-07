@@ -88,6 +88,7 @@ pub fn open_transport(
                 config_path: None,
                 forwards: mt_net::forward::parse_list(&ssh.forwards).0,
                 keepalive_secs: Some(ssh.keepalive),
+                forward_agent: ssh.forward_agent.then_some(true),
             };
             let transport = SshTransport::connect(&options, size, prompter)?;
             *files = transport.files();
@@ -426,4 +427,11 @@ pub fn show_dialog(
     win.set_default_widget(Some(&ok));
     win.set_child(Some(&grid));
     win.present();
+}
+
+/// このコンピュータのユーザー名（鍵のコメントの既定）。
+pub fn local_user() -> String {
+    std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_default()
 }

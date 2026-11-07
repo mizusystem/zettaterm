@@ -45,6 +45,8 @@ pub struct SshOptions {
     pub config_path: Option<PathBuf>,
     /// ポート転送（ssh_config の LocalForward などに足す）
     pub forwards: Vec<crate::forward::Forward>,
+    /// エージェント転送（ssh_config の ForwardAgent より優先。None なら ssh_config のまま）
+    pub forward_agent: Option<bool>,
     /// 無通信のときに送るキープアライブの間隔（秒。TTSSH の HeartBeat）。ssh_config の
     /// ServerAliveInterval があればそちらが優先。None か 0 なら送らない
     pub keepalive_secs: Option<u64>,
@@ -80,6 +82,9 @@ impl SshTransport {
             options.user.as_deref(),
             options.config_path.as_deref(),
         )?;
+        if let Some(f) = options.forward_agent {
+            params.forward_agent = f;
+        }
         if params.server_alive_interval.is_none() {
             params.server_alive_interval = options
                 .keepalive_secs
@@ -269,8 +274,13 @@ async fn open_shell(
     prompter: Arc<dyn AuthPrompter>,
     remote_targets: crate::forward::RemoteTargets,
 ) -> io::Result<(Handle<Client>, russh::Channel<client::Msg>)> {
+    let forward_agent = params.forward_agent;
     let handle = connect_host(params, config_path, prompter, 0, remote_targets).await?;
     let channel = handle.channel_open_session().await.map_err(other)?;
+    if forward_agent {
+        // 相手で ssh などを使ったとき、手元のエージェントの鍵で認証できるようにする
+        let _ = channel.agent_forward(false).await;
+    }
     channel
         .request_pty(
             true,
@@ -364,6 +374,7 @@ async fn open_transport(
             proxy: None,
             jump: None,
             remote_targets,
+            forward_agent: params.forward_agent,
         };
         let timeout = params.connect_timeout.unwrap_or(DEFAULT_CONNECT_TIMEOUT);
 
@@ -491,10 +502,30 @@ pub(crate) struct Client {
     jump: Option<Handle<Client>>,
     /// リモート転送（-R）で相手から開かれたチャネルの行き先
     remote_targets: crate::forward::RemoteTargets,
+    /// エージェント転送を頼んだ（頼んでいない相手からのエージェントのチャネルは断る）
+    forward_agent: bool,
 }
 
 impl client::Handler for Client {
     type Error = russh::Error;
+
+    /// エージェント転送：相手から開かれたチャネルを手元の ssh-agent（SSH_AUTH_SOCK）へつなぐ。
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        channel: russh::Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        if !self.forward_agent {
+            reply
+                .reject(russh::ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        }
+        reply.accept().await;
+        tokio::spawn(relay_agent(channel));
+        Ok(())
+    }
 
     /// リモート転送（-R）：相手で待ち受けているポートに来た接続を、手元の先へつなぐ。
     async fn server_channel_open_forwarded_tcpip(
@@ -904,6 +935,30 @@ async fn try_agent(handle: &mut Handle<Client>, user: &str) -> Option<Outcome> {
         }
     }
     last
+}
+
+/// エージェント転送のチャネルと、手元のエージェントの間で運ぶ。
+#[cfg(unix)]
+async fn relay_agent(channel: russh::Channel<client::Msg>) {
+    let Some(path) = std::env::var_os("SSH_AUTH_SOCK") else {
+        let _ = channel.close().await;
+        return;
+    };
+    match tokio::net::UnixStream::connect(path).await {
+        Ok(mut sock) => {
+            let mut stream = channel.into_stream();
+            let _ = tokio::io::copy_bidirectional(&mut stream, &mut sock).await;
+        }
+        Err(_) => {
+            let _ = channel.close().await;
+        }
+    }
+}
+
+#[cfg(not(unix))]
+async fn relay_agent(channel: russh::Channel<client::Msg>) {
+    // TODO: Windows の OpenSSH エージェント（名前付きパイプ）と Pageant
+    let _ = channel.close().await;
 }
 
 #[cfg(not(unix))]

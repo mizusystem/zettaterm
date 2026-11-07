@@ -142,6 +142,10 @@ fn menu() -> gio::Menu {
         Some("win.setup-ssh"),
     );
     setup.append(
+        Some(&crate::strings::ssh("MENU_SSH_KEYGEN", "SSH鍵生成...")),
+        Some("win.ssh-keygen"),
+    );
+    setup.append(
         Some(&tt("MENU_SETUP_RESTORE", "設定の読み込み...")),
         Some("win.import-ini"),
     );

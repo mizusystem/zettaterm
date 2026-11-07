@@ -9,7 +9,7 @@ final class TerminalController: ObservableObject {
 
     enum Sheet: String, Identifiable {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
-        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings
+        case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings, sshKeyGen
         var id: String { rawValue }
     }
 

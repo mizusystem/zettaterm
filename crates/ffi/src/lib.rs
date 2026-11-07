@@ -376,23 +376,76 @@ pub struct ModemLines {
 }
 
 /// 内蔵 SSH の接続に使う設定（TTSSH の「SSH」「SSH 転送」）。全ウィンドウで共通。
-static SSH_DEFAULTS: std::sync::Mutex<(Vec<mt_net::Forward>, u64)> =
-    std::sync::Mutex::new((Vec::new(), 0));
+static SSH_DEFAULTS: std::sync::Mutex<(Vec<mt_net::Forward>, u64, bool)> =
+    std::sync::Mutex::new((Vec::new(), 0, false));
 
-fn ssh_defaults() -> (Vec<mt_net::Forward>, u64) {
+fn ssh_defaults() -> (Vec<mt_net::Forward>, u64, bool) {
     SSH_DEFAULTS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clone()
 }
 
-/// 次からの内蔵 SSH の接続に使うポート転送（`L 8080:host:80` / `R ...` / `D 1080` の形）と
-/// キープアライブの間隔（秒、0 で送らない）。読めなかった転送の書き方を返す。
+/// 次からの内蔵 SSH の接続に使うポート転送（`L 8080:host:80` / `R ...` / `D 1080` の形）、
+/// キープアライブの間隔（秒、0 で送らない）、エージェント転送（false なら ssh_config の ForwardAgent のまま）。
+/// 読めなかった転送の書き方を返す。
 #[uniffi::export]
-pub fn set_ssh_defaults(forwards: Vec<String>, keepalive_secs: u32) -> Vec<String> {
+pub fn set_ssh_defaults(
+    forwards: Vec<String>,
+    keepalive_secs: u32,
+    forward_agent: bool,
+) -> Vec<String> {
     let (parsed, bad) = mt_net::forward::parse_list(&forwards);
-    *SSH_DEFAULTS.lock().unwrap_or_else(|e| e.into_inner()) = (parsed, u64::from(keepalive_secs));
+    *SSH_DEFAULTS.lock().unwrap_or_else(|e| e.into_inner()) =
+        (parsed, u64::from(keepalive_secs), forward_agent);
     bad
+}
+
+/// SSH 鍵の種類（鍵生成）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum SshKeyKind {
+    Ed25519,
+    EcdsaP256,
+    EcdsaP384,
+    EcdsaP521,
+    Rsa3072,
+    Rsa4096,
+}
+
+/// 生成した鍵の公開側。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct GeneratedSshKey {
+    /// authorized_keys に足す 1 行
+    pub public_key: String,
+    pub fingerprint: String,
+    pub public_path: String,
+}
+
+/// 鍵を作って `path`（秘密鍵）と `path.pub` に書く。既にあれば上書きせずに失敗する。
+/// 時間がかかる（RSA は数秒）ので UI のスレッドから呼ばない。
+#[uniffi::export]
+pub fn generate_ssh_key(
+    kind: SshKeyKind,
+    comment: String,
+    passphrase: String,
+    path: String,
+) -> Result<GeneratedSshKey, MtError> {
+    use mt_net::keygen::{self, KeyKind};
+    let kind = match kind {
+        SshKeyKind::Ed25519 => KeyKind::Ed25519,
+        SshKeyKind::EcdsaP256 => KeyKind::EcdsaP256,
+        SshKeyKind::EcdsaP384 => KeyKind::EcdsaP384,
+        SshKeyKind::EcdsaP521 => KeyKind::EcdsaP521,
+        SshKeyKind::Rsa3072 => KeyKind::Rsa(3072),
+        SshKeyKind::Rsa4096 => KeyKind::Rsa(4096),
+    };
+    let key = keygen::generate(kind, &comment, &passphrase)?;
+    let public_path = keygen::save(&key, std::path::Path::new(&path))?;
+    Ok(GeneratedSshKey {
+        public_key: key.public,
+        fingerprint: key.fingerprint,
+        public_path: public_path.to_string_lossy().into_owned(),
+    })
 }
 
 /// ダブルクリックで単語を区切る文字の既定値（Tera Term の DelimList）。
@@ -598,6 +651,7 @@ impl Session {
                     config_path: None,
                     forwards: defaults.0,
                     keepalive_secs: Some(defaults.1),
+                    forward_agent: defaults.2.then_some(true),
                 };
                 let prompter = Arc::new(auth::PrompterAdapter(prompter));
                 let transport = SshTransport::connect(&options, size, prompter)?;

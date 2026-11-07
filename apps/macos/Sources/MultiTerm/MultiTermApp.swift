@@ -92,6 +92,7 @@ struct TerminalWindow: View {
                 case .windowSettings: WindowSettingsView()
                 case .fontSettings: FontSettingsView()
                 case .sshSettings: SshSettingsView()
+                case .sshKeyGen: SshKeyGenView()
                 }
             }
             .alert(
@@ -266,6 +267,8 @@ struct TerminalCommands: Commands {
             Divider()
             // TTSSH の「SSH...」と「SSH 転送...」をまとめたもの
             Button(TT.text("MENU_SSH", "SSH...", section: "TTSSH")) { controller?.sheet = .sshSettings }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_SSH_KEYGEN", "SSH鍵生成...", section: "TTSSH")) { controller?.sheet = .sshKeyGen }
                 .disabled(controller == nil)
 
             Divider()
