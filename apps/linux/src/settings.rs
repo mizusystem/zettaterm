@@ -349,6 +349,13 @@ pub struct Settings {
     pub recurring_secs: u32,
     pub recurring_text: String,
     pub recurring_newline: bool,
+    /// ブロードキャスト：Enter キーを送るか、その改行（"session" / "crlf" / "cr" / "lf"）、
+    /// リアルタイム、履歴を残すか、履歴（新しい順）
+    pub broadcast_enter: bool,
+    pub broadcast_newline: String,
+    pub broadcast_realtime: bool,
+    pub broadcast_save_history: bool,
+    pub broadcast_history: Vec<String>,
     pub look: Look,
     pub ssh: SshConf,
 }
@@ -372,6 +379,11 @@ impl Default for Settings {
             recurring_secs: 60,
             recurring_text: String::new(),
             recurring_newline: true,
+            broadcast_enter: true,
+            broadcast_newline: "session".into(),
+            broadcast_realtime: false,
+            broadcast_save_history: true,
+            broadcast_history: Vec::new(),
             look: Look::default(),
             ssh: SshConf::default(),
         }

@@ -89,5 +89,6 @@
   "ENQ を受けたときに返す文字列（空なら返さない）": "String returned on ENQ (none if empty)",
   "ブレークの長さ": "Break length",
   "ミリ秒": "ms",
-  "Tera Term の操作感を macOS・Linux で": "The feel of Tera Term on macOS and Linux"
+  "Tera Term の操作感を macOS・Linux で": "The feel of Tera Term on macOS and Linux",
+  "送り先の設定": "Session setting"
 }

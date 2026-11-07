@@ -5,6 +5,7 @@
 
 pub mod about;
 pub mod auth;
+pub mod broadcast;
 pub mod charset;
 pub mod ini;
 pub mod log;

@@ -542,32 +542,78 @@ pub fn drop_dialog(
 
 /// 「コントロール > ブロードキャストコマンド」。つながっているタブ（ウィンドウをまたぐ）へ同じ文字列を送る。
 pub fn broadcast_dialog(parent: &gtk::Window) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use crate::settings::Settings;
+
     let (win, content, row) = modal(
         parent,
         &tt("DLG_BROADCAST_TITLE", "コマンドのブロードキャスト"),
     );
+    let conf = Settings::load();
+    // 入力欄と履歴（履歴から選ぶと入力欄に入る）
     let entry = gtk::Entry::new();
     entry.set_hexpand(true);
-    let enter = gtk::CheckButton::with_label(&tt("DLG_BROADCAST_ENTER", "Enterキー"));
-    enter.set_active(true);
+    let history = gtk::StringList::new(&[]);
+    for h in &conf.broadcast_history {
+        history.append(h);
+    }
+    let picker = gtk::DropDown::new(Some(history.clone()), None::<gtk::Expression>);
+    picker.set_tooltip_text(Some(&tt("DLG_BROADCAST_HISTORY", "ヒストリ")));
+    picker.set_visible(history.n_items() > 0);
+    picker.set_selected(gtk::INVALID_LIST_POSITION);
+    {
+        let (entry, history) = (entry.clone(), history.clone());
+        picker.connect_selected_notify(move |p| {
+            if let Some(text) = history.string(p.selected()) {
+                entry.set_text(&text);
+                entry.set_position(-1);
+            }
+        });
+    }
     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     line.append(&entry);
-    line.append(&enter);
+    line.append(&picker);
     content.append(&line);
+
+    let enter = gtk::CheckButton::with_label(&tt("DLG_BROADCAST_ENTER", "Enterキー"));
+    enter.set_active(conf.broadcast_enter);
+    let newlines = ["session", "crlf", "cr", "lf"];
+    let newline = gtk::DropDown::from_strings(&[&l("送り先の設定"), "CRLF", "CR", "LF"]);
+    newline.set_selected(
+        newlines
+            .iter()
+            .position(|n| *n == conf.broadcast_newline)
+            .unwrap_or(0) as u32,
+    );
+    let realtime = gtk::CheckButton::with_label(&tt("DLG_BROADCAST_REALTIME", "リアルタイム"));
+    realtime.set_active(conf.broadcast_realtime);
+    let save_history = gtk::CheckButton::with_label(&tt("DLG_BROADCAST_HISTORY", "ヒストリ"));
+    save_history.set_active(conf.broadcast_save_history);
+    let options = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    options.append(&enter);
+    options.append(&newline);
+    options.append(&realtime);
+    options.append(&save_history);
+    content.append(&options);
+
     let heading = gtk::Label::new(Some(&l("送り先")));
     heading.set_xalign(0.0);
     heading.add_css_class("dim-label");
     content.append(&heading);
     let panes = crate::window::connected_panes();
-    let checks: Vec<(gtk::CheckButton, std::rc::Rc<crate::window::TermWindow>)> = panes
-        .into_iter()
-        .map(|p| {
-            let c = gtk::CheckButton::with_label(&p.title());
-            c.set_active(true);
-            content.append(&c);
-            (c, p)
-        })
-        .collect();
+    let checks: Rc<Vec<(gtk::CheckButton, Rc<crate::window::TermWindow>)>> = Rc::new(
+        panes
+            .into_iter()
+            .map(|p| {
+                let c = gtk::CheckButton::with_label(&p.title());
+                c.set_active(true);
+                content.append(&c);
+                (c, p)
+            })
+            .collect(),
+    );
     if checks.is_empty() {
         content.append(&gtk::Label::new(Some(&l(
             "接続中のセッションがありません。",
@@ -583,24 +629,113 @@ pub fn broadcast_dialog(parent: &gtk::Window) {
     send.add_css_class("suggested-action");
     row.append(&close);
     row.append(&send);
-    let w = win.clone();
-    close.connect_clicked(move |_| w.close());
-    let do_send = std::rc::Rc::new({
+
+    // 選んだ設定は閉じるときに残す
+    let save = {
+        let (enter, newline, realtime, save_history) = (
+            enter.clone(),
+            newline.clone(),
+            realtime.clone(),
+            save_history.clone(),
+        );
+        move |history: Option<Vec<String>>| {
+            let mut s = Settings::load();
+            s.broadcast_enter = enter.is_active();
+            s.broadcast_newline = newlines[(newline.selected() as usize).min(3)].into();
+            s.broadcast_realtime = realtime.is_active();
+            s.broadcast_save_history = save_history.is_active();
+            if let Some(h) = history {
+                s.broadcast_history = h;
+            }
+            s.save();
+        }
+    };
+    {
+        let w = win.clone();
+        let save = save.clone();
+        close.connect_clicked(move |_| {
+            save(None);
+            w.close();
+        });
+    }
+
+    let send_newline = {
+        let newline = newline.clone();
+        move |p: &crate::window::TermWindow| match newlines[(newline.selected() as usize).min(3)] {
+            "crlf" => p.send_text("\r\n"),
+            "cr" => p.send_text("\r"),
+            "lf" => p.send_text("\n"),
+            _ => p.send_enter(),
+        }
+    };
+    // リアルタイム：送り終えた入力欄の中身。差分だけを送る
+    let sent_text = Rc::new(RefCell::new(String::new()));
+    {
+        let (checks, realtime, sent_text) = (checks.clone(), realtime.clone(), sent_text.clone());
+        entry.connect_changed(move |e| {
+            if !realtime.is_active() {
+                return;
+            }
+            let new = e.text().to_string();
+            let (erase, insert) = mt_core::broadcast::realtime_diff(&sent_text.borrow(), &new);
+            *sent_text.borrow_mut() = new;
+            for (c, p) in checks.iter() {
+                if c.is_active() {
+                    p.send_backspaces(erase);
+                    if !insert.is_empty() {
+                        p.send_text(&insert);
+                    }
+                }
+            }
+        });
+    }
+    {
+        let (entry, sent_text) = (entry.clone(), sent_text.clone());
+        realtime.connect_toggled(move |_| {
+            sent_text.borrow_mut().clear();
+            entry.set_text("");
+        });
+    }
+    let history_list = history.clone();
+    let do_send = Rc::new({
         let entry = entry.clone();
         move || {
             let text = entry.text().to_string();
+            let live = realtime.is_active();
             let mut n = 0;
-            for (c, p) in &checks {
+            for (c, p) in checks.iter() {
                 if c.is_active() {
-                    if enter.is_active() {
-                        p.send_line(&text);
-                    } else {
+                    if !live && !text.is_empty() {
                         p.send_text(&text);
+                    }
+                    if live || enter.is_active() {
+                        send_newline(p);
                     }
                     n += 1;
                 }
             }
+            if live {
+                sent_text.borrow_mut().clear();
+                entry.set_text("");
+                return;
+            }
             sent.set_text(&lf("{} 件に送信しました", &[&n]));
+            let mut history = None;
+            let list = &history_list;
+            if save_history.is_active() && !text.is_empty() {
+                let mut h = Settings::load().broadcast_history;
+                mt_core::broadcast::push_history(
+                    &mut h,
+                    &text,
+                    mt_core::broadcast::DEFAULT_HISTORY,
+                );
+                let names: Vec<&str> = h.iter().map(String::as_str).collect();
+                list.splice(0, list.n_items(), &names);
+                picker.set_selected(gtk::INVALID_LIST_POSITION);
+                picker.set_visible(true);
+                history = Some(h);
+            }
+            save(history);
             entry.set_text("");
         }
     });

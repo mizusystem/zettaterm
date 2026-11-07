@@ -253,6 +253,12 @@ final class TerminalController: ObservableObject {
         if enter { session.key(key: .enter, mods: Modifiers(shift: false, ctrl: false, alt: false)) }
     }
 
+    /// ブロードキャストのリアルタイム送信で、消した文字の分の BackSpace を送る。
+    func broadcastBackspace(_ count: Int) {
+        guard let session = view.session, isConnected, count > 0 else { return }
+        for _ in 0..<count { session.key(key: .backspace, mods: Modifiers(shift: false, ctrl: false, alt: false)) }
+    }
+
     // MARK: 貼り付け・検索・画面
 
     /// 改行や危険な語を含む貼り付けは、送る前に確かめる（Tera Term の ConfirmChangePaste）。

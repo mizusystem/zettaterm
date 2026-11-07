@@ -73,6 +73,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「Multi-Term について」：版とコミット、Tera Term のライセンス表示が出る
 - [ ] 「ウィンドウ」の重ねて表示・左右・上下・元に戻す・すべて最小化・すべて復元（Mac）。GTK はウィンドウのリスト・最小化・復元
 - [ ] 「ファイル > 全終了」ですべてのウィンドウが閉じる。GTK の「終了」はこのウィンドウだけ
+- [ ] ブロードキャスト：リアルタイム（打った文字と BackSpace がその場で届く）、ヒストリ（送ったコマンドを選び直せる）、Enter キーの改行（送り先の設定 / CRLF / CR / LF）
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

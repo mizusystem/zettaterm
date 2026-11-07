@@ -109,9 +109,9 @@
 - [x] **追加の文字エンコーディング**（※CP437 / CP850 は未対応）: 韓国語 (`KS5601` / `CP949`)、簡体字中国語 (`GB2312` / `CP936`)、繁体字中国語 (`Big5` / `CP950`)、ロシア語 (`KOI8-R` / `CP1251` / `CP866`)、西欧・中欧 (`ISO-8859-1`〜`15`, `CP437`, `CP850`, `CP1252`)
 
 ### 2-2. 既存の「ブロードキャストコマンド」ダイアログに不足している項目
-- [ ] **リアルタイムモード (`DLG_BROADCAST_REALTIME`)**: 入力欄でキーを叩くたびに選択セッションへ 1 文字ずつ即時送信するモード
-- [ ] **コマンド履歴 (`DLG_BROADCAST_HISTORY` / `BroadcastCommandHistory`)**: 過去に送信したブロードキャストコマンドの履歴保持とコンボボックス選択
-- [ ] **改行送信キーの選択 (`BroadcastSubmitKey`)**: `None`, `CR`, `LF`, `CRLF`
+- [x] **リアルタイムモード (`DLG_BROADCAST_REALTIME`)**: 入力欄でキーを叩くたびに選択セッションへ 1 文字ずつ即時送信するモード
+- [x] **コマンド履歴 (`DLG_BROADCAST_HISTORY` / `BroadcastCommandHistory`)**（※99 件。Tera Term の broadcast.log は読まない）: 過去に送信したブロードキャストコマンドの履歴保持とコンボボックス選択
+- [x] **改行送信キーの選択 (`BroadcastSubmitKey`)**（※「Enter キー」の改行を送り先の設定 / CRLF / CR / LF から選ぶ。マニュアルに説明の無い送信キー（None / Enter / Ctrl+M）は入れていない）: `None`, `CR`, `LF`, `CRLF`
 
 ### 2-3. 既存の「ログ」ダイアログに不足している項目
 - [x] **BOM 付与 (`DLG_FOPT_BOM`)** と **プレーンテキスト（制御文字除去） (`DLG_FOPT_PLAIN`)** の明示的選択

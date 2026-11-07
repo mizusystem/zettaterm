@@ -722,6 +722,22 @@ impl TermWindow {
         }
     }
 
+    /// BackSpace キーを `count` 回（ブロードキャストのリアルタイム送信で消した文字の分）。
+    pub fn send_backspaces(&self, count: usize) {
+        if let Some(s) = self.view.session() {
+            for _ in 0..count {
+                s.key(mt_core::Key::Backspace, mt_core::Modifiers::default());
+            }
+        }
+    }
+
+    /// Enter キー（この接続の「送信」の改行コード）。
+    pub fn send_enter(&self) {
+        if let Some(s) = self.view.session() {
+            s.key(mt_core::Key::Enter, mt_core::Modifiers::default());
+        }
+    }
+
     fn is_current(&self) -> bool {
         self.tabs
             .upgrade()

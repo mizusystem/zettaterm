@@ -294,6 +294,30 @@ impl Appearance {
     }
 }
 
+/// ブロードキャストの履歴の先頭に足したもの（同じものは前を消し、`max` 件まで）。
+#[uniffi::export]
+pub fn push_broadcast_history(history: Vec<String>, command: String, max: u32) -> Vec<String> {
+    let mut h = history;
+    core::broadcast::push_history(&mut h, &command, max as usize);
+    h
+}
+
+/// リアルタイム送信で送るもの（消す文字の数と、足す文字列）。
+#[derive(uniffi::Record)]
+pub struct RealtimeDiff {
+    pub erase: u32,
+    pub insert: String,
+}
+
+#[uniffi::export]
+pub fn broadcast_realtime_diff(old: String, new: String) -> RealtimeDiff {
+    let (erase, insert) = core::broadcast::realtime_diff(&old, &new);
+    RealtimeDiff {
+        erase: erase as u32,
+        insert,
+    }
+}
+
 /// 版とビルドしたコミット（例：`0.0.0 (616d2d9)`）。「ヘルプ > バージョン情報」に出す。
 #[uniffi::export]
 pub fn version_line() -> String {
