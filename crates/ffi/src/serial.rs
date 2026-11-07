@@ -186,6 +186,10 @@ pub enum LogTimestamp {
     None,
     Local,
     Utc,
+    /// ログを始めてからの経過時間
+    ElapsedLogging,
+    /// 接続してからの経過時間
+    ElapsedConnection,
 }
 
 /// ログの設定（Tera Term の「ログ」ダイアログの項目）。
@@ -200,6 +204,14 @@ pub struct LogOptions {
     pub timestamp: LogTimestamp,
     /// 始めるときに、スクロールバックを含む今の画面の内容を先に書く
     pub include_screen: bool,
+    /// ttyrec で記録する（`binary` より優先。あとで「ログを再生」で同じ速さで見られる）
+    pub ttyrec: bool,
+    /// テキストの先頭に UTF-8 の BOM
+    pub bom: bool,
+    /// この大きさ（KiB）を超えたら `名前.1` … とずらす。0 ならしない
+    pub rotate_kib: u32,
+    /// ローテーションで残す古いファイルの数
+    pub rotate_keep: u32,
 }
 
 /// 記録中のログの様子。
@@ -233,7 +245,9 @@ impl LogOptions {
         core::LogOptions {
             path: self.path.clone().into(),
             append: self.append,
-            format: if self.binary {
+            format: if self.ttyrec {
+                core::LogFormat::Ttyrec
+            } else if self.binary {
                 core::LogFormat::Binary
             } else {
                 core::LogFormat::Text
@@ -242,8 +256,13 @@ impl LogOptions {
                 LogTimestamp::None => None,
                 LogTimestamp::Local => Some(core::TimestampKind::Local),
                 LogTimestamp::Utc => Some(core::TimestampKind::Utc),
+                LogTimestamp::ElapsedLogging => Some(core::TimestampKind::ElapsedLogging),
+                LogTimestamp::ElapsedConnection => Some(core::TimestampKind::ElapsedConnection),
             },
             include_screen: self.include_screen,
+            bom: self.bom,
+            rotate_size: (self.rotate_kib > 0).then(|| u64::from(self.rotate_kib) * 1024),
+            rotate_keep: self.rotate_keep,
         }
     }
 }

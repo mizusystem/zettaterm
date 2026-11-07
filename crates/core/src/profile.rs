@@ -54,6 +54,10 @@ pub enum ConnectionProfile {
         #[serde(default)]
         delay: SendDelay,
     },
+    /// ログの再生（「ファイル > ログを再生」）。履歴には残さない
+    Replay {
+        path: String,
+    },
 }
 
 impl ConnectionProfile {
@@ -89,6 +93,10 @@ impl ConnectionProfile {
             },
             Self::Tcp { host, port } => format!("{host}:{port}"),
             Self::Serial { port, .. } => port.clone(),
+            Self::Replay { path } => Path::new(path)
+                .file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone()),
         }
     }
 }
@@ -122,6 +130,9 @@ impl HostHistory {
 
     /// 先頭に足す。同じ接続先があれば先頭へ動かす。
     pub fn push(&mut self, profile: ConnectionProfile) {
+        if matches!(profile, ConnectionProfile::Replay { .. }) {
+            return;
+        }
         self.recent.retain(|p| !p.same_target(&profile));
         self.recent.insert(0, profile);
         self.recent.truncate(MAX_RECENT);

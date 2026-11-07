@@ -11,6 +11,7 @@ pub mod mock;
 pub mod newline;
 pub mod paste;
 pub mod profile;
+pub mod replay;
 pub mod session;
 pub mod transfer;
 pub mod transport;

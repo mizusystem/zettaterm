@@ -108,6 +108,13 @@ pub fn open_transport(
             Box::new(TcpTransport::raw(host, *port, IpVersion::Auto, size)?),
             SendDelay::default(),
         ),
+        ConnectionProfile::Replay { path } => (
+            Box::new(mt_core::replay::ReplayTransport::open(
+                std::path::Path::new(path),
+                1.0,
+            )?),
+            SendDelay::default(),
+        ),
     })
 }
 

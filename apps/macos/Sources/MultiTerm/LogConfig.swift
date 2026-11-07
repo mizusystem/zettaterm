@@ -10,6 +10,10 @@ struct LogConfig: Equatable {
     var name = defaultLogName()
     /// つないだら自動でログを取り始める（LogAutoStart）
     var autoStart = false
+    /// この大きさ（KiB）を超えたらローテートする（0 はしない。LogRotateSize）
+    var rotateKiB: UInt32 = 0
+    /// 残す古いファイルの数（LogRotateStep）
+    var rotateKeep: UInt32 = 5
 
     static var documents: String {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
@@ -20,6 +24,8 @@ struct LogConfig: Equatable {
         static let folder = "log.defaultFolder"
         static let name = "log.defaultName"
         static let autoStart = "log.autoStart"
+        static let rotateKiB = "log.rotateKiB"
+        static let rotateKeep = "log.rotateKeep"
     }
 
     static var saved: LogConfig {
@@ -28,6 +34,8 @@ struct LogConfig: Equatable {
         if let f = d.string(forKey: Key.folder), !f.isEmpty { c.folder = f }
         if let n = d.string(forKey: Key.name), !n.isEmpty { c.name = n }
         c.autoStart = d.bool(forKey: Key.autoStart)
+        c.rotateKiB = UInt32(clamping: d.integer(forKey: Key.rotateKiB))
+        if d.object(forKey: Key.rotateKeep) != nil { c.rotateKeep = UInt32(clamping: d.integer(forKey: Key.rotateKeep)) }
         return c
     }
 
@@ -36,6 +44,8 @@ struct LogConfig: Equatable {
         d.set(folder, forKey: Key.folder)
         d.set(name, forKey: Key.name)
         d.set(autoStart, forKey: Key.autoStart)
+        d.set(Int(rotateKiB), forKey: Key.rotateKiB)
+        d.set(Int(rotateKeep), forKey: Key.rotateKeep)
     }
 
     /// `target` 向けのログファイルのパス（テンプレートを今の時刻で展開したもの）。
@@ -52,7 +62,7 @@ struct LogConfig: Equatable {
         case let .telnet(host, port, _): return (host, String(port ?? 23))
         case let .tcp(host, port, _): return (host, String(port))
         case let .serial(port, _): return (port, port)
-        case .localShell, .none: return ("localhost", "shell")
+        case .localShell, .replay, .none: return ("localhost", "shell")
         }
     }
 }
@@ -83,6 +93,21 @@ struct LogSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Toggle(TT.text("DLG_TAB_LOG_AUTOSTART", "自動的にログ採取を開始する"), isOn: $config.autoStart)
+
+            HStack {
+                Toggle(TT.text("DLG_TAB_LOG_ROTATE", "ログのローテート"), isOn: Binding(
+                    get: { config.rotateKiB > 0 },
+                    set: { config.rotateKiB = $0 ? max(config.rotateKiB, 10_240) : 0 }))
+                TextField("", value: Binding(get: { Int(config.rotateKiB) / 1024 },
+                                             set: { config.rotateKiB = UInt32(clamping: max(1, $0) * 1024) }),
+                          format: .number)
+                    .frame(width: 60)
+                    .disabled(config.rotateKiB == 0)
+                Text("MiB")
+                Text(TT.text("DLG_TAB_LOG_ROTATESTEP", "世代"))
+                Stepper(value: $config.rotateKeep, in: 1...99) { Text("\(config.rotateKeep)") }
+                    .disabled(config.rotateKiB == 0)
+            }
 
             HStack {
                 Spacer()

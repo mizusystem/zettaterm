@@ -120,6 +120,8 @@ struct Inner {
     local_echo: AtomicBool,
     /// 最後に設定した端末設定（`terminal_settings` で返す）
     terminal: Mutex<TerminalSettings>,
+    /// 接続した時刻（ログの経過時間）
+    opened_at: std::time::Instant,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
     taps: Mutex<Taps>,
 }
@@ -205,6 +207,7 @@ impl Session {
             zmodem: Mutex::new(ZmodemDetector::default()),
             local_echo: AtomicBool::new(options.terminal.local_echo),
             terminal: Mutex::new(options.terminal),
+            opened_at: std::time::Instant::now(),
             taps: Mutex::new(Taps::default()),
         });
 
@@ -498,7 +501,7 @@ impl Session {
 
     /// 受信データのログを始める。記録中なら前のログを閉じて切り替える。
     pub fn log_start(&self, options: &LogOptions) -> io::Result<()> {
-        let mut logger = Logger::open(options)?;
+        let mut logger = Logger::open(options, self.inner.opened_at)?;
         if options.include_screen {
             // 受信スレッドがログに書き始める前に、今の画面の内容を書く
             let mut log = self.inner.log();

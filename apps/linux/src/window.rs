@@ -271,6 +271,25 @@ impl Tabs {
         );
         add("log-view", Box::new(|_, me| me.view_log()));
         add(
+            "log-replay",
+            Box::new(|t, _| {
+                let t = Rc::clone(t);
+                let dialog = gtk::FileDialog::new();
+                dialog.set_title(&l("再生するログ（バイナリか ttyrec）を選んでください。"));
+                dialog.open(Some(&t.win.clone()), None::<&gio::Cancellable>, move |r| {
+                    if let Some(path) = r.ok().and_then(|f| f.path()) {
+                        let p = t.add();
+                        p.connect(
+                            ConnectionProfile::Replay {
+                                path: path.display().to_string(),
+                            },
+                            false,
+                        );
+                    }
+                });
+            }),
+        );
+        add(
             "setup-log",
             Box::new(|t, me| {
                 settings::log_settings_dialog(&t.win.clone().upcast(), me.profile.borrow().clone())

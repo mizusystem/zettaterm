@@ -54,12 +54,16 @@ pub fn log_dialog(
     )));
     let text = gtk::CheckButton::with_label(&tt("DLG_FOPT_TEXT", "テキスト"));
     let binary = gtk::CheckButton::with_label(&tt("DLG_FOPT_BINARY", "バイナリ"));
+    let ttyrec = gtk::CheckButton::with_label(&l("ttyrec（再生できる記録）"));
     binary.set_group(Some(&text));
-    text.set_active(!conf.binary);
-    binary.set_active(conf.binary);
+    ttyrec.set_group(Some(&text));
+    text.set_active(!conf.binary && !conf.ttyrec);
+    binary.set_active(conf.binary && !conf.ttyrec);
+    ttyrec.set_active(conf.ttyrec);
     let mode = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     mode.append(&text);
     mode.append(&binary);
+    mode.append(&ttyrec);
     content.append(&mode);
 
     content.append(&heading(&tt("DLG_FOPT_APPEND_LABEL", "書き込みモード")));
@@ -74,13 +78,32 @@ pub fn log_dialog(
     content.append(&amode);
 
     let stamp = gtk::CheckButton::with_label(&tt("DLG_FOPT_TIMESTAMP", "タイムスタンプ"));
-    let utc = gtk::CheckButton::with_label(&tt("DLG_FOPT_TIMESTAMP_UTC", "UTC"));
+    let kinds = ["local", "utc", "elapsed-log", "elapsed-connection"];
+    let kind_names = [
+        tt("DLG_FOPT_TIMESTAMP_LOCAL", "ローカルタイム"),
+        tt("DLG_FOPT_TIMESTAMP_UTC", "UTC"),
+        tt("DLG_FOPT_TIMESTAMP_ELAPSED_LOGGING", "経過時間(Logging)"),
+        tt(
+            "DLG_FOPT_TIMESTAMP_ELAPSED_CONNECTION",
+            "経過時間(Connection)",
+        ),
+    ];
+    let kind_strs: Vec<&str> = kind_names.iter().map(String::as_str).collect();
+    let utc = gtk::DropDown::from_strings(&kind_strs);
+    let current_kind = if conf.timestamp_kind.is_empty() {
+        if conf.utc { "utc" } else { "local" }
+    } else {
+        conf.timestamp_kind.as_str()
+    };
+    utc.set_selected(kinds.iter().position(|k| *k == current_kind).unwrap_or(0) as u32);
     let srow = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     srow.append(&stamp);
     srow.append(&utc);
     content.append(&srow);
     stamp.set_active(conf.timestamp);
-    utc.set_active(conf.utc);
+    let bom = gtk::CheckButton::with_label(&tt("DLG_FOPT_BOM", "BOM"));
+    bom.set_active(conf.bom);
+    content.append(&bom);
     let screen = gtk::CheckButton::with_label(&tt("DLG_FOPT_ALLBUFFINFIRST", "現在バッファを含む"));
     screen.set_tooltip_text(Some(&l(
         "スクロールバックを含めて、今画面に出ている内容を先に書きます。",
@@ -89,14 +112,15 @@ pub fn log_dialog(
     content.append(&screen);
     {
         let sync = {
-            let (stamp, utc, binary) = (stamp.clone(), utc.clone(), binary.clone());
+            let (stamp, utc, text, bom) = (stamp.clone(), utc.clone(), text.clone(), bom.clone());
             std::rc::Rc::new(move || {
-                stamp.set_sensitive(!binary.is_active());
-                utc.set_sensitive(!binary.is_active() && stamp.is_active());
+                stamp.set_sensitive(text.is_active());
+                bom.set_sensitive(text.is_active());
+                utc.set_sensitive(text.is_active() && stamp.is_active());
             })
         };
         let s2 = sync.clone();
-        binary.connect_toggled(move |_| s2());
+        text.connect_toggled(move |_| s2());
         let s3 = sync.clone();
         stamp.connect_toggled(move |_| s3());
         sync();
@@ -118,8 +142,11 @@ pub fn log_dialog(
         let mut s = crate::settings::Settings::load();
         s.log.append = append.is_active();
         s.log.binary = binary.is_active();
+        s.log.ttyrec = ttyrec.is_active();
+        s.log.bom = bom.is_active();
         s.log.timestamp = stamp.is_active();
-        s.log.utc = utc.is_active();
+        s.log.timestamp_kind = kinds[(utc.selected() as usize).min(kinds.len() - 1)].to_owned();
+        s.log.utc = s.log.timestamp_kind == "utc";
         s.log.include_screen = screen.is_active();
         s.save();
         let path = PathBuf::from(p);

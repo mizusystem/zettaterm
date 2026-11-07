@@ -96,6 +96,9 @@ pub enum Profile {
         port: u16,
         ip: IpVersion,
     },
+    /// ログの再生（「ファイル > ログを再生」）。ttyrec は記録した間隔で、それ以外は一定の速さで流す。
+    /// `speed` は速さの倍率。履歴には残さない
+    Replay { path: String, speed: f64 },
 }
 
 /// Tera Term の「IPバージョン」。
@@ -668,6 +671,10 @@ impl Session {
             Profile::Tcp { host, port, ip } => {
                 Box::new(TcpTransport::raw(&host, port, ip.into(), size)?)
             }
+            Profile::Replay { path, speed } => Box::new(core::replay::ReplayTransport::open(
+                std::path::Path::new(&path),
+                speed,
+            )?),
         };
         let options = core::SessionOptions {
             size,

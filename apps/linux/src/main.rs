@@ -55,6 +55,10 @@ fn menu() -> gio::Menu {
         Some("win.log-view"),
     );
     file.append(
+        Some(&tt("MENU_FILE_REPLAYLOG", "ログを再生...")),
+        Some("win.log-replay"),
+    );
+    file.append(
         Some(&tt("MENU_FILE_SENDFILE", "ファイル送信...")),
         Some("win.send-file"),
     );

@@ -43,7 +43,7 @@
 - [x] **ログにコメントを付加 (`MENU_FILE_COMMENTLOG`)**: 任意の文字列・タイムスタンプをログへ直接挿入するダイアログ (`DLG_COMMENT_TITLE`)
 - [x] **ログを表示 (`MENU_FILE_VIEWLOG`)**: 記録中のログファイルを外部テキストエディタ等で開く
 - [ ] **ログ記録中ダイアログを表示 (`MENU_FILE_SHOWLOGDIALOG`)**: 記録中のファイル名・サイズ・一時停止ボタンを持つフローティング小窓
-- [ ] **ログを再生 (`MENU_FILE_REPLAYLOG`)**: バイナリモードで記録したログファイルを端末に流して再現する機能 (`/R=` オプション相当)
+- [x] **ログを再生 (`MENU_FILE_REPLAYLOG`)**（※`/R=` の起動引数は未対応）: バイナリモードで記録したログファイルを端末に流して再現する機能 (`/R=` オプション相当)
 - [ ] **ファイル受信 (`MENU_FILE_RECVFILE`)**: プロトコルなしの生データファイル受信（データ途絶タイマー `ReceivefileAutoStopWaitTime` による自動停止付き）
 - [ ] **ディレクトリを変更 (`MENU_FILE_CHANGEDIR`)**: ファイル送受信・マクロの基準ディレクトリの変更 (`DLG_SELECT_DIR_TITLE`)
 - [ ] **印刷 (`MENU_FILE_PRINT`)**: 端末画面または選択範囲の印刷／PDF出力
@@ -113,12 +113,12 @@
 - [ ] **改行送信キーの選択 (`BroadcastSubmitKey`)**: `None`, `CR`, `LF`, `CRLF`
 
 ### 2-3. 既存の「ログ」ダイアログに不足している項目
-- [ ] **BOM 付与 (`DLG_FOPT_BOM`)** と **プレーンテキスト（制御文字除去） (`DLG_FOPT_PLAIN`)** の明示的選択
+- [x] **BOM 付与 (`DLG_FOPT_BOM`)** と **プレーンテキスト（制御文字除去） (`DLG_FOPT_PLAIN`)** の明示的選択
 - [x] **現在の画面バッファを最初に書き込む (`DLG_FOPT_ALLBUFFINFIRST` / `LogIncludeScreenBuffer`)**: ログ開始時点ですでに画面に表示されているスクロールバッファをログ先頭に出力する機能（トラブル発生後にログを取り始める場面で必須）
-- [ ] **タイムスタンプ種別の追加**: 「経過時間（行頭からの経過時間 / 接続からの経過時間）」および任意の `strftime` フォーマット指定 (`LogTimestampFormat`)
+- [x] **タイムスタンプ種別の追加**（※経過時間は実装済み。任意の書式は未実装）: 「経過時間（行頭からの経過時間 / 接続からの経過時間）」および任意の `strftime` フォーマット指定 (`LogTimestampFormat`)
 - [x] **自動ログ開始 (`LogAutoStart`)** と **標準ログファイル名テンプレート (`LogDefaultName`)**:
   - `&h`（ホスト名）、`&p`（TCPポートまたはシリアルポート名）、`&u`（ユーザー名）、`%Y%m%d_%H%M%S` などを自動展開して接続と同時にログ記録を開始する機能
-- [ ] **ログローテーション (`LogRotate` / `LogRotateSize` / `LogRotateStep`)**: 指定サイズ超過時の世代ローテート
+- [x] **ログローテーション (`LogRotate` / `LogRotateSize` / `LogRotateStep`)**: 指定サイズ超過時の世代ローテート
 
 ### 2-4. 「設定 > その他の設定 (Additional settings)」の 7 タブ
 1. **全般 (`DLG_TAB_GENERAL`)**:
@@ -274,7 +274,7 @@
 - [x] **文字コードクイック切替メニュー (`TTXKanjiMenu`)**: 設定ダイアログを開かずにメニューバー（またはステータスバー）から 1 クリックで `UTF-8` / `Shift_JIS` / `EUC-JP` を切り替える機能
 - [ ] **繰り返しコマンド (`TTXRecurringCommand`)**: 指定秒数間隔で特定の文字列・改行を自動送信する機能（セッション維持や定期監視用）
 - [ ] **ViewMode (`TTXViewMode`)**: 誤入力防止のためキーボード送信をロックして閲覧専用にするモード
-- [ ] **ttyrec 録画・再生 (`TTXttyrec` / `TTXttyplay`)**: タイムスタンプ付きターミナル録画ファイルの記録と再生（速度変更・一時停止付き）
+- [x] **ttyrec 録画・再生 (`TTXttyrec` / `TTXttyplay`)**（※再生の速度変更・一時停止の UI は未実装）: タイムスタンプ付きターミナル録画ファイルの記録と再生（速度変更・一時停止付き）
 
 ---
 

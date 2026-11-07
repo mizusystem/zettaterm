@@ -355,6 +355,15 @@ final class TerminalController: ObservableObject {
         }
     }
 
+    /// 「ログを再生」で流すファイル（バイナリのログか ttyrec）。
+    static func chooseReplayFile() -> String? {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = L("再生するログ（バイナリか ttyrec）を選んでください。")
+        return panel.runModal() == .OK ? panel.url?.path : nil
+    }
+
     /// 「ログを表示」：記録中のログを既定のアプリで開く。
     func viewLog() {
         guard let path = view.session?.logStatus()?.path else { return }

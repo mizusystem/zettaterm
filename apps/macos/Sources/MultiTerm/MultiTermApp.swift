@@ -194,6 +194,12 @@ struct TerminalCommands: Commands {
                 .disabled(controller?.isLogging != true)
             Button(TT.text("MENU_FILE_VIEWLOG", "ログを表示")) { controller?.viewLog() }
                 .disabled(controller?.isLogging != true)
+            Button(TT.text("MENU_FILE_REPLAYLOG", "ログを再生...")) {
+                if let path = TerminalController.chooseReplayFile() {
+                    WindowTabs.prepareTab()
+                    openWindow(value: ConnectRequest(target: .connect(.replay(path: path)), asTab: true))
+                }
+            }
 
             Button(TT.text("MENU_FILE_SENDFILE", "ファイル送信...")) { controller?.beginSendFile() }
                 .disabled(controller?.isConnected != true || controller?.transfer != nil)

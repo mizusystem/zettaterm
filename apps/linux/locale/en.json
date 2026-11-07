@@ -71,5 +71,7 @@
   "接続しましたが、次はうまくいきませんでした。\n{}": "Connected, but the following did not work:\n{}",
   "{} を読み込みました（接続先 {} 件）。": "Imported {} ({} hosts).",
   "接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。": "Lets you authenticate with your local ssh-agent keys when you ssh onward from the server. Use it only with servers you trust.",
-  "パスフレーズが一致しません。": "The passphrases do not match."
+  "パスフレーズが一致しません。": "The passphrases do not match.",
+  "ttyrec（再生できる記録）": "ttyrec (replayable)",
+  "再生するログ（バイナリか ttyrec）を選んでください。": "Choose a log to replay (binary or ttyrec)."
 }

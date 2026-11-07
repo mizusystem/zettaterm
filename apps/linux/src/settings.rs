@@ -105,6 +105,14 @@ pub struct LogConf {
     pub utc: bool,
     /// 現在のバッファを最初に書き込む
     pub include_screen: bool,
+    /// ttyrec で記録する（binary より優先）
+    pub ttyrec: bool,
+    pub bom: bool,
+    /// "local" / "utc" / "elapsed-log" / "elapsed-connection"（空なら utc の値に従う）
+    pub timestamp_kind: String,
+    /// この大きさ（KiB）を超えたらローテート（0 はしない）
+    pub rotate_kib: u64,
+    pub rotate_keep: u32,
 }
 
 impl Default for LogConf {
@@ -118,6 +126,11 @@ impl Default for LogConf {
             timestamp: false,
             utc: false,
             include_screen: false,
+            ttyrec: false,
+            bom: false,
+            timestamp_kind: String::new(),
+            rotate_kib: 0,
+            rotate_keep: 5,
         }
     }
 }
@@ -152,17 +165,27 @@ impl LogConf {
     pub fn options(&self, path: std::path::PathBuf) -> mt_core::LogOptions {
         let mut o = mt_core::LogOptions::new(path);
         o.append = self.append;
-        o.format = if self.binary {
+        o.format = if self.ttyrec {
+            mt_core::LogFormat::Ttyrec
+        } else if self.binary {
             mt_core::LogFormat::Binary
         } else {
             mt_core::LogFormat::Text
         };
-        o.timestamp = (self.timestamp && !self.binary).then_some(if self.utc {
-            mt_core::TimestampKind::Utc
-        } else {
-            mt_core::TimestampKind::Local
-        });
+        use mt_core::TimestampKind as K;
+        let kind = match self.timestamp_kind.as_str() {
+            "utc" => K::Utc,
+            "elapsed-log" => K::ElapsedLogging,
+            "elapsed-connection" => K::ElapsedConnection,
+            "local" => K::Local,
+            _ if self.utc => K::Utc,
+            _ => K::Local,
+        };
+        o.timestamp = (self.timestamp && o.format == mt_core::LogFormat::Text).then_some(kind);
         o.include_screen = self.include_screen;
+        o.bom = self.bom;
+        o.rotate_size = (self.rotate_kib > 0).then_some(self.rotate_kib * 1024);
+        o.rotate_keep = self.rotate_keep;
         o
     }
 }
@@ -779,6 +802,23 @@ pub fn log_settings_dialog(parent: &gtk::Window, profile: Option<ConnectionProfi
         gtk::CheckButton::with_label(&tt("DLG_TAB_LOG_AUTOSTART", "自動的にログ採取を開始する"));
     auto.set_active(current.auto_start);
     content.append(&auto);
+    // ローテーション（MiB と世代）
+    let rot_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let rotate = gtk::CheckButton::with_label(&tt("DLG_TAB_LOG_ROTATE", "ログのローテート"));
+    rotate.set_active(current.rotate_kib > 0);
+    let size = gtk::SpinButton::with_range(1.0, 10_240.0, 1.0);
+    size.set_value(((current.rotate_kib.max(10_240)) / 1024) as f64);
+    let keep = gtk::SpinButton::with_range(1.0, 99.0, 1.0);
+    keep.set_value(current.rotate_keep.max(1) as f64);
+    rot_row.append(&rotate);
+    rot_row.append(&size);
+    rot_row.append(&gtk::Label::new(Some("MiB")));
+    rot_row.append(&gtk::Label::new(Some(&tt(
+        "DLG_TAB_LOG_ROTATESTEP",
+        "世代",
+    ))));
+    rot_row.append(&keep);
+    content.append(&rot_row);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
         let mut s = Settings::load();
@@ -790,6 +830,12 @@ pub fn log_settings_dialog(parent: &gtk::Window, profile: Option<ConnectionProfi
             n
         };
         s.log.auto_start = auto.is_active();
+        s.log.rotate_kib = if rotate.is_active() {
+            size.value() as u64 * 1024
+        } else {
+            0
+        };
+        s.log.rotate_keep = keep.value() as u32;
         s.save();
     });
     win.present();

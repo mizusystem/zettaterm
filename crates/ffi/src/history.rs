@@ -12,6 +12,7 @@ impl Profile {
     pub(crate) fn to_core(&self) -> core::ConnectionProfile {
         match self {
             Profile::LocalShell { .. } => core::ConnectionProfile::LocalShell,
+            Profile::Replay { path, .. } => core::ConnectionProfile::Replay { path: path.clone() },
             Profile::Serial { port, settings } => core::ConnectionProfile::Serial {
                 port: port.clone(),
                 settings: settings.port(),
@@ -70,6 +71,7 @@ impl Profile {
                 port,
                 ip: IpVersion::Auto,
             },
+            core::ConnectionProfile::Replay { path } => Profile::Replay { path, speed: 1.0 },
             core::ConnectionProfile::Tcp { host, port } => Profile::Tcp {
                 host,
                 port,
@@ -107,6 +109,10 @@ impl HostHistory {
 
     /// 先頭に足して保存する。同じ接続先は先頭へ動かす。
     pub fn add(&self, profile: Profile) -> Result<(), MtError> {
+        // ログの再生は接続先ではないので残さない
+        if matches!(profile, Profile::Replay { .. }) {
+            return Ok(());
+        }
         let mut h = self.lock();
         h.push(profile.to_core());
         Ok(h.save()?)

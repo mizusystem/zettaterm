@@ -11,6 +11,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
     case ssh(host: String, port: UInt16?, user: String?, systemSSH: Bool = false)
     case telnet(host: String, port: UInt16?, ip: IP)
     case tcp(host: String, port: UInt16, ip: IP)
+    /// ログの再生（「ファイル > ログを再生」）。履歴には残さない
+    case replay(path: String)
 
     var profile: Profile {
         switch self {
@@ -24,6 +26,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             return .telnet(host: host, port: port, ip: ip.core)
         case let .tcp(host, port, ip):
             return .tcp(host: host, port: port, ip: ip.core)
+        case let .replay(path):
+            return .replay(path: path, speed: 1.0)
         }
     }
 
@@ -63,6 +67,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             self = .telnet(host: host, port: port, ip: IP(ip))
         case let .tcp(host, port, ip):
             self = .tcp(host: host, port: port, ip: IP(ip))
+        case let .replay(path, _):
+            self = .replay(path: path)
         }
     }
 
@@ -82,6 +88,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             return port.map { "\(host):\($0) (Telnet)" } ?? "\(host) (Telnet)"
         case let .tcp(host, port, _):
             return "\(host):\(port)"
+        case let .replay(path):
+            return L("%@（再生）", URL(fileURLWithPath: path).lastPathComponent)
         }
     }
 
