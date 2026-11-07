@@ -88,5 +88,6 @@
   "Ctrl を押しながら BackSpace を押すと、もう一方を送ります。": "Ctrl+BackSpace sends the other one.",
   "ENQ を受けたときに返す文字列（空なら返さない）": "String returned on ENQ (none if empty)",
   "ブレークの長さ": "Break length",
-  "ミリ秒": "ms"
+  "ミリ秒": "ms",
+  "Tera Term の操作感を macOS・Linux で": "The feel of Tera Term on macOS and Linux"
 }

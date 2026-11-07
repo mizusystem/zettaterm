@@ -70,6 +70,9 @@ messagebox inputstr 'filenamebox'
 - [ ] 「転送 > Kermit > 取得...」と「終了」：相手で `kermit -x`（サーバー）にしてからファイル名を入れる → ダウンロードフォルダに届き、「終了」で相手のサーバーが終わる
 - [ ] 「設定 > キーボード」の「Option キーをメタキーとして使う」をオンにして、Option+b / Option+f が bash で単語移動になる（既定はオフ。オフなら Option+¥ で \ が打てる）
 - [ ] Cmd+クリックで、全角で終わる URL の右半分も反応する。`file://` は開かない
+- [ ] 「Multi-Term について」：版とコミット、Tera Term のライセンス表示が出る
+- [ ] 「ウィンドウ」の重ねて表示・左右・上下・元に戻す・すべて最小化・すべて復元（Mac）。GTK はウィンドウのリスト・最小化・復元
+- [ ] 「ファイル > 全終了」ですべてのウィンドウが閉じる。GTK の「終了」はこのウィンドウだけ
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

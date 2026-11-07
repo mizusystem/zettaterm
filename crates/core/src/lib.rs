@@ -3,6 +3,7 @@
 //!
 //! このクレートに `cfg(target_os)` を書かない。OS 固有コードは `mt-serial` と `mt-net` に閉じる。
 
+pub mod about;
 pub mod auth;
 pub mod charset;
 pub mod ini;

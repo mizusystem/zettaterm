@@ -72,7 +72,15 @@ fn menu() -> gio::Menu {
         Some("win.disconnect"),
     );
     file.append(Some(&l("閉じる")), Some("win.close"));
-    file.append(Some(&tt("MENU_FILE_EXIT", "終了")), Some("app.quit"));
+    // 終了はこのウィンドウ、全終了はすべてのウィンドウ（Tera Term と同じ）
+    file.append(
+        Some(&tt("MENU_FILE_EXIT", "終了")),
+        Some("win.close-window"),
+    );
+    file.append(
+        Some(&tt("MENU_FILE_EXITALL", "全終了").replace("Tera Term", "Multi-Term")),
+        Some("app.quit"),
+    );
     bar.append_submenu(Some(&tt("MENU_FILE", "ファイル")), &file);
 
     let edit = gio::Menu::new();
@@ -262,6 +270,29 @@ fn menu() -> gio::Menu {
     );
     control.append(Some(&l("マクロの停止")), Some("win.macro-stop"));
     bar.append_submenu(Some(&tt("MENU_CONTROL", "コントロール")), &control);
+
+    // GTK4 はウィンドウの位置を決められないので、重ねて表示・並べて表示は無い
+    let window = gio::Menu::new();
+    window.append(
+        Some(&tt("DLG_WINLIST_TITLE", "ウィンドウのリスト").replace("Tera Term: ", "")),
+        Some("app.window-list"),
+    );
+    window.append(
+        Some(&tt("MENU_WINDOW_MINIMIZEALL", "すべて最小化")),
+        Some("app.minimize-all"),
+    );
+    window.append(
+        Some(&tt("MENU_WINDOW_RESTOREALL", "すべて復元")),
+        Some("app.restore-all"),
+    );
+    bar.append_submenu(Some(&tt("MENU_WINDOW", "ウィンドウ")), &window);
+
+    let help = gio::Menu::new();
+    help.append(
+        Some(&tt("MENU_HELP_ABOUT", "Multi-Term について...").replace("Tera Term", "Multi-Term")),
+        Some("app.about"),
+    );
+    bar.append_submenu(Some(&tt("MENU_HELP", "ヘルプ")), &help);
     bar
 }
 
@@ -307,6 +338,38 @@ fn main() -> glib::ExitCode {
         let a = app.clone();
         quit.connect_activate(move |_, _| a.quit());
         app.add_action(&quit);
+        let active = |a: &gtk::Application| -> Option<gtk::Window> { a.active_window() };
+        for (name, run) in [
+            (
+                "window-list",
+                Box::new(move |a: &gtk::Application| {
+                    if let Some(w) = active(a) {
+                        window::window_list_dialog(&w);
+                    }
+                }) as Box<dyn Fn(&gtk::Application)>,
+            ),
+            (
+                "minimize-all",
+                Box::new(|_: &gtk::Application| window::minimize_all(true)),
+            ),
+            (
+                "restore-all",
+                Box::new(|_: &gtk::Application| window::minimize_all(false)),
+            ),
+            (
+                "about",
+                Box::new(move |a: &gtk::Application| {
+                    if let Some(w) = active(a) {
+                        window::about_dialog(&w);
+                    }
+                }),
+            ),
+        ] {
+            let action = gio::SimpleAction::new(name, None);
+            let a = app.clone();
+            action.connect_activate(move |_, _| run(&a));
+            app.add_action(&action);
+        }
         let new_window = gio::SimpleAction::new("new-window", None);
         let a = app.clone();
         new_window.connect_activate(move |_, _| {

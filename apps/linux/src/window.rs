@@ -45,6 +45,109 @@ thread_local! {
     static WINDOWS: RefCell<Vec<Rc<Tabs>>> = const { RefCell::new(Vec::new()) };
 }
 
+/// 開いているウィンドウ（「ウィンドウ」メニュー）。
+fn windows() -> Vec<Rc<Tabs>> {
+    WINDOWS.with(|w| w.borrow().clone())
+}
+
+/// 「ウィンドウ > すべて最小化 / すべて復元」。
+pub fn minimize_all(minimize: bool) {
+    for t in windows() {
+        if minimize {
+            t.win.minimize();
+        } else {
+            t.win.unminimize();
+            t.win.present();
+        }
+    }
+}
+
+/// 「ウィンドウ > ウィンドウのリスト」：開いているウィンドウを選んで前に出すか閉じる。
+pub fn window_list_dialog(parent: &gtk::Window) {
+    let (win, content, row) =
+        dialogs::modal(parent, &tt("DLG_WINLIST_TITLE", "ウィンドウのリスト"));
+    let label = gtk::Label::new(Some(&tt("DLG_WINLIST_LABEL", "ウィンドウ(&W):")));
+    label.set_xalign(0.0);
+    content.append(&label);
+    let list = gtk::ListBox::new();
+    list.set_selection_mode(gtk::SelectionMode::Single);
+    let scroll = gtk::ScrolledWindow::builder()
+        .min_content_height(180)
+        .child(&list)
+        .build();
+    content.append(&scroll);
+    let fill = {
+        let list = list.clone();
+        move || {
+            while let Some(child) = list.first_child() {
+                list.remove(&child);
+            }
+            for t in windows() {
+                let title = t.win.title().map(|t| t.to_string()).unwrap_or_default();
+                let l = gtk::Label::new(Some(&title));
+                l.set_xalign(0.0);
+                list.append(&l);
+            }
+            if let Some(first) = list.row_at_index(0) {
+                list.select_row(Some(&first));
+            }
+        }
+    };
+    fill();
+    let selected = {
+        let list = list.clone();
+        move || {
+            let i = list.selected_row()?.index();
+            windows().get(usize::try_from(i).ok()?).cloned()
+        }
+    };
+    let close = gtk::Button::with_label(&tt("DLG_WINLIST_CLOSEWIN", "閉じる"));
+    let open = gtk::Button::with_label(&tt("DLG_WINLIST_OPEN", "開く"));
+    open.add_css_class("suggested-action");
+    let cancel = gtk::Button::with_label(&tt("BTN_CANCEL", "キャンセル"));
+    row.append(&close);
+    row.append(&cancel);
+    row.append(&open);
+    {
+        let (selected, fill) = (selected.clone(), fill.clone());
+        close.connect_clicked(move |_| {
+            if let Some(t) = selected() {
+                t.win.close();
+                fill();
+            }
+        });
+    }
+    {
+        let w = win.clone();
+        cancel.connect_clicked(move |_| w.close());
+    }
+    {
+        let w = win.clone();
+        open.connect_clicked(move |_| {
+            if let Some(t) = selected() {
+                w.close();
+                t.win.unminimize();
+                t.win.present();
+            }
+        });
+    }
+    win.present();
+}
+
+/// 「ヘルプ > バージョン情報」。参照したソフトウェアの表示（Tera Term の BSD-3-Clause）も出す。
+pub fn about_dialog(parent: &gtk::Window) {
+    let about = gtk::AboutDialog::builder()
+        .transient_for(parent)
+        .modal(true)
+        .program_name("Multi-Term")
+        .version(mt_core::about::version_line())
+        .comments(l("Tera Term の操作感を macOS・Linux で"))
+        .license(mt_core::about::NOTICES)
+        .wrap_license(false)
+        .build();
+    about.present();
+}
+
 /// 開いているタブのうち、つながっているもの。
 pub fn connected_panes() -> Vec<Rc<TermWindow>> {
     ALL.with(|all| {
@@ -180,6 +283,7 @@ impl Tabs {
         );
         add("disconnect", Box::new(|_, me| me.disconnect()));
         add("close", Box::new(|t, me| t.remove(me)));
+        add("close-window", Box::new(|t, _| t.win.close()));
         add("copy", Box::new(|_, me| me.view.copy()));
         add("copy-table", Box::new(|_, me| me.view.copy_table()));
         add("paste", Box::new(|_, me| me.view.paste()));

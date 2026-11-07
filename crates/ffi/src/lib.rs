@@ -294,6 +294,18 @@ impl Appearance {
     }
 }
 
+/// 版とビルドしたコミット（例：`0.0.0 (616d2d9)`）。「ヘルプ > バージョン情報」に出す。
+#[uniffi::export]
+pub fn version_line() -> String {
+    core::about::version_line()
+}
+
+/// 参照したソフトウェアの表示（Tera Term の BSD-3-Clause の表示を含む）。
+#[uniffi::export]
+pub fn third_party_notices() -> String {
+    core::about::NOTICES.to_owned()
+}
+
 /// 選べる配色の一覧（最初が既定）。
 #[uniffi::export]
 pub fn themes() -> Vec<Theme> {

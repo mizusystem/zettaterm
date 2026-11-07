@@ -48,7 +48,7 @@
 - [x] **ファイル受信 (`MENU_FILE_RECVFILE`)**: プロトコルなしの生データファイル受信（データ途絶タイマー `ReceivefileAutoStopWaitTime` による自動停止付き）
 - [ ] **ディレクトリを変更 (`MENU_FILE_CHANGEDIR`)**: ファイル送受信・マクロの基準ディレクトリの変更 (`DLG_SELECT_DIR_TITLE`)
 - [ ] **印刷 (`MENU_FILE_PRINT`)**: 端末画面または選択範囲の印刷／PDF出力
-- [ ] **Tera Term の全終了 (`MENU_FILE_EXITALL`)**: 全ウィンドウ・セッションを一括終了
+- [x] **Tera Term の全終了 (`MENU_FILE_EXITALL`)**（※GTK 版の「終了」はこのウィンドウを閉じるように変更）: 全ウィンドウ・セッションを一括終了
 
 ### 1-2. 「編集 (Edit)」メニュー (`MENU_EDIT`) ※メニュー自体が未作成
 - [x] **コピー (`MENU_EDIT_COPY`)** (`Alt+C` / `Cmd+C`)
@@ -90,10 +90,10 @@
 - [ ] （参考・低優先度）**Quick-VAN (`MENU_TRANS_QV_*`)** / **B-Plus (`MENU_TRANS_BP_*`)**
 
 ### 1-6. 「ウィンドウ (Window)」および「ヘルプ (Help)」メニュー
-- [ ] **ウィンドウリスト (`DLG_WINLIST_TITLE`)**: 開いている全端末ウィンドウの一覧・切り替え・クローズ
-- [ ] **重ねて表示 / 左右に並べて表示 / 上下に並べて表示 / すべて最小化 / すべて復元** (`MENU_WINDOW_*`)
+- [x] **ウィンドウリスト (`DLG_WINLIST_TITLE`)**（※Mac は標準の「ウィンドウ」メニューの一覧）: 開いている全端末ウィンドウの一覧・切り替え・クローズ
+- [x] **重ねて表示 / 左右に並べて表示 / 上下に並べて表示 / すべて最小化 / すべて復元** (`MENU_WINDOW_*`)（※並べるのは Mac のみ。GTK4 はウィンドウの位置を決められないので最小化・復元だけ）
 - [ ] **メニューバー表示トグル (`MENU_SHOW_MENUBAR`)**
-- [ ] **バージョン情報 (`MENU_HELP_ABOUT` / `DLG_ABOUT_TITLE`)**: バージョン、コミットハッシュ、Tera Term Project の 3 条項 BSD ライセンス表記
+- [x] **バージョン情報 (`MENU_HELP_ABOUT` / `DLG_ABOUT_TITLE`)**: バージョン、コミットハッシュ、Tera Term Project の 3 条項 BSD ライセンス表記
 
 ---
 

@@ -118,5 +118,6 @@
   "Ctrl を押しながら BackSpace を押すと、もう一方を送ります。": "Ctrl+BackSpace sends the other one.",
   "ENQ を受けたときに返す文字列（空なら返さない）": "String returned on ENQ (none if empty)",
   "ブレークの長さ": "Break length",
-  "ミリ秒": "ms"
+  "ミリ秒": "ms",
+  "元に戻す - 並べて表示": "Undo - Arrange"
 }
