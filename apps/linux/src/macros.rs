@@ -51,6 +51,8 @@ pub enum MacroReq {
         newline: bool,
     },
     MulticastName(String),
+    /// restoresetup：TERATERM.INI を読み込む。できたら true
+    RestoreSetup(PathBuf, mpsc::Sender<bool>),
     /// SCP に使う、このタブの内蔵 SSH の接続
     Files(mpsc::Sender<Option<mt_net::SshFiles>>),
 }
@@ -255,6 +257,17 @@ impl Host for GtkHost {
 
     fn set_multicast_name(&mut self, name: &str) {
         self.tell(MacroReq::MulticastName(name.into()));
+    }
+
+    fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
+        mt_net::local_addresses().ok()
+    }
+
+    // getttpos：GTK4 はウィンドウの位置を取れないので答えない（result = -1）
+    // setdlgpos：ダイアログは端末のウィンドウに付けて出すので位置は変えない
+
+    fn restore_setup(&mut self, path: &Path) -> bool {
+        self.ask(|r| MacroReq::RestoreSetup(path.to_owned(), r), false)
     }
 }
 

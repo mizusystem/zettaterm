@@ -2,7 +2,7 @@
 //!
 //! パケット：MARK(SOH) LEN SEQ TYPE DATA CHECK EOL。LEN・SEQ は tochar（+32）で表す。
 //! 種類：S（送信開始）・F（ファイル名）・A（属性）・D（データ）・Z（ファイルの終わり）・B（転送の終わり）、
-//! Y（ACK）・N（NAK）・E（エラー）。
+//! Y（ACK）・N（NAK）・E（エラー）。サーバーになっている相手には R（Get）と G F（Finish）を送れる。
 //! 送信開始で交渉する項目のうち、ブロックチェック（1 / 2 / 3）と 8 ビット目の接頭辞に対応する。
 //! 連続文字の圧縮・ロングパケット・スライディングウィンドウは使わない側として交渉する。
 
@@ -521,6 +521,8 @@ impl Transfer for Sender {
 
 pub struct Receiver {
     dir: PathBuf,
+    /// サーバーへの Get（R パケット）。相手の S が届くまで送り直す
+    get: Option<Vec<u8>>,
     reader: Reader,
     params: Params,
     chkt: u8,
@@ -546,6 +548,7 @@ impl Receiver {
         }
         Ok(Self {
             dir,
+            get: None,
             reader: Reader::default(),
             params: Params::default(),
             chkt: 0,
@@ -559,6 +562,23 @@ impl Receiver {
             status: Status::Running,
             progress: Progress::default(),
         })
+    }
+
+    /// サーバーになっている相手から `names`（ワイルドカード可）を受け取る（Tera Term の「Kermit > 取得」、TTL の kmtget）。
+    pub fn get(dir: PathBuf, names: &str) -> io::Result<Self> {
+        if names.is_empty() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "no file name to get",
+            ));
+        }
+        let mut r = Self::new(dir)?;
+        let mut data = Vec::new();
+        for &b in names.as_bytes() {
+            encode_byte(b, None, &mut data);
+        }
+        r.get = Some(build(0, b'R', &data, 0, &r.params));
+        Ok(r)
     }
 
     fn ack(&mut self, seq: u8, data: &[u8], now: Instant) -> Vec<u8> {
@@ -586,6 +606,7 @@ impl Receiver {
         }
         let out = match p.typ {
             b'S' => {
+                self.get = None;
                 let theirs = negotiate(&p.data);
                 let chkt = if theirs.chkt == b'3' { b'3' } else { b'1' };
                 // 相手が 8 ビット目の接頭辞を Y（求められれば使う）と言ってきたら、こちらは使わない
@@ -689,6 +710,9 @@ impl Receiver {
 impl Transfer for Receiver {
     fn start(&mut self, now: Instant) -> Vec<u8> {
         self.deadline = now + TIMEOUT;
+        if let Some(get) = &self.get {
+            return get.clone();
+        }
         // 送信側が先に S を送ってくるのを待つ。届かないときのために NAK(0) で促しておく
         build(0, b'N', &[], 0, &self.params)
     }
@@ -718,6 +742,9 @@ impl Transfer for Receiver {
             return self.fail("timed out");
         }
         self.deadline = now + TIMEOUT;
+        if let Some(get) = &self.get {
+            return get.clone();
+        }
         build(self.expected, b'N', &[], self.chkt, &self.params)
     }
 
@@ -734,6 +761,83 @@ impl Transfer for Receiver {
 
     fn progress(&self) -> Progress {
         self.progress.clone()
+    }
+}
+
+// ---------------------------------------------------------------- Finish
+
+/// サーバーになっている相手を終わらせる（G F。Tera Term の「Kermit > 終了」、TTL の kmtfinish）。
+pub struct Finish {
+    packet: Vec<u8>,
+    reader: Reader,
+    deadline: Instant,
+    retries: u32,
+    status: Status,
+}
+
+impl Finish {
+    pub fn new() -> Self {
+        Self {
+            packet: build(0, b'G', b"F", 0, &Params::default()),
+            reader: Reader::default(),
+            deadline: Instant::now(),
+            retries: 0,
+            status: Status::Running,
+        }
+    }
+}
+
+impl Default for Finish {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Transfer for Finish {
+    fn start(&mut self, now: Instant) -> Vec<u8> {
+        self.deadline = now + TIMEOUT;
+        self.packet.clone()
+    }
+
+    fn receive(&mut self, data: &[u8], _now: Instant) -> Vec<u8> {
+        self.reader.push(data);
+        while !self.status.is_finished() {
+            match self.reader.next(0) {
+                None => break,
+                Some(Read::Packet(p)) if p.typ == b'Y' => self.status = Status::Done,
+                Some(Read::Packet(p)) if p.typ == b'E' => {
+                    self.status = Status::Failed(String::from_utf8_lossy(&p.data).into_owned());
+                }
+                Some(_) => return self.packet.clone(),
+            }
+        }
+        Vec::new()
+    }
+
+    fn tick(&mut self, now: Instant) -> Vec<u8> {
+        if self.status.is_finished() || now < self.deadline {
+            return Vec::new();
+        }
+        self.retries += 1;
+        if self.retries > RETRIES {
+            self.status = Status::Failed("timed out".into());
+            return Vec::new();
+        }
+        self.deadline = now + TIMEOUT;
+        self.packet.clone()
+    }
+
+    fn cancel(&mut self) -> Vec<u8> {
+        self.status = Status::Canceled;
+        Vec::new()
+    }
+
+    fn status(&self) -> Status {
+        self.status.clone()
+    }
+
+    fn progress(&self) -> Progress {
+        Progress::default()
     }
 }
 
@@ -791,6 +895,44 @@ mod tests {
         assert_eq!(std::fs::read(out.join("a.bin")).unwrap(), sample(20_000, 3));
         assert_eq!(std::fs::read(out.join("b.txt")).unwrap(), b"kermit\r\n");
         assert_eq!(r.progress().files_done, 2);
+    }
+
+    #[test]
+    fn get_sends_r_until_the_server_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut r = Receiver::get(dir.path().to_path_buf(), "a.txt").unwrap();
+        let now = Instant::now();
+        let first = r.start(now);
+        assert_eq!(first[3], b'R');
+        assert_eq!(&first[4..9], b"a.txt");
+        // 返事が無ければ R を送り直す
+        assert_eq!(r.tick(now + TIMEOUT)[3], b'R');
+        // サーバーの S から先はふつうの受信
+        let src = dir.path().join("a.txt");
+        std::fs::write(&src, b"got it").unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir(&out).unwrap();
+        let mut r = Receiver::get(out.clone(), "a.txt").unwrap();
+        let mut s = Sender::new(vec![src]).unwrap();
+        let _ = r.start(now);
+        pump(&mut s, &mut r);
+        assert_eq!(r.status(), Status::Done);
+        assert_eq!(std::fs::read(out.join("a.txt")).unwrap(), b"got it");
+        assert!(Receiver::get(out, "").is_err());
+    }
+
+    #[test]
+    fn finish_waits_for_the_ack() {
+        let mut f = Finish::new();
+        let now = Instant::now();
+        let g = f.start(now);
+        assert_eq!((g[3], g[4]), (b'G', b'F'));
+        f.receive(&build(0, b'Y', &[], 0, &Params::default()), now);
+        assert_eq!(f.status(), Status::Done);
+        let mut f = Finish::new();
+        f.start(now);
+        f.receive(&build(0, b'E', b"no", 0, &Params::default()), now);
+        assert_eq!(f.status(), Status::Failed("no".into()));
     }
 
     #[test]

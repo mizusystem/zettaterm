@@ -258,6 +258,79 @@ pub fn compare_versions(a: &str, b: &str) -> std::cmp::Ordering {
         .unwrap_or(std::cmp::Ordering::Equal)
 }
 
+/// `32K` や `1M` のような大きさ（K は 1024、M は 1024 * 1024）。
+pub fn parse_size(text: &str) -> Option<u64> {
+    let t = text.trim();
+    let (num, unit) = match t.char_indices().last()? {
+        (i, 'k' | 'K') => (&t[..i], 1024),
+        (i, 'm' | 'M') => (&t[..i], 1024 * 1024),
+        _ => (t, 1),
+    };
+    num.trim().parse::<u64>().ok()?.checked_mul(unit)
+}
+
+/// Tera Term のキーコード（KEYCODE.EXE が出す PC のキーコード）を、押したキーに直す（TTL の sendkcode）。
+/// 下位 9 ビットがキー（256 以上は拡張キー）、512 が Shift、1024 が Ctrl、2048 が Alt。
+/// 文字のキーは US 配列として扱う。対応しないコードは None。
+pub fn pc_key(code: i32) -> Option<(mt_core::Key, mt_core::Modifiers)> {
+    use mt_core::Key;
+    if !(0..4096).contains(&code) {
+        return None;
+    }
+    let mods = mt_core::Modifiers {
+        shift: code & 512 != 0,
+        ctrl: code & 1024 != 0,
+        alt: code & 2048 != 0,
+    };
+    let base = code & 511;
+    let key = match base {
+        1 => Key::Escape,
+        14 => Key::Backspace,
+        15 => Key::Tab,
+        28 | 284 => Key::Enter,
+        59..=68 => Key::F((base - 58) as u8),
+        87 => Key::F(11),
+        88 => Key::F(12),
+        327 => Key::Home,
+        328 => Key::Up,
+        329 => Key::PageUp,
+        331 => Key::Left,
+        333 => Key::Right,
+        335 => Key::End,
+        336 => Key::Down,
+        337 => Key::PageDown,
+        338 => Key::Insert,
+        339 => Key::Delete,
+        309 => Key::Text("/".into()),
+        _ => {
+            // 文字のキー（US 配列）。Shift は文字に含める
+            const ROWS: [(i32, &str, &str); 7] = [
+                (2, "1234567890-=", "!@#$%^&*()_+"),
+                (16, "qwertyuiop[]", "QWERTYUIOP{}"),
+                (30, "asdfghjkl;'`", "ASDFGHJKL:\"~"),
+                (43, "\\zxcvbnm,./", "|ZXCVBNM<>?"),
+                (55, "*", "*"),
+                (57, " ", " "),
+                (71, "789-456+1230.", "789-456+1230."),
+            ];
+            let (plain, shifted) = ROWS
+                .iter()
+                .filter(|(start, _, _)| base >= *start)
+                .find_map(|(start, row, shifted)| {
+                    let i = usize::try_from(base - start).ok()?;
+                    Some((row.chars().nth(i)?, shifted.chars().nth(i)?))
+                })?;
+            let ch = if mods.shift { shifted } else { plain };
+            let mods = mt_core::Modifiers {
+                shift: false,
+                ..mods
+            };
+            return Some((Key::Text(ch.to_string()), mods));
+        }
+    };
+    Some((key, mods))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,5 +373,40 @@ mod tests {
         assert_eq!(compare_versions("0.1.10", "0.1.9"), Greater);
         assert_eq!(compare_versions("1.0", "1.0.0"), Equal);
         assert_eq!(compare_versions("4.106", "5"), Less);
+    }
+
+    #[test]
+    fn pc_key_codes() {
+        use mt_core::{Key, Modifiers};
+        let none = Modifiers::default();
+        assert_eq!(pc_key(336), Some((Key::Down, none)));
+        assert_eq!(pc_key(328), Some((Key::Up, none)));
+        assert_eq!(pc_key(59), Some((Key::F(1), none)));
+        assert_eq!(pc_key(64), Some((Key::F(6), none)));
+        assert_eq!(pc_key(47), Some((Key::Text("v".into()), none)));
+        assert_eq!(pc_key(47 + 512), Some((Key::Text("V".into()), none)));
+        let alt = Modifiers { alt: true, ..none };
+        assert_eq!(pc_key(2095), Some((Key::Text("v".into()), alt)));
+        let shift = Modifiers {
+            shift: true,
+            ..none
+        };
+        assert_eq!(pc_key(850), Some((Key::Insert, shift)));
+        let ctrl = Modifiers { ctrl: true, ..none };
+        assert_eq!(pc_key(1352), Some((Key::Up, ctrl)));
+        assert_eq!(pc_key(2 + 512), Some((Key::Text("!".into()), none)));
+        assert_eq!(pc_key(43), Some((Key::Text("\\".into()), none)));
+        assert_eq!(pc_key(82), Some((Key::Text("0".into()), none)));
+        assert_eq!(pc_key(0), None);
+        assert_eq!(pc_key(-1), None);
+    }
+
+    #[test]
+    fn sizes() {
+        assert_eq!(parse_size("32K"), Some(32 * 1024));
+        assert_eq!(parse_size("2m"), Some(2 << 20));
+        assert_eq!(parse_size("1000"), Some(1000));
+        assert_eq!(parse_size("x"), None);
+        assert_eq!(parse_size(""), None);
     }
 }

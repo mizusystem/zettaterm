@@ -82,6 +82,25 @@ pub trait MacroHost: Send + Sync {
     fn broadcast(&self, group: Option<String>, text: String, newline: bool);
     /// この接続の一斉送信の名前（`setmulticastname`）
     fn set_multicast_name(&self, name: String);
+    /// 端末のウィンドウの様子（`getttpos`）。無ければ None
+    fn window_position(&self) -> Option<MacroWindowPosition>;
+    /// 設定ファイル（TERATERM.INI）を読み込んで今の設定にする（`restoresetup`）。できたら true
+    fn restore_setup(&self, path: String) -> bool;
+}
+
+/// `getttpos` で返すもの。座標は主ディスプレイの左上が原点。
+#[derive(Clone, Copy, Debug, Default, uniffi::Record)]
+pub struct MacroWindowPosition {
+    /// 0 通常、1 最小化、2 最大化、3 隠れている
+    pub show: i32,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub client_x: i32,
+    pub client_y: i32,
+    pub client_width: i32,
+    pub client_height: i32,
 }
 
 /// 実行中のマクロ。
@@ -294,6 +313,22 @@ impl Host for HostAdapter {
     fn broadcast(&mut self, text: &str, newline: bool) -> bool {
         self.host.broadcast(None, text.into(), newline);
         true
+    }
+
+    fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
+        mt_net::local_addresses().ok()
+    }
+
+    fn window_position(&mut self) -> Option<mt_ttl::WindowPosition> {
+        self.host.window_position().map(|p| mt_ttl::WindowPosition {
+            show: p.show,
+            window: (p.x, p.y, p.width, p.height),
+            client: (p.client_x, p.client_y, p.client_width, p.client_height),
+        })
+    }
+
+    fn restore_setup(&mut self, path: &Path) -> bool {
+        self.host.restore_setup(path.display().to_string())
     }
 
     fn multicast(&mut self, name: &str, text: &str, newline: bool) {

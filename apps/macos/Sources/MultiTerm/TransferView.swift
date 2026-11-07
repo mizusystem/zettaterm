@@ -97,6 +97,43 @@ extension TerminalController {
         }
     }
 
+    /// 「転送 > Kermit > 取得」：サーバーになっている相手から、名前を指定して受け取る（ダウンロードフォルダへ）。
+    func beginKermitGet() {
+        guard isConnected, let session = view.session, !session.isTransferring() else { return }
+        let alert = NSAlert()
+        alert.messageText = TT.text("DLG_GETFN_TITLE", "Tera Term: Kermit 取得")
+        alert.informativeText = TT.text("DLG_GETFN_FILENAME", "ファイル名(&F):")
+        let field = NSTextField(string: "")
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 22)
+        alert.accessoryView = field
+        alert.addButton(withTitle: TT.text("BTN_OK", "OK"))
+        alert.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let names = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !names.isEmpty else { return }
+        do {
+            let handle = try session.startKermitGet(names: names, destination: Self.downloads.path)
+            show(ActiveTransfer(
+                title: "\(L("ファイル受信"))（Kermit）", send: false,
+                poll: { handle.progress() },
+                cancel: { [weak session] in session?.cancelTransfer() }
+            ))
+        } catch {
+            errorMessage = Self.describe(error)
+        }
+    }
+
+    /// 「転送 > Kermit > 終了」：サーバーになっている相手を終わらせる。
+    func kermitFinish() {
+        guard isConnected, let session = view.session, !session.isTransferring() else { return }
+        do {
+            _ = try session.startKermitFinish()
+        } catch {
+            errorMessage = Self.describe(error)
+        }
+    }
+
     /// 「ファイル > ファイル受信」：プロトコルなしで受信をそのままファイルへ（機器の出力を丸ごと取るとき）。
     /// データが来ないまま指定の秒数が過ぎたら止まる（0 なら止めるまで）。
     func beginRawReceive() {

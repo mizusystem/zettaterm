@@ -101,7 +101,8 @@ pub(crate) struct Logger {
     bytes: u64,
     /// 今のファイルの大きさ（追記の前からあった分を含む。ローテーションの判断に使う）
     file_bytes: u64,
-    rotate: Option<(u64, u32)>,
+    rotate_size: Option<u64>,
+    rotate_keep: u32,
     started: Instant,
     connected: Instant,
     paused: bool,
@@ -127,10 +128,8 @@ impl Logger {
             path: options.path.clone(),
             bytes: 0,
             file_bytes,
-            rotate: options
-                .rotate_size
-                .filter(|s| *s > 0)
-                .map(|s| (s, options.rotate_keep)),
+            rotate_size: options.rotate_size.filter(|s| *s > 0),
+            rotate_keep: options.rotate_keep,
             started: Instant::now(),
             connected,
             paused: false,
@@ -207,9 +206,19 @@ impl Logger {
         }
     }
 
+    /// ローテーションの大きさ（None で止める）と残す数を変える（TTL の logrotate）。
+    pub(crate) fn set_rotation(&mut self, size: Option<Option<u64>>, keep: Option<u32>) {
+        if let Some(size) = size {
+            self.rotate_size = size.filter(|s| *s > 0);
+        }
+        if let Some(keep) = keep {
+            self.rotate_keep = keep;
+        }
+    }
+
     /// 大きさを超えたら、古いファイルを 1 つずつずらして新しいファイルにする。
     fn rotate_if_needed(&mut self) -> io::Result<()> {
-        let Some((limit, keep)) = self.rotate else {
+        let (Some(limit), keep) = (self.rotate_size, self.rotate_keep) else {
             return Ok(());
         };
         // ttyrec と行の途中では切らない（行頭のタイムスタンプがずれないように）

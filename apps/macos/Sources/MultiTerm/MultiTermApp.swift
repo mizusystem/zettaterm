@@ -306,6 +306,11 @@ struct TerminalCommands: Commands {
                     Button(TT.text(receiveKey(kind), "受信...") + (kind == .zmodem || kind == .kermit ? "..." : "")) {
                         controller?.beginReceive(kind)
                     }
+                    if kind == .kermit {
+                        // 相手がサーバー（C-Kermit の server など）のとき
+                        Button(TT.text("MENU_TRANS_KERMIT_GET", "取得...")) { controller?.beginKermitGet() }
+                        Button(TT.text("MENU_TRANS_KERMIT_FINISH", "終了")) { controller?.kermitFinish() }
+                    }
                 }
                 .disabled(controller?.isConnected != true || controller?.transfer != nil)
             }

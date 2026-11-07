@@ -246,6 +246,10 @@ impl Host for CliHost {
         (!answer.is_empty()).then(|| dir.join(answer).display().to_string())
     }
 
+    fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
+        mt_net::local_addresses().ok()
+    }
+
     fn dir_name_box(&mut self, title: &str, dir: &Path) -> Option<String> {
         let answer = prompt(&format!("\n[{title}] folder ({}): ", dir.display()))?;
         Some(if answer.is_empty() {

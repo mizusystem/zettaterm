@@ -16,14 +16,14 @@
 
 | 分類 | コマンド |
 | --- | --- |
-| 通信 | `connect` `disconnect` `closett` `testlink` `send` `sendln` `sendbreak` `setdtr` `setrts` `setbaud` `setflowctrl` `getmodemstatus` `setecho` `clearscreen` `flushrecv` `wait` `wait4all` `waitn` `waitln` `recvln` `waitregex` `logopen` `logclose` `logpause` `logstart` `logwrite` `loginfo` `sendfile` `sendbroadcast` `sendlnbroadcast` `sendmulticast` `setmulticastname` |
-| ファイル転送 | `scpsend` `scprecv` `xmodemsend` `xmodemrecv` `ymodemsend` `ymodemrecv` `zmodemsend` `zmodemrecv` `kermitsend` `kermitrecv` |
+| 通信 | `connect` `disconnect` `closett` `testlink` `send` `sendln` `sendbreak` `setdtr` `setrts` `setbaud` `setflowctrl` `getmodemstatus` `setecho` `clearscreen` `flushrecv` `wait` `wait4all` `waitn` `waitln` `recvln` `waitregex` `logopen` `logclose` `logpause` `logstart` `logwrite` `loginfo` `logrotate` `logautoclosemode` `waitevent` `sendkcode` `sendfile` `sendbroadcast` `sendlnbroadcast` `sendmulticast` `setmulticastname` |
+| ファイル転送 | `scpsend` `scprecv` `xmodemsend` `xmodemrecv` `ymodemsend` `ymodemrecv` `zmodemsend` `zmodemrecv` `kmtsend` `kmtrecv` `kmtget` `kmtfinish` |
 | 文字列 | `strlen` `strconcat` `strcompare` `strcopy` `strscan` `strinsert` `strremove` `strtrim` `strreplace` `strsplit` `strmatch` `str2int` `int2str` `sprintf` `sprintf2` `tolower` `toupper` `code2str` `str2code` |
 | ファイル | `fileopen` `filecreate` `fileclose` `filereadln` `filewrite` `filewriteln` `filesearch` `filedelete` `getdir` `setdir` `fileread` `fileseek` `filemarkptr` `fileseekback` `filestat` `filetruncate` `filelock` `fileunlock` `filecopy` `filerename` `fileconcat` `foldercreate` `folderdelete` `foldersearch` `basename` `dirname` `makepath` |
-| ダイアログ・画面 | `messagebox` `inputbox` `passwordbox` `yesnobox` `listbox` `filenamebox` `dirnamebox` `statusbox` `closesbox` `dispstr` `settitle` `gettitle` `beep` `show` `showtt` |
+| ダイアログ・画面 | `messagebox` `inputbox` `passwordbox` `yesnobox` `listbox` `filenamebox` `dirnamebox` `statusbox` `closesbox` `dispstr` `settitle` `gettitle` `beep` `show` `showtt` `getttpos` `setdlgpos` |
 | チェックサム | `crc32` `crc32file` `crc16` `crc16file` `checksum8` `checksum8file` `checksum16` `checksum16file` `checksum32` `checksum32file` |
 | パスワード | `getpassword` `setpassword` `ispassword` `delpassword` |
-| その他 | `setexitcode` `exec` `getver` `gethostname` `getttdir` `getspecialfolder` `uptime` `clipb2var` `var2clipb` `pause` `mpause` `getdate` `gettime` `getenv` `random` `intdim` `strdim` |
+| その他 | `setexitcode` `exec` `getver` `gethostname` `getttdir` `getspecialfolder` `getipv4addr` `getipv6addr` `restoresetup` `uptime` `clipb2var` `var2clipb` `pause` `mpause` `getdate` `gettime` `getenv` `random` `intdim` `strdim` |
 
 ## 本家との違い
 
@@ -45,7 +45,13 @@
 - `uptime` はマクロを始めてからのミリ秒（本家は OS の起動から）
 - `crc16` は CRC-16/X-25（`123456789` で 0x906E）
 - `clearscreen 0` は画面だけ、1 と 2 はスクロールバックも消す
-- `getipv4addr` / `getipv6addr` は未対応
+- `getipv4addr` / `getipv6addr` は、動いていないインターフェースとループバックのアドレスも含む
+- `kermitsend` / `kermitrecv` は以前の版で使っていた名前で、`kmtsend` / `kmtrecv` と同じ
+- `sendkcode` のキーコードは KEYCODE.EXE と同じ PC のキーコード（512 が Shift、1024 が Ctrl、2048 が Alt）。キーボードの設定ファイルは読まず、そのキーを押したのと同じものを送る（文字のキーは US 配列）
+- `waitevent` の 2（Tera Term の終了）は起きない。ウィンドウを閉じるとマクロは止まる
+- `getttpos` の座標は macOS ではポイント。GTK 版はウィンドウの位置を取れないので `result = -1`
+- `setdlgpos` は受け付けるが、ダイアログは端末のウィンドウに付けて出すので位置は変わらない
+- `restoresetup` は TERATERM.INI を読んで、このアプリの設定に移す（「設定 > 設定の読み込み」と同じ）。cli では何もせず `result = 0`
 
 ## 実行
 

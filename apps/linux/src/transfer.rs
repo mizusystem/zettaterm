@@ -182,13 +182,35 @@ fn start_titled(
     direction: Direction,
 ) {
     let send = matches!(direction, Direction::Send(_));
-    let transfer = match mt_xfer::new_transfer(protocol, direction) {
-        Ok(t) => t,
-        Err(e) => {
-            crate::dialogs::message(parent, &title, &e.to_string(), || {});
-            return;
-        }
-    };
+    match mt_xfer::new_transfer(protocol, direction) {
+        Ok(t) => start_box(parent, session, title, send, t),
+        Err(e) => crate::dialogs::message(parent, &title, &e.to_string(), || {}),
+    }
+}
+
+/// 「転送 > Kermit > 取得」：サーバーになっている相手から `names` を受け取り先のフォルダへ。
+pub fn start_kermit_get(parent: &gtk::Window, session: &Arc<Session>, names: &str) {
+    let title = format!("{}（Kermit）", crate::strings::l("ファイル受信"));
+    match mt_xfer::kermit_get(downloads_dir(), names) {
+        Ok(t) => start_box(parent, session, title, false, t),
+        Err(e) => crate::dialogs::message(parent, &title, &e.to_string(), || {}),
+    }
+}
+
+/// 「転送 > Kermit > 終了」：サーバーになっている相手を終わらせる。
+pub fn start_kermit_finish(session: &Arc<Session>) {
+    let shared: Shared = Arc::new(Mutex::new(mt_xfer::kermit_finish()));
+    let _ = session.start_transfer(Box::new(Divert(shared)));
+}
+
+/// 作った転送を始めて、進み具合のダイアログを出す。
+fn start_box(
+    parent: &gtk::Window,
+    session: &Arc<Session>,
+    title: String,
+    send: bool,
+    transfer: Box<dyn mt_xfer::Transfer>,
+) {
     let shared: Shared = Arc::new(Mutex::new(transfer));
     if let Err(e) = session.start_transfer(Box::new(Divert(Arc::clone(&shared)))) {
         crate::dialogs::message(parent, &title, &e.to_string(), || {});

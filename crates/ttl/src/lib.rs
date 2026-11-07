@@ -13,5 +13,5 @@ mod parse;
 mod util;
 
 pub use connect::{ConnectSpec, Launch, SshSpec, parse_args, parse_command_line, parse_connect};
-pub use interp::{Host, Interp, MacroError, Outcome, Value};
+pub use interp::{DialogPosition, Host, Interp, MacroError, Outcome, Value, WindowPosition};
 pub use parse::{ParseError, parse};

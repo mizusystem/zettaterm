@@ -19,7 +19,7 @@
 | --- | --- |
 | Step 1（日常操作） | 完了（2026-11-06）。Linux 版は画面での確認が未了 |
 | Step 2（ログ・設定・シリアル） | 完了（2026-11-06）。Linux 版は画面での確認が未了、信号線は実機での確認が未了 |
-| Step 3（TTL） | ほぼ完了（2026-11-07）。残りは `waitevent` `kermitget` `kermitfinish` `sendkcode` `setdlgpos` `move` `resize` `getttpos` `logrotate` `logautoclosemode` `getipv4addr` `getipv6addr` `restoresetup` `savesetup` |
+| Step 3（TTL） | 完了（2026-11-08）。`kmtget` / `kmtfinish` などの残りも実装（第 5 章） |
 | 残りの章 | 進行中（ログ再生・ファイル受信・View mode・繰り返しコマンド・キーボード・アンサーバック・文字コード追加など）。画面での確認は [verification_todo.md](verification_todo.md) |
 | Step 4（TTSSH・設定互換） | 完了（2026-11-07）。エージェント転送は実際の ssh-agent での確認が未了 |
 
@@ -85,8 +85,8 @@
 - [ ] **TEK ウィンドウを開く / 閉じる (`MENU_CONTROL_OPENTEK` / `CLOSETEK`)**（※設計書では優先度低）
 
 ### 1-5. 「転送 (Transfer)」メニュー (`MENU_TRANS`)
-- [ ] **Kermit > 取得 (`MENU_TRANS_KERMIT_GET`)**: リモート Kermit サーバーモードからのファイル名指定取得 (`DLG_GETFN_TITLE`)
-- [ ] **Kermit > 終了 (`MENU_TRANS_KERMIT_FINISH`)**: リモート Kermit サーバーへの Finish コマンド送信
+- [x] **Kermit > 取得 (`MENU_TRANS_KERMIT_GET`)**: リモート Kermit サーバーモードからのファイル名指定取得 (`DLG_GETFN_TITLE`)
+- [x] **Kermit > 終了 (`MENU_TRANS_KERMIT_FINISH`)**: リモート Kermit サーバーへの Finish コマンド送信
 - [ ] （参考・低優先度）**Quick-VAN (`MENU_TRANS_QV_*`)** / **B-Plus (`MENU_TRANS_BP_*`)**
 
 ### 1-6. 「ウィンドウ (Window)」および「ヘルプ (Help)」メニュー
@@ -207,21 +207,21 @@
 ### 5-1. 通信・待機・シリアル・転送（優先度：高）
 - [x] `wait4all`: 複数の文字列すべてが出現するまで待つ
 - [x] `waitn`: 指定バイト数を受信するまで待つ
-- [ ] `waitevent`: 指定イベントの発生を待つ
+- [x] `waitevent`: 指定イベントの発生を待つ（※2 の Tera Term の終了は起きない）
 - [x] `setbaud`: シリアルポートのボーレートを変更する（機器のブートローダ操作マクロで頻出）
 - [x] `setflowctrl`: シリアルポートのフロー制御を変更する
 - [x] `getmodemstatus`: CTS / DSR / RI / CD の状態を取得する
 - [x] `scpsend` / `scprecv`: マクロから SCP でファイルを送受信する（SSH マクロで非常に多用される）
-- [ ] `kermitget` / `kermitfinish`: Kermit の Get / Finish
-- [ ] `sendkcode`: キーコードと繰り返し回数を指定して送信
+- [x] `kermitget` / `kermitfinish`: Kermit の Get / Finish（※TTL の名前は `kmtget` / `kmtfinish`。C-Kermit のサーバーと相互テスト済み）
+- [x] `sendkcode`: キーコードと繰り返し回数を指定して送信（※KEYCODE.EXE の PC キーコード。キーボード設定ファイルは読まない）
 - [x] `sendbroadcast` / `sendlnbroadcast` / `sendmulticast` / `setmulticastname`: マクロからの一斉送信
 
 ### 5-2. ログ制御（優先度：高）
 - [x] `logwrite`: 記録中のログファイルに任意の文字列を書き込む
 - [x] `logpause` / `logstart`: ログ記録の一時停止と再開
 - [x] `loginfo`: 現在のログ記録状態とファイルパスを取得する
-- [ ] `logrotate`: ログのローテーションを実行・設定する
-- [ ] `logautoclosemode`: 自動クローズモードの設定
+- [x] `logrotate`: ログのローテーションを実行・設定する
+- [x] `logautoclosemode`: 自動クローズモードの設定
 
 ### 5-3. ダイアログ・画面操作（優先度：高）
 - [x] `listbox`: 選択肢配列からユーザーに 1 つ選ばせるダイアログ（マクロのメニュー選択で頻出）
@@ -229,8 +229,8 @@
 - [x] `dirnamebox`: フォルダ選択ダイアログを開く
 - [x] `clearscreen`: 端末画面（またはスクロールバッファ）をクリアする (`clearscreen 0` / `1`)
 - [x] `setecho`: ローカルエコーの ON/OFF を切り替える
-- [ ] `setdlgpos`: ダイアログの表示位置を指定する
-- [ ] `move` / `resize` / `getttpos`: 端末ウィンドウの位置・サイズ変更と取得
+- [x] `setdlgpos`: ダイアログの表示位置を指定する（※受け付けるだけ。Mac / GTK はダイアログをウィンドウに付けて出す）
+- [x] `move` / `resize` / `getttpos`: 端末ウィンドウの位置・サイズ変更と取得（※`move` / `resize` は TTL に無い。`getttpos` は Mac のみ、GTK は -1）
 
 ### 5-4. ファイル・フォルダ・パス操作（優先度：中〜高）
 - [x] `foldercreate` / `folderdelete` / `foldersearch`: フォルダの作成・削除・存在確認
@@ -245,11 +245,11 @@
 - [x] `exec`: 外部コマンド（ローカルの `ping` やスクリプト等）を起動する
 - [x] `setexitcode`: マクロ終了時のプロセスの終了コードを設定する（CLI `mt run` で特に有用）
 - [x] `getver`: Tera Term バージョン文字列の取得とバージョン比較
-- [ ] `gethostname` / `getipv4addr` / `getipv6addr`（※`gethostname` は実装済み）: 接続先ホスト名やローカル IP アドレス一覧の取得
+- [x] `gethostname` / `getipv4addr` / `getipv6addr`: 接続先ホスト名やローカル IP アドレス一覧の取得
 - [x] `getttdir` / `getspecialfolder`: インストールフォルダや OS 特殊フォルダ（Desktop, Documents 等）のパス取得
 - [x] `uptime`: OS またはアプリの稼働時間取得
 - [x] `crc16` / `crc16file` / `crc32` / `crc32file` / `checksum8` / `checksum16` / `checksum32`: チェックサム・CRC 計算（ファームウェア転送前後の検証用）
-- [ ] `restoresetup` / `savesetup`: 設定ファイルの読み込み・保存
+- [x] `restoresetup` / `savesetup`: 設定ファイルの読み込み・保存（※`savesetup` は TTL に無い。`restoresetup` は TERATERM.INI の読み込み）
 
 ---
 
@@ -343,6 +343,5 @@
 - **プロトコル・端末描画系**:
   - SSH パスワード期限切れ変更応答 (`PASSWD_CHANGEREQ`)、HTTP/SOCKS プロキシ経由接続 (TTProxy 相当)、X11 転送、UNIX ドメインソケット接続
   - 端末の非フォーカス時の中抜き（白抜き）ブロックカーソル描画、OSC 52 リモートクリップボード対応
-- **TTL マクロ（残り 14 コマンド）**:
-  - `waitevent`, `kermitget`, `kermitfinish`, `sendkcode`, `logrotate`, `logautoclosemode`, `setdlgpos`, `move`, `resize`, `getttpos`, `getipv4addr`, `getipv6addr`, `restoresetup`, `savesetup`
+- **TTL マクロ**: 2026-11-08 に残りを実装（`move` / `resize` / `savesetup` は TTL に無いコマンドだった）
 

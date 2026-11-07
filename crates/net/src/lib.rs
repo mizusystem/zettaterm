@@ -19,3 +19,22 @@ pub use scp::{ScpJob, ScpProgress, ScpStatus, SshFiles};
 pub use ssh::{SshTarget, hosts_in, ssh_config_hosts};
 pub use ssh_client::{SshOptions, SshTransport};
 pub use telnet::{IpVersion, TELNET_PORT, TERM_TYPE, TcpTransport};
+
+/// この機械の IP アドレス（TTL の getipv4addr / getipv6addr）。動いていないインターフェースも含む。
+pub fn local_addresses() -> std::io::Result<Vec<std::net::IpAddr>> {
+    let mut out: Vec<std::net::IpAddr> = if_addrs::get_if_addrs()?
+        .into_iter()
+        .map(|i| i.ip())
+        .collect();
+    out.dedup();
+    Ok(out)
+}
+
+#[cfg(test)]
+mod local_address_tests {
+    #[test]
+    fn loopback_is_listed() {
+        let list = super::local_addresses().unwrap();
+        assert!(list.iter().any(|a| a.is_loopback()), "{list:?}");
+    }
+}

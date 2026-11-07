@@ -50,3 +50,67 @@ fn kermit_receive_from_c_kermit() {
     run_pty(t.as_mut(), &k, &["-i", "-s", "k3.bin"], &f.in_dir());
     assert_eq!(read_ci(&f.out(), "k3.bin"), sample(40_000, 8));
 }
+
+/// Get のあと Finish をつなげて 1 つの転送にする（サーバーは Finish で終わる）。
+struct Chain {
+    steps: Vec<Box<dyn mt_xfer::Transfer>>,
+    at: usize,
+}
+
+impl Chain {
+    /// 今の段が終わったら次の段を始める。
+    fn advance(&mut self, now: std::time::Instant, mut out: Vec<u8>) -> Vec<u8> {
+        while self.at + 1 < self.steps.len()
+            && self.steps[self.at].status() == mt_xfer::Status::Done
+        {
+            self.at += 1;
+            out.extend(self.steps[self.at].start(now));
+        }
+        out
+    }
+}
+
+impl mt_xfer::Transfer for Chain {
+    fn start(&mut self, now: std::time::Instant) -> Vec<u8> {
+        self.steps[0].start(now)
+    }
+    fn receive(&mut self, data: &[u8], now: std::time::Instant) -> Vec<u8> {
+        let out = self.steps[self.at].receive(data, now);
+        self.advance(now, out)
+    }
+    fn tick(&mut self, now: std::time::Instant) -> Vec<u8> {
+        let out = self.steps[self.at].tick(now);
+        self.advance(now, out)
+    }
+    fn cancel(&mut self) -> Vec<u8> {
+        self.steps[self.at].cancel()
+    }
+    fn status(&self) -> mt_xfer::Status {
+        let s = self.steps[self.at].status();
+        if s == mt_xfer::Status::Done && self.at + 1 < self.steps.len() {
+            mt_xfer::Status::Running
+        } else {
+            s
+        }
+    }
+    fn progress(&self) -> mt_xfer::Progress {
+        self.steps[self.at].progress()
+    }
+}
+
+#[test]
+fn kermit_get_and_finish_with_a_c_kermit_server() {
+    let Some(k) = kermit() else { return };
+    let f = Files::new();
+    f.input("k4.bin", &sample(30_000, 9));
+    let mut t = Chain {
+        steps: vec![
+            mt_xfer::kermit_get(f.out(), "k4.bin").unwrap(),
+            mt_xfer::kermit_finish(),
+        ],
+        at: 0,
+    };
+    // -x：サーバーになる。Finish を受けると終わる
+    run_pty(&mut t, &k, &["-i", "-x"], &f.in_dir());
+    assert_eq!(read_ci(&f.out(), "k4.bin"), sample(30_000, 9));
+}

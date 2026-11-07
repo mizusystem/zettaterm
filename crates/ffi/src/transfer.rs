@@ -142,3 +142,14 @@ pub(crate) fn create(
     });
     Ok((handle, Box::new(Divert(transfer))))
 }
+
+/// 作った転送を UI が進み具合を見られる形にする。
+pub(crate) fn wrap(
+    transfer: Box<dyn Transfer>,
+) -> (Arc<TransferHandle>, Box<dyn core::ByteDivert>) {
+    let transfer: Shared = Arc::new(Mutex::new(transfer));
+    let handle = Arc::new(TransferHandle {
+        transfer: Arc::clone(&transfer),
+    });
+    (handle, Box::new(Divert(transfer)))
+}

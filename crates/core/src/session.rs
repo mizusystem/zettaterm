@@ -679,6 +679,15 @@ impl Session {
         }
     }
 
+    /// 記録中のログのローテーションを変える（TTL の logrotate）。
+    /// `size` は Some(None) で止める、Some(Some(n)) で n バイトを超えたら。`keep` は残す古いファイルの数。
+    /// 記録中でなければ何もしない。
+    pub fn log_set_rotation(&self, size: Option<Option<u64>>, keep: Option<u32>) {
+        if let Some(l) = self.inner.log().as_mut() {
+            l.set_rotation(size, keep);
+        }
+    }
+
     /// 記録中のログの様子（TTL の loginfo）。記録中でなければ None。
     pub fn log_status(&self) -> Option<LogStatus> {
         self.inner.log().as_ref().map(Logger::status)

@@ -302,6 +302,38 @@ impl Tabs {
         );
         add("log-view", Box::new(|_, me| me.view_log()));
         add("recv-file", Box::new(|_, me| me.begin_raw_receive()));
+        add(
+            "kermit-get",
+            Box::new(|_, me| {
+                let Some(session) = me.view.session().filter(|s| !s.is_transferring()) else {
+                    return;
+                };
+                let parent: gtk::Window = me.win.clone().upcast();
+                let p = parent.clone();
+                dialogs::input(
+                    &parent,
+                    &tt("DLG_GETFN_TITLE", "Tera Term: Kermit 取得"),
+                    &tt("DLG_GETFN_FILENAME", "ファイル名(&F):"),
+                    "",
+                    false,
+                    move |name| {
+                        if let Some(name) =
+                            name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty())
+                        {
+                            transfer::start_kermit_get(&p, &session, &name);
+                        }
+                    },
+                );
+            }),
+        );
+        add(
+            "kermit-finish",
+            Box::new(|_, me| {
+                if let Some(s) = me.view.session().filter(|s| !s.is_transferring()) {
+                    transfer::start_kermit_finish(&s);
+                }
+            }),
+        );
         add("recurring", Box::new(|_, me| me.recurring_dialog()));
         add(
             "log-replay",
@@ -1697,6 +1729,18 @@ impl TermWindow {
             }
             MacroReq::MulticastName(name) => {
                 *self.multicast_name.borrow_mut() = (!name.is_empty()).then_some(name);
+            }
+            MacroReq::RestoreSetup(path, reply) => {
+                let ok = match mt_core::ini::read_ini(&path) {
+                    Ok(ini) => {
+                        settings::apply_ini(&ini);
+                        crate::term::reload_conf();
+                        apply_look_everywhere();
+                        true
+                    }
+                    Err(_) => false,
+                };
+                let _ = reply.send(ok);
             }
             MacroReq::Files(reply) => {
                 let _ = reply.send(self.files.borrow().clone());

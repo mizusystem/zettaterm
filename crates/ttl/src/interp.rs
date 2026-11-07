@@ -127,6 +127,45 @@ pub trait Host {
 
     /// `setmulticastname`：この接続の一斉送信の名前。
     fn set_multicast_name(&mut self, _name: &str) {}
+
+    /// `getipv4addr` / `getipv6addr`：この機械の IP アドレス。取れなければ None。
+    fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
+        None
+    }
+
+    /// `getttpos`：端末のウィンドウの様子。無ければ None（result = -1）。
+    fn window_position(&mut self) -> Option<WindowPosition> {
+        None
+    }
+
+    /// `setdlgpos`：この後のダイアログ（messagebox など）を出す位置。
+    fn set_dialog_position(&mut self, _pos: DialogPosition) {}
+
+    /// `restoresetup`：設定ファイル（TERATERM.INI）を読み込んで今の設定にする。できたら true。
+    fn restore_setup(&mut self, _path: &Path) -> bool {
+        false
+    }
+}
+
+/// `getttpos` で返すもの。座標はピクセル、原点は主ディスプレイの左上。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WindowPosition {
+    /// 0 通常、1 最小化、2 最大化、3 隠れている
+    pub show: i32,
+    /// ウィンドウ全体（x, y, 幅, 高さ）
+    pub window: (i32, i32, i32, i32),
+    /// 文字を出す部分（x, y, 幅, 高さ）
+    pub client: (i32, i32, i32, i32),
+}
+
+/// `setdlgpos` の指定。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DialogPosition {
+    /// 左上の座標。None でディスプレイの中央（引数なし）
+    pub at: Option<(i32, i32)>,
+    /// 1〜5 はディスプレイの角と中央、6〜10 は端末のウィンドウの角と中央
+    pub anchor: Option<i32>,
+    pub offset: (i32, i32),
 }
 
 /// マクロの失敗（ファイルと行つき）。
@@ -206,6 +245,8 @@ pub struct Interp<'h> {
     host: &'h mut dyn Host,
     vars: HashMap<String, Value>,
     arrays: HashMap<String, Vec<Value>>,
+    /// `logautoclosemode 1`：マクロが最後まで行ったらログを閉じる
+    log_auto_close: bool,
     frames: Vec<Frame>,
     session: Option<Arc<Session>>,
     tap: Option<ReceiveTap>,
@@ -242,6 +283,7 @@ impl<'h> Interp<'h> {
             host,
             vars: HashMap::new(),
             arrays: HashMap::new(),
+            log_auto_close: false,
             frames: Vec::new(),
             session,
             tap,
@@ -338,6 +380,14 @@ impl<'h> Interp<'h> {
         let result = self.main_loop();
         self.frames.clear();
         self.files.clear();
+        // 止められたときは閉じない（Tera Term と同じ）
+        if self.log_auto_close
+            && matches!(result, Ok(Outcome::Finished))
+            && let Some(s) = &self.session
+        {
+            s.log_stop();
+        }
+        self.log_auto_close = false;
         result
     }
 
@@ -705,6 +755,39 @@ impl<'h> Interp<'h> {
         };
         let ms = t * 1000 + m;
         (ms > 0).then(|| Instant::now() + Duration::from_millis(ms as u64))
+    }
+
+    /// `waitevent`：接続の様子が変わるか時間切れまで待つ。起きたものの番号を返す。
+    fn wait_event(&mut self, events: i32) -> R<i32> {
+        let deadline = if events & 1 != 0 {
+            self.deadline()
+        } else {
+            None
+        };
+        let connected = |s: &Option<Arc<Session>>| {
+            s.as_ref()
+                .is_some_and(|s| s.state() == SessionState::Connected)
+        };
+        let mut was = connected(&self.session);
+        loop {
+            if self.stop.load(Ordering::SeqCst) {
+                return Err(Fail::Stopped);
+            }
+            let now = connected(&self.session);
+            if events & 4 != 0 && was && !now {
+                return Ok(4);
+            }
+            if events & 8 != 0 && !was && now {
+                return Ok(8);
+            }
+            was = now;
+            if let Some(d) = deadline
+                && Instant::now() >= d
+            {
+                return Ok(1);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     /// 受信を待ちながら `check` が Some を返すまで繰り返す。時間切れは None。
@@ -1151,7 +1234,8 @@ impl<'h> Interp<'h> {
                 };
                 self.transfer(p, Direction::Receive(self.path(&file)))?;
             }
-            "ymodemsend" | "zmodemsend" | "kermitsend" => {
+            // kmtsend / kmtrecv が TTL の名前。kermitsend / kermitrecv は以前の版の名前として残す
+            "ymodemsend" | "zmodemsend" | "kmtsend" | "kermitsend" => {
                 argc(1, 2)?;
                 let file = self.str(&args[0])?;
                 let p = match name {
@@ -1161,7 +1245,7 @@ impl<'h> Interp<'h> {
                 };
                 self.transfer(p, Direction::Send(vec![self.path(&file)]))?;
             }
-            "ymodemrecv" | "zmodemrecv" | "kermitrecv" => {
+            "ymodemrecv" | "zmodemrecv" | "kmtrecv" | "kermitrecv" => {
                 let p = match name {
                     "ymodemrecv" => Protocol::YModem,
                     "zmodemrecv" => Protocol::ZModem,
@@ -1169,6 +1253,136 @@ impl<'h> Interp<'h> {
                 };
                 let dir = self.host.download_dir();
                 self.transfer(p, Direction::Receive(dir))?;
+            }
+            "logrotate" => {
+                // logrotate 'size' <大きさ> / logrotate 'rotate' <数> / logrotate 'halt'
+                argc(1, 2)?;
+                let what = self.str(&args[0])?.to_ascii_lowercase();
+                let session = self.session_ref()?;
+                match what.as_str() {
+                    "size" => {
+                        let a = args.get(1).ok_or("logrotate: size expected")?;
+                        let size = match self.eval(a)? {
+                            Value::Int(n) => u64::try_from(n).ok(),
+                            Value::Str(t) => util::parse_size(&t),
+                        }
+                        .filter(|n| *n > 128)
+                        .ok_or("logrotate: size must be larger than 128")?;
+                        session.log_set_rotation(Some(Some(size)), None);
+                    }
+                    "rotate" => {
+                        let a = args.get(1).ok_or("logrotate: count expected")?;
+                        let n = self.int(a)?;
+                        if n < 1 {
+                            return Err("logrotate: count must be 1 or more".into());
+                        }
+                        session.log_set_rotation(None, Some(n as u32));
+                    }
+                    "halt" => session.log_set_rotation(Some(None), None),
+                    _ => return Err(format!("logrotate: unknown '{what}'").into()),
+                }
+            }
+            "logautoclosemode" => {
+                argc(1, 1)?;
+                self.log_auto_close = self.int(&args[0])? != 0;
+            }
+            "getipv4addr" | "getipv6addr" => {
+                // getipv4addr <文字列の配列> <整数変数>。result は 1 全部、0 配列が足りない、-1 取れない
+                argc(2, 2)?;
+                let Expr::Var(arr) = &args[0] else {
+                    return Err(format!("{name}: array expected").into());
+                };
+                let size = self
+                    .arrays
+                    .get(arr.as_str())
+                    .ok_or_else(|| format!("{name}: array expected"))?
+                    .len();
+                let Some(all) = self.host.local_addresses() else {
+                    self.set_out(&args[1], Value::Int(0))?;
+                    self.set_result(-1);
+                    return Ok(Flow::Next);
+                };
+                let want_v4 = name == "getipv4addr";
+                let list: Vec<String> = all
+                    .into_iter()
+                    .filter(|a| a.is_ipv4() == want_v4)
+                    .map(|a| a.to_string())
+                    .collect();
+                for (i, a) in list.iter().take(size).enumerate() {
+                    self.set_elem(arr, i as i32, Value::Str(a.clone()))?;
+                }
+                self.set_out(&args[1], Value::Int(list.len() as i32))?;
+                self.set_result(if list.len() <= size { 1 } else { 0 });
+            }
+            "waitevent" => {
+                // waitevent <イベント>：1 時間切れ、2 終了、4 切断、8 接続。result は起きたもの
+                argc(1, 1)?;
+                let events = self.int(&args[0])?;
+                let event = self.wait_event(events)?;
+                self.set_result(event);
+            }
+            "sendkcode" => {
+                argc(2, 2)?;
+                let code = self.int(&args[0])?;
+                let count = self.int(&args[1])?.clamp(0, 1000);
+                let session = self.session_ref()?;
+                if let Some((key, mods)) = util::pc_key(code) {
+                    for _ in 0..count {
+                        session.key(key.clone(), mods);
+                    }
+                }
+            }
+            "getttpos" => {
+                argc(9, 9)?;
+                match self.host.window_position() {
+                    Some(p) => {
+                        let values = [
+                            p.show, p.window.0, p.window.1, p.window.2, p.window.3, p.client.0,
+                            p.client.1, p.client.2, p.client.3,
+                        ];
+                        for (a, v) in args.iter().zip(values) {
+                            self.set_out(a, Value::Int(v))?;
+                        }
+                        self.set_result(0);
+                    }
+                    None => self.set_result(-1),
+                }
+            }
+            "setdlgpos" => {
+                // setdlgpos [<x> <y> [<位置> [<ずらす x> <ずらす y>]]]
+                if !matches!(args.len(), 0 | 2 | 3 | 5) {
+                    return Err("setdlgpos: wrong number of arguments".into());
+                }
+                let mut pos = DialogPosition::default();
+                if args.len() >= 2 {
+                    pos.at = Some((self.int(&args[0])?, self.int(&args[1])?));
+                }
+                if args.len() >= 3 {
+                    pos.anchor = Some(self.int(&args[2])?);
+                }
+                if args.len() == 5 {
+                    pos.offset = (self.int(&args[3])?, self.int(&args[4])?);
+                }
+                self.host.set_dialog_position(pos);
+            }
+            "restoresetup" => {
+                argc(1, 1)?;
+                let file = self.str(&args[0])?;
+                let ok = self.host.restore_setup(&self.path(&file));
+                self.set_result(i32::from(ok));
+            }
+            "kmtget" => {
+                // サーバーになっている相手から受け取る。相対パスは受け取り先のフォルダから
+                argc(1, 1)?;
+                let names = self.str(&args[0])?;
+                let dir = self.host.download_dir();
+                let t = mt_xfer::kermit_get(dir, &names)
+                    .map_err(|e| format!("kmtget: {names}: {e}"))?;
+                self.run_transfer(t, names, false)?;
+            }
+            "kmtfinish" => {
+                argc(0, 0)?;
+                self.run_transfer(mt_xfer::kermit_finish(), "finish".into(), true)?;
             }
 
             // ---- パス
@@ -2099,7 +2313,7 @@ impl<'h> Interp<'h> {
 
     /// 転送を始めて終わるまで待つ。result は成功で 1、失敗で 0。
     fn transfer(&mut self, protocol: Protocol, direction: Direction) -> R<()> {
-        let session = self.session_ref()?;
+        self.session_ref()?;
         let send = matches!(direction, Direction::Send(_));
         let label = match &direction {
             Direction::Send(f) => f
@@ -2110,6 +2324,17 @@ impl<'h> Interp<'h> {
         };
         let transfer = mt_xfer::new_transfer(protocol, direction)
             .map_err(|e| format!("transfer: {label}: {e}"))?;
+        self.run_transfer(transfer, label, send)
+    }
+
+    /// 作った転送を始めて終わるまで待つ。
+    fn run_transfer(
+        &mut self,
+        transfer: Box<dyn mt_xfer::Transfer>,
+        label: String,
+        send: bool,
+    ) -> R<()> {
+        let session = self.session_ref()?;
         let shared = Arc::new(Mutex::new(transfer));
         session
             .start_transfer(Box::new(Divert(Arc::clone(&shared))))

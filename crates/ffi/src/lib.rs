@@ -948,6 +948,25 @@ impl Session {
         Ok(handle)
     }
 
+    /// サーバーになっている相手の Kermit から `names`（ワイルドカード可）を `destination` へ受け取る（「Kermit > 取得」）。
+    pub fn start_kermit_get(
+        &self,
+        names: String,
+        destination: String,
+    ) -> Result<Arc<TransferHandle>, MtError> {
+        let t = mt_xfer::kermit_get(std::path::PathBuf::from(destination), &names)?;
+        let (handle, divert) = transfer::wrap(t);
+        self.inner.start_transfer(divert)?;
+        Ok(handle)
+    }
+
+    /// サーバーになっている相手の Kermit を終わらせる（「Kermit > 終了」）。
+    pub fn start_kermit_finish(&self) -> Result<Arc<TransferHandle>, MtError> {
+        let (handle, divert) = transfer::wrap(mt_xfer::kermit_finish());
+        self.inner.start_transfer(divert)?;
+        Ok(handle)
+    }
+
     pub fn cancel_transfer(&self) {
         self.inner.cancel_transfer();
     }

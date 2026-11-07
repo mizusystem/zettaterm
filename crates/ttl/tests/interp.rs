@@ -77,6 +77,14 @@ impl Host for TestHost {
         self.clip = Some(text.to_owned());
         true
     }
+    fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
+        Some(
+            ["127.0.0.1", "::1", "192.0.2.5"]
+                .iter()
+                .map(|a| a.parse().unwrap())
+                .collect(),
+        )
+    }
 }
 
 fn open_mock() -> (Arc<Session>, MockRemote) {
@@ -764,4 +772,88 @@ messagebox b
     assert!(!out[1].contains('\u{FFFD}') && !out[3].contains('\u{FFFD}'));
     assert_eq!(format!("{}{}", out[1], out[3]), text);
     session.close();
+}
+
+#[test]
+fn local_addresses_keys_and_window_queries() {
+    let (session, remote) = open_mock();
+    let src = r#"
+strdim a 1
+getipv4addr a n
+sprintf2 s '%d %d %s' result n a[0]
+messagebox s
+strdim b 4
+getipv6addr b n
+sprintf2 s '%d %d %s' result n b[0]
+messagebox s
+sendkcode 336 2
+sendkcode 47 1
+getttpos f wx wy ww wh cx cy cw ch
+int2str s result
+messagebox s
+setdlgpos 10 20 6 1 2
+restoresetup 'nothing.ini'
+int2str s result
+messagebox s
+"#;
+    let mut host = TestHost::default();
+    let out = run(src, &mut host, Some(Arc::clone(&session)));
+    assert_eq!(out[0], "0 2 127.0.0.1");
+    assert_eq!(out[1], "1 1 ::1");
+    expect(&remote, b"\x1b[B\x1b[Bv");
+    // 答えない Host では -1 と 0
+    assert_eq!(&out[2..], ["-1", "0"]);
+    session.close();
+}
+
+#[test]
+fn logrotate_and_logautoclosemode() {
+    let dir = tempfile::tempdir().unwrap();
+    let log = dir.path().join("m.log");
+    let (session, _remote) = open_mock();
+    let src = format!(
+        r#"
+logopen '{}' 0 0
+logrotate 'size' '32K'
+logrotate 'rotate' 3
+logrotate 'halt'
+logautoclosemode 1
+"#,
+        log.display()
+    );
+    let mut host = TestHost::default();
+    run(&src, &mut host, Some(Arc::clone(&session)));
+    // 最後まで行ったので閉じている
+    assert!(!session.is_logging());
+    // 小さすぎる大きさは誤り
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut it = Interp::new(&mut host, Some(Arc::clone(&session)), stop);
+    let src = format!("logopen '{}' 0 0\nlogrotate 'size' 100\n", log.display());
+    assert!(it.run_source(&src, Path::new(".")).is_err());
+    drop(it);
+    session.close();
+}
+
+#[test]
+fn waitevent_times_out_or_sees_a_disconnect() {
+    let (session, remote) = open_mock();
+    let mut host = TestHost::default();
+    let out = run(
+        "timeout = 0\nmtimeout = 100\nwaitevent 1 or 8\nint2str s result\nmessagebox s\n",
+        &mut host,
+        Some(Arc::clone(&session)),
+    );
+    assert_eq!(out, ["1"]);
+    let t = std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(200));
+        remote.hang_up();
+    });
+    let mut host = TestHost::default();
+    let out = run(
+        "timeout = 5\nwaitevent 1 or 4\nint2str s result\nmessagebox s\n",
+        &mut host,
+        Some(Arc::clone(&session)),
+    );
+    t.join().unwrap();
+    assert_eq!(out, ["4"]);
 }

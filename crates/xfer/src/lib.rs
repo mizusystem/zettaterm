@@ -86,6 +86,16 @@ pub trait Transfer: Send {
     fn progress(&self) -> Progress;
 }
 
+/// サーバーになっている Kermit から `names`（ワイルドカード可）を `dir` へ受け取る（Kermit の Get）。
+pub fn kermit_get(dir: PathBuf, names: &str) -> io::Result<Box<dyn Transfer>> {
+    Ok(Box::new(kermit::Receiver::get(dir, names)?))
+}
+
+/// サーバーになっている Kermit を終わらせる（Kermit の Finish）。
+pub fn kermit_finish() -> Box<dyn Transfer> {
+    Box::new(kermit::Finish::new())
+}
+
 /// 転送を作る。送るファイルが読めない・受け取り先が無いなどはここでエラー。
 pub fn new_transfer(protocol: Protocol, direction: Direction) -> io::Result<Box<dyn Transfer>> {
     Ok(match (protocol, direction) {

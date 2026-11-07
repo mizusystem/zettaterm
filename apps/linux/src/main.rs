@@ -195,6 +195,17 @@ fn menu() -> gio::Menu {
             Some(&kind.id().to_variant()),
         );
         m.append_item(&item);
+        if kind == Kind::Kermit {
+            // 相手がサーバー（C-Kermit の server など）のとき
+            m.append(
+                Some(&tt("MENU_TRANS_KERMIT_GET", "取得...")),
+                Some("win.kermit-get"),
+            );
+            m.append(
+                Some(&tt("MENU_TRANS_KERMIT_FINISH", "終了")),
+                Some("win.kermit-finish"),
+            );
+        }
         trans.append_submenu(Some(kind.name()), &m);
     }
     trans.append(Some(&l("ZMODEM の自動受信")), Some("win.zmodem-auto"));

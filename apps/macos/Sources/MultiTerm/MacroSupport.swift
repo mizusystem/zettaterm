@@ -270,6 +270,32 @@ final class MacroBridge: MacroHost, @unchecked Sendable {
         onMain { self.controller?.multicastName = name.isEmpty ? nil : name }
     }
 
+    /// `getttpos`。座標はポイントで、主ディスプレイの左上が原点（macOS の座標は左下が原点なので直す）。
+    func windowPosition() -> MacroWindowPosition? {
+        onMain { () -> MacroWindowPosition? in
+            guard let view = self.controller?.view, let window = view.window else { return nil }
+            let top = NSScreen.screens.first?.frame.maxY ?? 0
+            func flip(_ r: NSRect) -> (Int32, Int32, Int32, Int32) {
+                (Int32(r.minX.rounded()), Int32((top - r.maxY).rounded()),
+                 Int32(r.width.rounded()), Int32(r.height.rounded()))
+            }
+            let w = flip(window.frame)
+            let c = flip(window.convertToScreen(view.convert(view.bounds, to: nil)))
+            let show: Int32 = window.isMiniaturized ? 1 : window.isZoomed ? 2 : window.isVisible ? 0 : 3
+            return MacroWindowPosition(show: show, x: w.0, y: w.1, width: w.2, height: w.3,
+                                       clientX: c.0, clientY: c.1, clientWidth: c.2, clientHeight: c.3)
+        }
+    }
+
+    /// `restoresetup`。「設定 > 設定の読み込み」と同じく、このアプリの設定に移す。
+    func restoreSetup(path: String) -> Bool {
+        onMain {
+            guard let ini = try? importTeratermIni(path: path) else { return false }
+            SettingsImport.apply(ini)
+            return true
+        }
+    }
+
     func finished(stopped: Bool, error: String?) {
         DispatchQueue.main.async {
             MainActor.assumeIsolated { self.controller?.macroFinished(stopped: stopped, error: error) }
