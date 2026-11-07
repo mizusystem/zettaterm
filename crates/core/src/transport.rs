@@ -108,6 +108,12 @@ pub trait Transport: Send + 'static {
         Err(unsupported("reconnect"))
     }
 
+    /// 受信をいったん終わらせ、つなぎ直せるようにする（Tera Term の「コントロール > ポートのリセット」）。
+    /// `reader` の read が EOF で戻り、続く `reconnect` で開き直す。対応しなければ Unsupported。
+    fn reset(&mut self) -> io::Result<()> {
+        Err(unsupported("reset"))
+    }
+
     /// 接続を閉じる。`reader` のブロッキング read が EOF かエラーで戻ることを保証する。
     fn close(&mut self) -> io::Result<()>;
 }

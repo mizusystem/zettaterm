@@ -21,6 +21,8 @@ pub struct SerialTransport {
     device: Option<SerialDevice>,
     port: Option<Box<dyn SerialPort>>,
     closed: Arc<AtomicBool>,
+    /// 「ポートのリセット」：受信を終わらせる（次の reconnect で下ろす）
+    restart: Arc<AtomicBool>,
     /// 出している DTR / RTS（読み出せないので、設定した値を覚えておく。開いた直後はどちらもオン）
     dtr: bool,
     rts: bool,
@@ -36,6 +38,7 @@ impl SerialTransport {
             device,
             port: Some(port),
             closed: Arc::new(AtomicBool::new(false)),
+            restart: Arc::new(AtomicBool::new(false)),
             dtr: true,
             rts: true,
         })
@@ -144,6 +147,7 @@ impl Transport for SerialTransport {
         Ok(Box::new(SerialReader {
             port,
             closed: Arc::clone(&self.closed),
+            restart: Arc::clone(&self.restart),
         }))
     }
 
@@ -204,12 +208,19 @@ impl Transport for SerialTransport {
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
         // 古いハンドルを先に閉じる（排他オープンのため）
         self.port = None;
+        self.restart.store(false, Ordering::SeqCst);
         let mut port = open_port(&path, &self.settings)?;
         // 抜く前に出していた DTR / RTS に戻す
         let _ = port.write_data_terminal_ready(self.dtr);
         let _ = port.write_request_to_send(self.rts);
         self.port = Some(port);
         self.path = path;
+        Ok(())
+    }
+
+    fn reset(&mut self) -> io::Result<()> {
+        // 受信スレッドが read から戻ると、Session が reconnect で開き直す
+        self.restart.store(true, Ordering::SeqCst);
         Ok(())
     }
 
@@ -223,12 +234,13 @@ impl Transport for SerialTransport {
 struct SerialReader {
     port: Box<dyn SerialPort>,
     closed: Arc<AtomicBool>,
+    restart: Arc<AtomicBool>,
 }
 
 impl Read for SerialReader {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
-            if self.closed.load(Ordering::SeqCst) {
+            if self.closed.load(Ordering::SeqCst) || self.restart.load(Ordering::SeqCst) {
                 return Ok(0);
             }
             match self.port.read(buf) {

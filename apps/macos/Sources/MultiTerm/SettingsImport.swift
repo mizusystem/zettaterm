@@ -73,6 +73,20 @@ enum SettingsImport {
         if let v = ini.logTimestamp { d.set(v, forKey: "log.timestamp") }
         if let v = ini.logTimestampUtc { d.set(v, forKey: "log.utc") }
 
+        // その他の設定
+        var other = OtherConfig.saved
+        if let v = ini.pasteDelay { other.pasteDelay = min(v, 5000) }
+        if let v = ini.remoteClearScrollback { other.remoteClearScrollback = v }
+        if let v = ini.remoteCursorStyle { other.remoteCursorStyle = v }
+        if let v = ini.bell.flatMap(OtherConfig.Bell.init) { other.bell = v }
+        if let v = ini.beepOnConnect { other.beepOnConnect = v }
+        if let v = ini.clearOnClose { other.clearOnClose = v }
+        if let v = ini.confirmDisconnect { other.confirmDisconnect = v }
+        if let v = ini.acceptTitle.flatMap(OtherConfig.TitleChange.init) { other.titleChange = v }
+        if let v = ini.alpha { other.alphaActive = Int(v) }
+        other.save()
+        other.applyEverywhere()
+
         // コピーと貼り付け
         var cp = CopyPasteConfig.saved
         if let v = ini.autoTextCopy { cp.autoCopy = v }

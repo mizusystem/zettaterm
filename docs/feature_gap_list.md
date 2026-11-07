@@ -68,7 +68,7 @@
 - [x] **キーボード (`MENU_SETUP_KEYBOARD`)**（※メタキーの左右の区別とアプリケーションキーパッドの無効化は未実装）: BS キー（`BS` / `DEL`）、Del キー（`DEL` / `CSI 3 ~`）、メタキー送信（off / on / left / right）、アプリケーションキーパッド／カーソル無効化 (`DLG_KEYB_TITLE`)
 - [ ] **TCP/IP (`MENU_SETUP_TCPIP`)**: ホストリストの追加・並べ替え・削除、履歴表示有無、自動ウィンドウクローズ、デフォルトポート、Telnet Keep-Alive、端末タイプ (`TermType`) (`DLG_TCPIP_TITLE`)
 - [ ] **全般 (`MENU_SETUP_GENERAL`)**: UI 表示言語の切り替え、デフォルト接続ポート（TCP/IP または シリアル） (`DLG_GEN_TITLE`)
-- [ ] **その他の設定 (`MENU_SETUP_ADDITION`)**: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
+- [x] **その他の設定 (`MENU_SETUP_ADDITION`)**（※全般・制御シーケンス・貼り付け・不透明度の項目。コピーと貼り付け・ログは別の設定画面）: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
 - [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)**（※読み込みは TERATERM.INI のインポートとして実装済み） / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**
 - [ ] **TTSSH 追加設定ダイアログ**:
   - [ ] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**: 暗号・KEX・MAC・ホスト鍵・署名アルゴリズムの優先順位リスト、圧縮レベル、HeartBeat（キープアライブ）、書き込みバッファサイズ
@@ -79,7 +79,7 @@
 ### 1-4. 「コントロール (Control)」メニュー (`MENU_CONTROL`)
 - [x] **端末リセット (`MENU_CONTROL_RESET`)**: VT パーサ状態、スクロール領域、文字セット、タブストップ、属性のリセット
 - [x] **リモートタイトルリセット (`MENU_CONTROL_RESETTITLE`)**: OSC 0/2 で変更されたタイトルを初期タイトルに戻す
-- [ ] **ポートのリセット (`MENU_CONTROL_RESETPORT`)**: シリアル通信バッファのクリアとポート再初期化
+- [x] **ポートのリセット (`MENU_CONTROL_RESETPORT`)**: シリアル通信バッファのクリアとポート再初期化
 - [x] **AYT 送信 (`MENU_CONTROL_AREYOUTHERE`)** (`Alt+T`): Telnet の `IAC AYT` 送信
 - [ ] **マクロウィンドウの表示 (`MENU_CONTROL_SHOW_MACRO`)**: 実行中マクロの詳細・ポーズ制御
 - [ ] **TEK ウィンドウを開く / 閉じる (`MENU_CONTROL_OPENTEK` / `CLOSETEK`)**（※設計書では優先度低）
@@ -101,7 +101,7 @@
 
 ### 2-1. 既存の「設定 > 端末」ダイアログに不足している項目
 - [x] **端末サイズ (`TerminalSize`)**（※「設定 > 端末」で今のウィンドウをその大きさに合わせる）: 行数 × 桁数の数値入力（例: `80×24`, `132×24`）
-- [ ] **ウィンドウサイズと端末サイズを連動 (`TermIsWin`)** / **ウィンドウサイズ自動調整 (`AutoWinResize`)**
+- [x] **ウィンドウサイズと端末サイズを連動 (`TermIsWin`)** / **ウィンドウサイズ自動調整 (`AutoWinResize`)**（※端末の大きさはいつもウィンドウの大きさに合わせる。TermIsWin=on と同じ）
 - [x] **端末 ID (`TerminalID`)**（※DA1 の応答。既定は Tera Term と同じ VT100）: `VT100`, `VT101`, `VT102`, `VT220`, `VT282`, `VT320`, `VT382`, `VT420`, `VT520` の応答切り替え
 - [x] **アンサーバック (`Answerback`)**: `ENQ` (`0x05`) 受信時に自動返送する文字列
 - [ ] **漢字イン (`KanjiIn`: `^[$B` / `^[$@`)** / **漢字アウト (`KanjiOut`: `^[(B` / `^[(J` / `^[(H`)** および **7bit カタカナ送受信 (`KatakanaReceive` / `KatakanaSend`)**
@@ -123,27 +123,27 @@
 
 ### 2-4. 「設定 > その他の設定 (Additional settings)」の 7 タブ
 1. **全般 (`DLG_TAB_GENERAL`)**:
-   - [ ] 接続時・切断時のビープ音 (`BeepOnConnect`)
-   - [ ] 切断時の画面クリア (`ClearScreenOnCloseConnection`)
-   - [ ] 切断確認ダイアログの有無 (`ConfirmDisconnect`)
+   - [x] 接続時・切断時のビープ音 (`BeepOnConnect`)
+   - [x] 切断時の画面クリア (`ClearScreenOnCloseConnection`)
+   - [x] 切断確認ダイアログの有無 (`ConfirmDisconnect`)（※「接続断」のとき）
    - [ ] シリアル自動再接続のリトライ間隔・リトライ回数・オープン遅延設定 (`AutoComPortReconnect*`)
 2. **制御シーケンス (`DLG_TAB_SEQUENCE`)**:
    - [ ] マウスイベント通知要求の受け入れ (`MouseEventTracking`) と Ctrl キー押下中の一時無効化 (`DisableMouseTrackingByCtrl`)
-   - [ ] ウィンドウタイトル変更要求の受け入れモード（無効 / 上書き / 前に追加 / 後に追加） (`AcceptTitleChangeRequest`)
+   - [x] ウィンドウタイトル変更要求の受け入れモード（無効 / 上書き / 前に追加 / 後に追加） (`AcceptTitleChangeRequest`)
    - [x] リモートからのクリップボードアクセス (OSC 52) の制御（※書き込みだけ。読み出しは受け付けない）（無効 / 読込のみ / 書込のみ / 読込・書込）と通知 (`ClipboardAccessFromRemote`, `NotifyClipboardAccess`)
-   - [ ] リモートからのスクロールバッファ消去 (`ClearScrollBufferFromRemote`) の許可/拒否
-   - [ ] カーソル形状・点滅制御シーケンス (`CursorCtrlSequence`) の許可/拒否
-   - [ ] ベル動作の選択（無効 / サウンド / ビジュアルベル） (`Beep`) と連続ベル抑制
+   - [x] リモートからのスクロールバッファ消去 (`ClearScrollBufferFromRemote`) の許可/拒否（※既定は Tera Term と同じく拒否）
+   - [x] カーソル形状・点滅制御シーケンス (`CursorCtrlSequence`) の許可/拒否（※既定は Tera Term と同じく拒否）
+   - [x] ベル動作の選択（無効 / サウンド / ビジュアルベル） (`Beep`) と連続ベル抑制（※連続ベルの抑制は未実装）
 3. **コピーと貼り付け (`DLG_TAB_COPYPASTE`)**:
    - [x] **選択時自動コピー (`AutoTextCopy`)**: マウスでテキストを選択した瞬間にクリップボードへコピー
    - [x] **右クリックでの貼り付け (`DisablePasteMouseRButton` / `ConfirmPasteMouseRButton`)** および **中クリックでの貼り付け (`DisablePasteMouseMButton`)**
    - [x] **複数行貼り付け時の確認ダイアログ (`ConfirmChangePaste` / `ConfirmChangePasteCR`)**: 改行を含むテキストをペーストする際に内容をプレビュー・編集して確認するダイアログ (`DLG_CLIPBOARD_TITLE`)
    - [x] **危険文字列リストによるペースト警告 (`ConfirmChangePasteStringFile`)**: 指定ファイル内の危険語（※ファイルではなく設定画面の一覧で持つ）（`reboot`, `reload`, `rm -rf`, `shutdown` 等）が含まれる場合に赤字警告を出す機能
    - [x] 折り返し継続行の連結コピー (`EnableContinuedLineCopy`)
-   - [ ] ペースト時の末尾改行トリム (`TrimTrailingNLonPaste`) と行単位ペースト遅延 (`PasteDelayPerLine`)（※末尾改行トリムは実装済み、行単位の遅延は未実装）
+   - [x] ペースト時の末尾改行トリム (`TrimTrailingNLonPaste`) と行単位ペースト遅延 (`PasteDelayPerLine`)（※既定 10 ミリ秒）
    - [x] ダブルクリック選択時の単語区切り文字 (`DelimList`) 設定
 4. **表示 / テーマ (`DLG_TAB_VISUAL` / `DLG_THEME_*`)**:
-   - [ ] ウィンドウ不透明度（アクティブ時 / 非アクティブ時） (`AlphaBlendActive`, `AlphaBlend`)
+   - [x] ウィンドウ不透明度（アクティブ時 / 非アクティブ時） (`AlphaBlendActive`, `AlphaBlend`)
    - [ ] 背景画像・背景透過テーマの読み込みとプレビュー (`BGThemeFile`)
    - [x] URL の自動検出・色分け・下線表示 (`EnableClickableUrl`, `URLColor`, `URLUnderline`)（※下線のみ。色の設定は未実装）
    - [ ] ANSI 16色カラーパレットの RGB カスタマイズ (`ANSIColor`)

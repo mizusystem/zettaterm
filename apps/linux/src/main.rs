@@ -147,6 +147,10 @@ fn menu() -> gio::Menu {
         Some("win.setup-serial"),
     );
     setup.append(
+        Some(&tt("MENU_SETUP_ADDITION", "その他の設定...")),
+        Some("win.setup-other"),
+    );
+    setup.append(
         Some(&format!(
             "{}...",
             tt("DLG_TABSHEET_TITLE_COPYPASTE", "コピーと貼り付け")
@@ -227,6 +231,10 @@ fn menu() -> gio::Menu {
     control.append(
         Some(&tt("MENU_CONTROL_RESETTITLE", "リモートタイトルリセット")),
         Some("win.reset-title"),
+    );
+    control.append(
+        Some(&tt("MENU_CONTROL_RESETPORT", "ポートのリセット")),
+        Some("win.reset-port"),
     );
     control.append(
         Some(&tt("MENU_CONTROL_AREYOUTHERE", "AYT送信")),

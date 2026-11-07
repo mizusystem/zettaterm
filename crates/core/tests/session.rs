@@ -32,6 +32,18 @@ impl SessionListener for Recorder {
 
 const WAIT: Duration = Duration::from_secs(2);
 
+/// `want` の長さになるまで受け取ってつなげる。
+fn recv_until(remote: &mt_core::mock::MockRemote, want: &[u8]) -> Vec<u8> {
+    let mut got = Vec::new();
+    let start = Instant::now();
+    while got.len() < want.len() && start.elapsed() < WAIT {
+        if let Some(b) = remote.recv(Duration::from_millis(20)) {
+            got.extend(b);
+        }
+    }
+    got
+}
+
 fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
     let start = Instant::now();
     while start.elapsed() < WAIT {
@@ -132,7 +144,8 @@ fn keys_and_replies_are_written_back() {
     assert_eq!(remote.recv(WAIT).unwrap(), b"\x1b[1;1R");
 
     session.paste("a\nb".into());
-    assert_eq!(remote.recv(WAIT).unwrap(), b"a\rb");
+    // 貼り付けは行ごとに分かれて届く（PasteDelayPerLine）
+    assert_eq!(recv_until(&remote, b"a\rb"), b"a\rb");
 }
 
 #[test]
@@ -326,7 +339,8 @@ fn enter_uses_send_newline_and_local_echo_shows_input() {
     assert_eq!((s.cursor.row, s.cursor.col), (1, 0));
 
     session.paste("a\nb".into());
-    assert_eq!(remote.recv(WAIT).unwrap(), b"a\r\nb");
+    // 貼り付けは行ごとに分かれて届く（PasteDelayPerLine）
+    assert_eq!(recv_until(&remote, b"a\r\nb"), b"a\r\nb");
 }
 
 #[test]
@@ -722,4 +736,46 @@ fn answerback_and_keyboard_options() {
     session.key(Key::Backspace, Modifiers::default());
     assert_eq!(remote.recv(WAIT).unwrap(), [0x08]);
     session.close();
+}
+
+/// 貼り付けは行ごとに待つ（Tera Term の PasteDelayPerLine）。中身は変わらない。
+#[test]
+fn paste_waits_between_lines() {
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_paste_delay(80);
+    let start = Instant::now();
+    session.paste("a\nb\nc".into());
+    let mut got = Vec::new();
+    assert!(wait_until(|| {
+        while let Some(b) = remote.recv(Duration::from_millis(10)) {
+            got.extend(b);
+        }
+        got.ends_with(b"c")
+    }));
+    assert_eq!(got, b"a\rb\rc");
+    // 行の終わりは 2 つなので、少なくとも 2 回待つ
+    assert!(start.elapsed() >= Duration::from_millis(160));
+    session.close();
+}
+
+/// 「ポートのリセット」：自動再接続を切っていても開き直し、そのまま使える。
+#[test]
+fn reset_port_reopens_the_port() {
+    let (transport, remote) = MockTransport::reconnectable();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_auto_reconnect(false);
+    session.reset_port().unwrap();
+    assert!(wait_until(|| remote.reconnects() == 1));
+    assert!(wait_until(|| session.state() == SessionState::Connected));
+    remote.send(b"after reset");
+    assert!(wait_until(|| screen_text(&session).contains("after reset")));
+    // つなぎ直せない接続はリセットできない
+    let (transport, _remote) = MockTransport::pair();
+    let other = open(transport, &rec);
+    assert!(other.reset_port().is_err());
+    session.close();
+    other.close();
 }

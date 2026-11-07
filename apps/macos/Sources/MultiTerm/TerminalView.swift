@@ -196,6 +196,11 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         super.viewDidMoveToWindow()
         guard window != nil else { return }
         window?.makeFirstResponder(self)
+        // 不透明度は前に出ているかで変える
+        for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
+        }
+        applyAlpha()
         if displayLink == nil {
             let link = displayLink(target: self, selector: #selector(tick))
             link.add(to: .main, forMode: .common)
@@ -238,8 +243,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
                     self.onTitle?(title)
                 }
             },
-            onBell: {
-                MainActor.assumeIsolated { NSSound.beep() }
+            onBell: { [weak self] in
+                MainActor.assumeIsolated { self?.ring() }
             },
             onTransferRequest: { [weak self] request in
                 MainActor.assumeIsolated {
@@ -286,12 +291,19 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         opened.setAnswerback(text: answerback)
         opened.setTerminalId(id: terminalId)
         opened.setClipboardWrite(allow: CopyPasteConfig.saved.remoteClipboardWrite)
+        let other = OtherConfig.saved
+        opened.setRemoteControl(clearScrollback: other.remoteClearScrollback, cursorStyle: other.remoteCursorStyle)
+        opened.setPasteDelay(msPerLine: other.pasteDelay)
         // 待っている間にウィンドウの大きさが変わっていれば合わせる
         let now = geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
         if now != size {
             gridSize = now
             opened.resize(cols: now.cols, rows: now.rows, pixelWidth: 0, pixelHeight: 0)
         }
+    }
+
+    @objc private func keyChanged(_ note: Notification) {
+        applyAlpha()
     }
 
     /// 接続を閉じる。画面の内容は残す。
@@ -396,6 +408,54 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             drawCursor(in: ctx, rows: rows)
             drawMarkedText(in: ctx)
         }
+        if visualBell {
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.35).cgColor)
+            ctx.fill(dirtyRect)
+        }
+    }
+
+    // MARK: - その他の設定
+
+    /// ビジュアルベルで画面を光らせている間
+    private var visualBell = false
+
+    /// ベル（BEL）。「その他の設定」のベルに従う。
+    func ring() {
+        switch OtherConfig.saved.bell {
+        case .off: break
+        case .on: NSSound.beep()
+        case .visual:
+            visualBell = true
+            needsDisplay = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.visualBell = false
+                    self?.needsDisplay = true
+                }
+            }
+        }
+    }
+
+    /// 「その他の設定」を今の接続とウィンドウに効かせる。
+    func applyOther(_ c: OtherConfig) {
+        session?.setRemoteControl(clearScrollback: c.remoteClearScrollback, cursorStyle: c.remoteCursorStyle)
+        session?.setPasteDelay(msPerLine: c.pasteDelay)
+        applyAlpha(c)
+    }
+
+    /// ウィンドウの不透明度（前に出ているときと、そうでないとき）。
+    func applyAlpha(_ c: OtherConfig = .saved) {
+        guard let window else { return }
+        let a = window.isKeyWindow ? c.alphaActive : c.alphaInactive
+        window.alphaValue = CGFloat(max(64, min(255, a))) / 255
+    }
+
+    /// 切れたあとの画面を消す（「切断したら画面をクリアする」）。
+    func clearClosedScreen() {
+        closedSession = nil
+        screen = ScreenBuffer()
+        selection = nil
+        needsDisplay = true
     }
 
     /// 描画中の画面にかかる選択・検索の一致・URL。

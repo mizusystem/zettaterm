@@ -171,6 +171,9 @@ impl Tabs {
         notebook.set_show_border(false);
         notebook.set_scrollable(true);
         win.set_child(Some(&notebook));
+        // 不透明度は前に出ているかで変える（「その他の設定」）
+        apply_alpha(&win);
+        win.connect_is_active_notify(apply_alpha);
         let tabs = Rc::new(Self {
             win,
             notebook,
@@ -281,7 +284,23 @@ impl Tabs {
                 p.show_connect_dialog();
             }),
         );
-        add("disconnect", Box::new(|_, me| me.disconnect()));
+        add("disconnect", Box::new(|_, me| me.request_disconnect()));
+        add(
+            "reset-port",
+            Box::new(|_, me| {
+                if let Some(s) = me.view.session()
+                    && let Err(e) = s.reset_port()
+                {
+                    dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {});
+                }
+            }),
+        );
+        add(
+            "setup-other",
+            Box::new(|t, _| {
+                settings::other_dialog(&t.win.clone().upcast(), apply_other_everywhere)
+            }),
+        );
         add("close", Box::new(|t, me| t.remove(me)));
         add("close-window", Box::new(|t, _| t.win.close()));
         add("copy", Box::new(|_, me| me.view.copy()));
@@ -753,13 +772,11 @@ impl TermWindow {
             .map(|p| p.label())
             .unwrap_or_default();
         let remote = self.remote_title.borrow().clone();
-        let mut base = self.macro_title.borrow().clone().unwrap_or_else(|| {
-            if remote.is_empty() {
-                label.clone()
-            } else {
-                remote
-            }
-        });
+        let mut base = self
+            .macro_title
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| Settings::load().other.title(&remote, &label));
         if base.is_empty() {
             base = "Multi-Term".into();
         }
@@ -856,7 +873,7 @@ impl TermWindow {
                     }
                     *me.files.borrow_mut() = files;
                     me.view.attach(Arc::clone(&session));
-                    me.status.set(Status::Connected);
+                    me.set_status(Status::Connected);
                     if keep {
                         connect::remember(&profile);
                     }
@@ -874,6 +891,7 @@ impl TermWindow {
                         mt_core::TerminalId::from_name(&saved.terminal_id).unwrap_or_default(),
                     );
                     session.set_clipboard_write(saved.copy_paste.remote_clipboard_write);
+                    saved.other.apply(&session);
                     // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
                     session.set_view_only(me.view_only.get());
                     if let Some((secs, text, nl)) = me.recurring.borrow().clone() {
@@ -1378,8 +1396,63 @@ impl TermWindow {
         if let Some(s) = self.view.detach() {
             s.close();
         }
-        self.status.set(Status::Disconnected);
+        self.set_status(Status::Disconnected);
         self.update_title();
+    }
+
+    /// 「ファイル > 接続断」。「その他の設定」で確かめる設定なら先に尋ねる。
+    fn request_disconnect(self: &Rc<Self>) {
+        if !Settings::load().other.confirm_disconnect || !self.connected() {
+            self.disconnect();
+            return;
+        }
+        let me = Rc::clone(self);
+        dialogs::yes_no(
+            &self.parent(),
+            "Multi-Term",
+            &tt("MSG_DISCONNECT_CONF", "切断しますか？"),
+            move |yes| {
+                if yes {
+                    me.disconnect();
+                }
+            },
+        );
+    }
+
+    /// 状態を変える。つながった・切れたときのビープと、切れたときの画面のクリア（「その他の設定」）。
+    fn set_status(&self, status: Status) {
+        let old = self.status.replace(status);
+        if old == status {
+            return;
+        }
+        let other = Settings::load().other;
+        let was_up = matches!(old, Status::Connected | Status::Reconnecting);
+        if status == Status::Connected && old != Status::Reconnecting && other.beep_on_connect {
+            WidgetExt::display(&self.win).beep();
+        }
+        if status == Status::Disconnected && was_up {
+            if other.beep_on_connect {
+                WidgetExt::display(&self.win).beep();
+            }
+            if other.clear_on_close {
+                self.view.clear_buffer();
+            }
+        }
+    }
+
+    /// ベル（BEL）。「その他の設定」のベルに従う。
+    fn ring(&self) {
+        match Settings::load().other.bell.as_str() {
+            "off" => {}
+            "visual" => {
+                let area = self.view.area.clone();
+                area.set_opacity(0.5);
+                glib::timeout_add_local_once(std::time::Duration::from_millis(120), move || {
+                    area.set_opacity(1.0);
+                });
+            }
+            _ => WidgetExt::display(&self.win).beep(),
+        }
     }
 
     fn parent(&self) -> gtk::Window {
@@ -1952,7 +2025,7 @@ impl TermWindow {
                         if me.status.get() == Status::Connecting && status == Status::Disconnected {
                             continue;
                         }
-                        me.status.set(status);
+                        me.set_status(status);
                         me.update_title();
                         // シェルが終わったらウィンドウを閉じる（他はエラーが読めるよう残す）
                         if s == SessionState::Closed
@@ -1966,7 +2039,7 @@ impl TermWindow {
                         *me.remote_title.borrow_mut() = t;
                         me.update_title();
                     }
-                    Event::Bell => WidgetExt::display(&me.win).beep(),
+                    Event::Bell => me.ring(),
                     Event::Transfer(r) => me.transfer_request(r),
                     Event::Clipboard(text) => me.remote_clipboard(&text),
                 }
@@ -2031,6 +2104,33 @@ fn charset_from_id(id: &str) -> Option<mt_core::Charset> {
 }
 
 /// 見た目の設定を、開いているすべてのタブに効かせる。
+/// ウィンドウの不透明度（前に出ているときと、そうでないとき）。
+fn apply_alpha(win: &gtk::ApplicationWindow) {
+    let o = Settings::load().other;
+    let a = if win.is_active() {
+        o.alpha_active
+    } else {
+        o.alpha_inactive
+    };
+    win.set_opacity(f64::from(a.max(64)) / 255.0);
+}
+
+/// 「その他の設定」を開いているウィンドウと接続に効かせる。
+fn apply_other_everywhere() {
+    let other = Settings::load().other;
+    for t in windows() {
+        apply_alpha(&t.win);
+    }
+    ALL.with(|all| {
+        for p in all.borrow().iter().filter_map(|w| w.upgrade()) {
+            if let Some(s) = p.view.session() {
+                other.apply(&s);
+            }
+            p.update_title();
+        }
+    });
+}
+
 fn apply_look_everywhere() {
     ALL.with(|all| {
         for p in all.borrow().iter().filter_map(|w| w.upgrade()) {

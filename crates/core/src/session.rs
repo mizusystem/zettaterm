@@ -99,6 +99,8 @@ enum WriterMsg {
     /// 再接続後の新しい送信先
     Replace(Box<dyn Write + Send>),
     Delay(SendDelay),
+    /// 貼り付け。行ごとに待つ（Tera Term の PasteDelayPerLine）
+    Paste(Vec<u8>, u32),
 }
 
 struct Inner {
@@ -131,6 +133,9 @@ struct Inner {
     /// ENQ への返事（Answerback）
     answerback: Mutex<Option<String>>,
     enq: Mutex<EnqScanner>,
+    /// 「ポートのリセット」で受信を終わらせた（自動再接続が切れていても開き直す）
+    reset_requested: AtomicBool,
+    paste_delay_ms: std::sync::atomic::AtomicU32,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
     recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -168,6 +173,9 @@ const HELD_LIMIT: usize = 256 * 1024;
 const HELD_TIMEOUT: Duration = Duration::from_secs(5);
 /// 返事の無い問い合わせを、これより長くは覚えておかない（応じない UI のあとで、次の転送を知らせられるように）
 const ASK_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// 貼り付けで行ごとに待つ既定（Tera Term の PasteDelayPerLine の既定）
+pub const DEFAULT_PASTE_DELAY_MS: u32 = 10;
 
 /// 1 回の受信で返すアンサーバックの数の上限（大量の ENQ で送信が溢れないように）
 const MAX_ANSWERBACKS: usize = 16;
@@ -284,6 +292,8 @@ impl Session {
             view_only: AtomicBool::new(false),
             answerback: Mutex::new(None),
             enq: Mutex::new(EnqScanner::default()),
+            reset_requested: AtomicBool::new(false),
+            paste_delay_ms: std::sync::atomic::AtomicU32::new(DEFAULT_PASTE_DELAY_MS),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
@@ -337,7 +347,46 @@ impl Session {
             let plain = text.replace("\r\n", "\r").replace('\n', "\r");
             self.inner.echo(plain.as_bytes());
         }
-        self.send_wire(bytes);
+        let cs = *self
+            .inner
+            .charset_send
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let ms = self.inner.paste_delay_ms.load(Ordering::SeqCst);
+        let _ = self
+            .inner
+            .tx
+            .send(WriterMsg::Paste(charset::encode_send(cs, bytes), ms));
+    }
+
+    /// ポートを閉じて開き直す（Tera Term の「コントロール > ポートのリセット」）。シリアルだけ。
+    pub fn reset_port(&self) -> io::Result<()> {
+        let mut t = self.inner.transport()?;
+        if !t.can_reconnect() {
+            return Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "this connection cannot be reset",
+            ));
+        }
+        self.inner.reset_requested.store(true, Ordering::SeqCst);
+        if let Err(e) = t.reset() {
+            self.inner.reset_requested.store(false, Ordering::SeqCst);
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    /// 貼り付けで行ごとに待つミリ秒（Tera Term の PasteDelayPerLine。既定 10）。
+    pub fn set_paste_delay(&self, ms_per_line: u32) {
+        self.inner
+            .paste_delay_ms
+            .store(ms_per_line.min(5000), Ordering::SeqCst);
+    }
+
+    /// 相手からのスクロールバッファの消去（ClearScrollBufferFromRemote）と、カーソルの形・点滅の変更
+    /// （CursorCtrlSequence）を受け付けるか。既定は Tera Term と同じく、どちらも断る。
+    pub fn set_remote_control(&self, allow: mt_vt::RemoteControl) {
+        self.inner.vt().set_remote_control(allow);
     }
 
     /// ENQ（0x05）を受けたときに返す文字列（Tera Term の「設定 > 端末」の Answerback）。空なら返さない。
@@ -819,8 +868,47 @@ fn write_loop(rx: Receiver<WriterMsg>, writer: Box<dyn Write + Send>, mut delay:
             }
             WriterMsg::Replace(w) => writer = Some(w),
             WriterMsg::Delay(d) => delay = d,
+            WriterMsg::Paste(bytes, line_ms) => {
+                let Some(w) = writer.as_mut() else { continue };
+                if write_paste(w.as_mut(), &bytes, delay, line_ms).is_err() {
+                    writer = None;
+                }
+            }
         }
     }
+}
+
+/// 貼り付けを行ごとに送り、行の終わり（CR、LF、CR LF）ごとに `line_ms` 待つ。
+/// 1 文字ごとの送信遅延があれば、そちらと合わせる。
+fn write_paste(w: &mut dyn Write, bytes: &[u8], delay: SendDelay, line_ms: u32) -> io::Result<()> {
+    if delay.per_char_ms > 0 || line_ms == 0 {
+        let delay = SendDelay {
+            per_line_ms: delay.per_line_ms.max(line_ms),
+            ..delay
+        };
+        return write_with_delay(w, bytes, delay);
+    }
+    let mut start = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let b = bytes[i];
+        i += 1;
+        if b == b'\r' && bytes.get(i) == Some(&b'\n') {
+            i += 1;
+        }
+        if b == b'\r' || b == b'\n' {
+            w.write_all(&bytes[start..i])?;
+            w.flush()?;
+            start = i;
+            if i < bytes.len() {
+                thread::sleep(Duration::from_millis(u64::from(
+                    line_ms.max(delay.per_line_ms),
+                )));
+            }
+        }
+    }
+    w.write_all(&bytes[start..])?;
+    w.flush()
 }
 
 fn write_with_delay(w: &mut dyn Write, bytes: &[u8], delay: SendDelay) -> io::Result<()> {
@@ -890,13 +978,13 @@ impl Inner {
             .map_err(|_| io::Error::other("transport lock poisoned"))
     }
 
-    fn read_loop(&self, mut reader: Box<dyn Read + Send>) {
-        loop {
+    fn read_loop(&self, reader: Box<dyn Read + Send>) {
+        let mut next = Some(reader);
+        while let Some(mut reader) = next.take() {
             self.pump(reader.as_mut());
-            match self.wait_for_reconnect() {
-                Some(r) => reader = r,
-                None => break,
-            }
+            // 開き直す前に古い受信口を閉じる（シリアルは排他で開くため）
+            drop(reader);
+            next = self.wait_for_reconnect();
         }
         self.set_state(SessionState::Closed);
     }
@@ -1067,7 +1155,8 @@ impl Inner {
 
     /// 相手が消えた後、つなぎ直せたら新しい reader を返す。つなぎ直さないなら None。
     fn wait_for_reconnect(&self) -> Option<Box<dyn Read + Send>> {
-        let can = self.auto_reconnect.load(Ordering::SeqCst)
+        let forced = self.reset_requested.swap(false, Ordering::SeqCst);
+        let can = (self.auto_reconnect.load(Ordering::SeqCst) || forced)
             && self.transport().map(|t| t.can_reconnect()).unwrap_or(false);
         if !can || self.closing.load(Ordering::SeqCst) {
             return None;
@@ -1075,7 +1164,9 @@ impl Inner {
         self.set_state(SessionState::Reconnecting);
         while !self.closing.load(Ordering::SeqCst) {
             thread::sleep(RECONNECT_INTERVAL);
-            if self.closing.load(Ordering::SeqCst) || !self.auto_reconnect.load(Ordering::SeqCst) {
+            if self.closing.load(Ordering::SeqCst)
+                || (!forced && !self.auto_reconnect.load(Ordering::SeqCst))
+            {
                 return None;
             }
             let Ok(mut t) = self.transport() else {

@@ -215,6 +215,15 @@ impl Transport for MockTransport {
         self.reconnectable
     }
 
+    fn reset(&mut self) -> io::Result<()> {
+        if !self.reconnectable {
+            return Err(io::Error::from(io::ErrorKind::Unsupported));
+        }
+        // 受信を終わらせる（抜き差しと違い、すぐ開き直せる）
+        let _ = lock(&self.shared).inbound.send(None);
+        Ok(())
+    }
+
     fn reconnect(&mut self) -> io::Result<()> {
         let mut s = lock(&self.shared);
         if !s.present {

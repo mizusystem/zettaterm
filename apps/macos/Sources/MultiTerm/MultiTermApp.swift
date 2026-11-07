@@ -106,6 +106,7 @@ struct TerminalWindow: View {
                 case .sshSettings: SshSettingsView()
                 case .sshKeyGen: SshKeyGenView()
                 case .recurring: RecurringView(controller: controller)
+                case .otherSettings: OtherSettingsView()
                 case .keyboardSettings: KeyboardSettingsView()
                 }
             }
@@ -226,7 +227,7 @@ struct TerminalCommands: Commands {
 
             Divider()
 
-            Button(TT.text("MENU_FILE_DISCONNECT", "接続断")) { controller?.disconnect() }
+            Button(TT.text("MENU_FILE_DISCONNECT", "接続断")) { controller?.requestDisconnect() }
                 .keyboardShortcut("i")
                 .disabled(controller == nil || controller?.status == .disconnected)
             // すべてのウィンドウを閉じて終わる（「Multi-Term を終了」と同じ）
@@ -289,6 +290,8 @@ struct TerminalCommands: Commands {
             .disabled(controller == nil)
             Button(TT.text("DLG_FOPT_TITLE", "ログ") + "...") { controller?.sheet = .logSettings }
                 .disabled(controller == nil)
+            Button(TT.text("MENU_SETUP_ADDITION", "その他の設定...")) { controller?.sheet = .otherSettings }
+                .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_RESTORE", "設定の読み込み...")) {
                 SettingsImport.chooseAndImport(controller)
             }
@@ -339,6 +342,8 @@ struct TerminalCommands: Commands {
                 .disabled(controller?.view.textSession == nil)
             Button(TT.text("MENU_CONTROL_RESETTITLE", "リモートタイトルリセット")) { controller?.resetRemoteTitle() }
                 .disabled(controller == nil)
+            Button(TT.text("MENU_CONTROL_RESETPORT", "ポートのリセット")) { controller?.resetPort() }
+                .disabled(controller?.isSerialConnected != true)
             Button(TT.text("MENU_CONTROL_AREYOUTHERE", "AYT 送信")) { try? controller?.view.session?.areYouThere() }
                 .disabled(controller?.isTelnet != true)
             Toggle(TT.text("MENU_ALWAYSONTOP", "常に最前面に表示", section: "TTXAlwaysOnTop"), isOn: Binding(

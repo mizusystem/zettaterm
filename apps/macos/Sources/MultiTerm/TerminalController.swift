@@ -11,6 +11,7 @@ final class TerminalController: ObservableObject {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
         case recurring
         case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings, sshKeyGen, keyboardSettings
+        case otherSettings
         var id: String { rawValue }
     }
 
@@ -37,7 +38,18 @@ final class TerminalController: ObservableObject {
     /// マクロの `setmulticastname`（`sendmulticast` の宛先の名前）
     var multicastName: String?
 
-    @Published private(set) var status: Status = .disconnected
+    @Published private(set) var status: Status = .disconnected {
+        didSet {
+            guard oldValue != status else { return }
+            let other = OtherConfig.saved
+            let wasUp = oldValue == .connected || oldValue == .reconnecting
+            if status == .connected && oldValue != .reconnecting && other.beepOnConnect { NSSound.beep() }
+            if status == .disconnected && wasUp {
+                if other.beepOnConnect { NSSound.beep() }
+                if other.clearOnClose { view.clearClosedScreen() }
+            }
+        }
+    }
     @Published private(set) var isLogging = false
     @Published private(set) var isLogPaused = false
     /// 閲覧専用（TTXViewMode）
@@ -92,7 +104,7 @@ final class TerminalController: ObservableObject {
     var connectionLabel: String { target?.label ?? "" }
 
     var windowTitle: String {
-        var base = macroTitle ?? (remoteTitle.isEmpty ? connectionLabel : remoteTitle)
+        var base = macroTitle ?? OtherConfig.saved.title(remote: remoteTitle, base: connectionLabel)
         if base.isEmpty { base = "Multi-Term" }
         switch status {
         case .connected: return base
@@ -238,6 +250,28 @@ final class TerminalController: ObservableObject {
         view.session?.setAnswerback(text: config.answerback)
         view.terminalId = config.terminalId
         view.session?.setTerminalId(id: config.terminalId)
+    }
+
+    /// 「ファイル > 接続断」。「その他の設定」で確かめる設定なら先に尋ねる。
+    func requestDisconnect() {
+        if OtherConfig.saved.confirmDisconnect && isConnected {
+            let alert = NSAlert()
+            alert.messageText = TT.text("MSG_DISCONNECT_CONF", "切断しますか？")
+            alert.addButton(withTitle: TT.text("BTN_OK", "OK"))
+            alert.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
+        disconnect()
+    }
+
+    /// 「コントロール > ポートのリセット」：シリアルポートを閉じて開き直す。
+    func resetPort() {
+        guard isSerialConnected, let session = view.session else { return }
+        do {
+            try session.resetPort()
+        } catch {
+            errorMessage = Self.describe(error)
+        }
     }
 
     func disconnect() {

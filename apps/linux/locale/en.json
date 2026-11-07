@@ -91,5 +91,8 @@
   "ミリ秒": "ms",
   "Tera Term の操作感を macOS・Linux で": "The feel of Tera Term on macOS and Linux",
   "送り先の設定": "Session setting",
-  "相手がクリップボードに書き込みました（{} 文字）": "The remote host wrote to the clipboard ({} characters)"
+  "相手がクリップボードに書き込みました（{} 文字）": "The remote host wrote to the clipboard ({} characters)",
+  "接続時・切断時にビープ音を鳴らす": "Beep on connect and disconnect",
+  "切断したら画面をクリアする": "Clear the screen when the connection closes",
+  "接続断の前に確認する": "Confirm before disconnecting"
 }

@@ -33,6 +33,24 @@ pub struct IniSettings {
     pub clipboard_write: Option<bool>,
     /// `NotifyClipboardAccess`
     pub notify_clipboard: Option<bool>,
+    /// `PasteDelayPerLine`（ミリ秒）
+    pub paste_delay: Option<u32>,
+    /// `ClearScrollBufferFromRemote`
+    pub remote_clear_scrollback: Option<bool>,
+    /// `CursorCtrlSequence`
+    pub remote_cursor_style: Option<bool>,
+    /// `Beep`（"off" / "on" / "visual"）
+    pub bell: Option<String>,
+    /// `BeepOnConnect`
+    pub beep_on_connect: Option<bool>,
+    /// `ClearScreenOnCloseConnection`
+    pub clear_on_close: Option<bool>,
+    /// `ConfirmDisconnect`
+    pub confirm_disconnect: Option<bool>,
+    /// `AcceptTitleChangeRequest`（"off" / "overwrite" / "ahead" / "last"）
+    pub accept_title: Option<String>,
+    /// `AlphaBlendActive`（0〜255）
+    pub alpha: Option<u8>,
     // ---- 見た目
     /// `VTColor` の文字色・背景色
     pub foreground: Option<u32>,
@@ -241,6 +259,19 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s.clipboard_write = get("clipboardaccessfromremote")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "write" | "on"));
     s.notify_clipboard = get("notifyclipboardaccess").and_then(on_off);
+    s.paste_delay = get("pastedelayperline").and_then(|v| v.parse().ok());
+    s.remote_clear_scrollback = get("clearscrollbufferfromremote").and_then(on_off);
+    s.remote_cursor_style = get("cursorctrlsequence").and_then(on_off);
+    s.bell = get("beep").map(|v| match v.to_ascii_lowercase().as_str() {
+        "off" => "off".into(),
+        "visual" => "visual".into(),
+        _ => "on".into(),
+    });
+    s.beep_on_connect = get("beeponconnect").and_then(on_off);
+    s.clear_on_close = get("clearscreenoncloseconnection").and_then(on_off);
+    s.confirm_disconnect = get("confirmdisconnect").and_then(on_off);
+    s.accept_title = get("accepttitlechangerequest").map(|v| v.to_ascii_lowercase());
+    s.alpha = get("alphablendactive").and_then(|v| v.parse().ok());
     s.telnet_keepalive = get("telkeepaliveinterval").and_then(|v| v.parse().ok());
     s.send_break_ms = get("sendbreaktime").and_then(|v| v.parse().ok());
 
@@ -355,6 +386,9 @@ KanjiReceive=SJIS
 KanjiSend=UTF-8
 TerminalSize=132,40
 TerminalID=VT220
+PasteDelayPerLine=30
+Beep=visual
+AcceptTitleChangeRequest=ahead
 ClipboardAccessFromRemote=write
 VTColor=0,0,0,255,255,255
 ANSIColor=0,0,0,0, 1,255,0,0, 9,128,0,0
@@ -393,6 +427,9 @@ Host10=/C=1 ;serial port
         assert_eq!(s.charset_receive, Some(Charset::ShiftJis));
         assert_eq!(s.terminal_size, Some((132, 40)));
         assert_eq!(s.terminal_id, Some(mt_vt::TerminalId::Vt220));
+        assert_eq!(s.paste_delay, Some(30));
+        assert_eq!(s.bell.as_deref(), Some("visual"));
+        assert_eq!(s.accept_title.as_deref(), Some("ahead"));
         assert_eq!(s.clipboard_write, Some(true));
         assert_eq!((s.foreground, s.background), (Some(0), Some(0xFFFFFF)));
         assert_eq!(s.ansi[1], Some(0xFF0000));

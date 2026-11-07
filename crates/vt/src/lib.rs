@@ -3,12 +3,14 @@
 //! 文字のセル幅（全角・半角、曖昧幅）の判定はここで決め、snapshot に載せる。
 //! このクレートに `cfg(target_os)` を書かない。
 
+mod filter;
 mod keys;
 mod palette;
 pub mod select;
 mod terminal;
 mod types;
 
+pub use filter::RemoteControl;
 pub use keys::{Key, KeyboardOptions, Modifiers};
 pub use palette::themes;
 pub use select::{Point, SearchQuery, Selection, UrlMatch};

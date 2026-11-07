@@ -74,6 +74,7 @@ pub struct Terminal {
     keyboard: crate::keys::KeyboardOptions,
     config: Config,
     terminal_id: TerminalId,
+    filter: crate::filter::SeqFilter,
 }
 
 impl Terminal {
@@ -103,7 +104,13 @@ impl Terminal {
             keyboard: crate::keys::KeyboardOptions::default(),
             config,
             terminal_id: TerminalId::default(),
+            filter: crate::filter::SeqFilter::default(),
         }
+    }
+
+    /// 相手からのスクロールバッファの消去と、カーソルの形・点滅の変更を受け付けるか。
+    pub fn set_remote_control(&mut self, allow: crate::filter::RemoteControl) {
+        self.filter.allow = allow;
     }
 
     /// 端末 ID（DA1 の応答）。
@@ -140,6 +147,12 @@ impl Terminal {
 
     /// 受信バイトを解釈する。戻り値は Session が処理すべき出来事。
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<VtEvent> {
+        let bytes = self.filter.filter(bytes);
+        self.feed_local(&bytes)
+    }
+
+    /// 自分で作ったシーケンスを流す（相手からではないので断らない）。
+    fn feed_local(&mut self, bytes: &[u8]) -> Vec<VtEvent> {
         self.parser.advance(&mut self.term, bytes);
         self.collect_damage();
         self.drain_events()
@@ -267,12 +280,12 @@ impl Terminal {
 
     /// 画面を消してカーソルを左上へ（「編集 > 画面クリア」）。スクロールバックは残す。
     pub fn clear_screen(&mut self) {
-        self.feed(b"\x1b[2J\x1b[H");
+        self.feed_local(b"\x1b[2J\x1b[H");
     }
 
     /// スクロールバックも含めて消す（「編集 > バッファのクリア」）。
     pub fn clear_buffer(&mut self) {
-        self.feed(b"\x1b[2J\x1b[3J\x1b[H");
+        self.feed_local(b"\x1b[2J\x1b[3J\x1b[H");
         self.generation += 1;
         self.resize_gen = self.generation;
     }
@@ -302,7 +315,7 @@ impl Terminal {
 
     /// 端末の状態を初期化する（「コントロール > 端末リセット」、RIS）。
     pub fn reset(&mut self) {
-        self.feed(b"\x1bc");
+        self.feed_local(b"\x1bc");
         self.generation += 1;
         self.resize_gen = self.generation;
     }
@@ -703,7 +716,13 @@ mod tests {
             (s.cursor.shape, s.cursor.blinking),
             (CursorShape::Beam, true)
         );
-        // 相手が DECSCUSR で指定すればそちらが優先
+        // 相手の DECSCUSR は既定では断る。受け付けるならそちらが優先
+        t.feed(b"\x1b[2 q");
+        assert_eq!(t.snapshot(0).cursor.shape, CursorShape::Beam);
+        t.set_remote_control(crate::RemoteControl {
+            cursor_style: true,
+            ..Default::default()
+        });
         t.feed(b"\x1b[2 q");
         let c = t.snapshot(0).cursor;
         assert_eq!((c.shape, c.blinking), (CursorShape::Block, false));

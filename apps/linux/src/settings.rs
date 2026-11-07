@@ -261,6 +261,228 @@ impl LogConf {
     }
 }
 
+/// Tera Term の「設定 > その他の設定」のうち、全般・制御シーケンス・表示にある項目。
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OtherConf {
+    /// つないだとき・切れたときに鳴らす（BeepOnConnect）
+    pub beep_on_connect: bool,
+    /// 切れたら画面を消す（ClearScreenOnCloseConnection）
+    pub clear_on_close: bool,
+    /// 「接続断」の前に確かめる（ConfirmDisconnect）
+    pub confirm_disconnect: bool,
+    /// ベル："off" / "on" / "visual"（Beep）
+    pub bell: String,
+    /// 相手からのタイトルの変更："off" / "overwrite" / "ahead" / "last"（AcceptTitleChangeRequest）
+    pub title_change: String,
+    /// 相手からのスクロールバッファの消去（ClearScrollBufferFromRemote）
+    pub remote_clear_scrollback: bool,
+    /// 相手からのカーソルの形・点滅の変更（CursorCtrlSequence）
+    pub remote_cursor_style: bool,
+    /// 貼り付けの行間遅延（ミリ秒。PasteDelayPerLine）
+    pub paste_delay: u32,
+    /// ウィンドウの不透明度（0〜255。AlphaBlendActive / AlphaBlend）
+    pub alpha_active: u8,
+    pub alpha_inactive: u8,
+}
+
+impl Default for OtherConf {
+    fn default() -> Self {
+        Self {
+            beep_on_connect: false,
+            clear_on_close: false,
+            confirm_disconnect: true,
+            bell: "on".into(),
+            title_change: "overwrite".into(),
+            remote_clear_scrollback: false,
+            remote_cursor_style: false,
+            paste_delay: mt_core::session::DEFAULT_PASTE_DELAY_MS,
+            alpha_active: 255,
+            alpha_inactive: 255,
+        }
+    }
+}
+
+impl OtherConf {
+    /// 相手のタイトルと接続先から、ウィンドウのタイトル。
+    pub fn title(&self, remote: &str, base: &str) -> String {
+        if remote.is_empty() {
+            return base.to_owned();
+        }
+        match self.title_change.as_str() {
+            "off" => base.to_owned(),
+            "ahead" if !base.is_empty() => format!("{remote} - {base}"),
+            "last" if !base.is_empty() => format!("{base} - {remote}"),
+            _ => remote.to_owned(),
+        }
+    }
+
+    /// 接続に効かせる（制御シーケンスと貼り付けの遅延）。
+    pub fn apply(&self, session: &mt_core::Session) {
+        session.set_remote_control(mt_core::RemoteControl {
+            clear_scrollback: self.remote_clear_scrollback,
+            cursor_style: self.remote_cursor_style,
+        });
+        session.set_paste_delay(self.paste_delay);
+    }
+}
+
+/// 「設定 > その他の設定」。OK で保存して `applied()` を呼ぶ。
+pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
+    let c = Settings::load().other;
+    let (win, content, row) = modal(
+        parent,
+        &tt("DLG_TABSHEET_TITLE", "その他の設定").replace("Tera Term: ", ""),
+    );
+    let check = |text: String, on: bool| {
+        let b = gtk::CheckButton::with_label(&text);
+        b.set_active(on);
+        b
+    };
+    let heading = |text: String| {
+        let h = gtk::Label::new(Some(&text));
+        h.set_xalign(0.0);
+        h.add_css_class("heading");
+        h
+    };
+    content.append(&heading(tt("DLG_TABSHEET_TITLE_GENERAL", "全般")));
+    let beep = check(l("接続時・切断時にビープ音を鳴らす"), c.beep_on_connect);
+    let clear = check(l("切断したら画面をクリアする"), c.clear_on_close);
+    let confirm = check(l("接続断の前に確認する"), c.confirm_disconnect);
+    content.append(&beep);
+    content.append(&clear);
+    content.append(&confirm);
+
+    content.append(&heading(tt(
+        "DLG_TABSHEET_TITLE_SEQUENCE",
+        "制御シーケンス",
+    )));
+    let sbuff = check(
+        tt(
+            "DLG_TAB_SEQUENCE_ACCEPT_CLEAR_SBUFF",
+            "リモートからのスクロールバッファの消去を受け入れる",
+        ),
+        c.remote_clear_scrollback,
+    );
+    let cursor = check(
+        tt(
+            "DLG_TAB_SEQUENCE_CURSOR_CTRL",
+            "カーソル形状/点滅変更制御シーケンス",
+        ),
+        c.remote_cursor_style,
+    );
+    content.append(&sbuff);
+    content.append(&cursor);
+    let titles = ["off", "overwrite", "ahead", "last"];
+    let title = gtk::DropDown::from_strings(&[
+        &tt("DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING_OFF", "無効"),
+        &tt("DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING_OVERWRITE", "上書き"),
+        &tt("DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING_AHEAD", "前に追加"),
+        &tt("DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING_LAST", "後に追加"),
+    ]);
+    title.set_selected(
+        titles
+            .iter()
+            .position(|t| *t == c.title_change)
+            .unwrap_or(1) as u32,
+    );
+    let bells = ["off", "on", "visual"];
+    let bell = gtk::DropDown::from_strings(&[
+        &tt("DLG_TAB_SEQUENCE_BEEP_DISABLE", "無視"),
+        &tt("DLG_TAB_SEQUENCE_BEEP_SOUND", "サウンド"),
+        &tt("DLG_TAB_SEQUENCE_BEEP_VISUALBELL", "ビジュアルベル"),
+    ]);
+    bell.set_selected(bells.iter().position(|b| *b == c.bell).unwrap_or(1) as u32);
+    let grid = gtk::Grid::builder()
+        .row_spacing(6)
+        .column_spacing(10)
+        .build();
+    grid.attach(
+        &label(tt(
+            "DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING",
+            "ウィンドウタイトルの変更要求を受け入れる",
+        )),
+        0,
+        0,
+        1,
+        1,
+    );
+    grid.attach(&title, 1, 0, 1, 1);
+    grid.attach(
+        &label(tt("DLG_TAB_SEQUENCE_BEEP_LABEL", "ベル")),
+        0,
+        1,
+        1,
+        1,
+    );
+    grid.attach(&bell, 1, 1, 1, 1);
+    let delay = gtk::SpinButton::with_range(0.0, 5000.0, 1.0);
+    delay.set_value(f64::from(c.paste_delay));
+    let delay_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    delay_row.append(&delay);
+    delay_row.append(&gtk::Label::new(Some(&tt(
+        "DLG_TAB_COPYPASTE_PASTEDELAY2",
+        "ミリ秒",
+    ))));
+    grid.attach(
+        &label(tt("DLG_TAB_COPYPASTE_PASTEDELAY", "貼り付けの行間遅延")),
+        0,
+        2,
+        1,
+        1,
+    );
+    grid.attach(&delay_row, 1, 2, 1, 1);
+    let alpha = |v: u8| {
+        let s = gtk::Scale::with_range(gtk::Orientation::Horizontal, 64.0, 255.0, 1.0);
+        s.set_value(f64::from(v));
+        s.set_hexpand(true);
+        s.set_draw_value(true);
+        s
+    };
+    let active = alpha(c.alpha_active);
+    let inactive = alpha(c.alpha_inactive);
+    grid.attach(
+        &label(format!(
+            "{} {}",
+            tt("DLG_TAB_VISUAL_ALPHA", "ウィンドウの不透明度"),
+            tt("DLG_TAB_VISUAL_ALPHA_ACTIVE", "アクティブ時")
+        )),
+        0,
+        3,
+        1,
+        1,
+    );
+    grid.attach(&active, 1, 3, 1, 1);
+    grid.attach(
+        &label(tt("DLG_TAB_VISUAL_ALPHA_INACTIVE", "非アクティブ時")),
+        0,
+        4,
+        1,
+        1,
+    );
+    grid.attach(&inactive, 1, 4, 1, 1);
+    content.append(&grid);
+
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut s = Settings::load();
+        s.other = OtherConf {
+            beep_on_connect: beep.is_active(),
+            clear_on_close: clear.is_active(),
+            confirm_disconnect: confirm.is_active(),
+            bell: bells[(bell.selected() as usize).min(2)].into(),
+            title_change: titles[(title.selected() as usize).min(3)].into(),
+            remote_clear_scrollback: sbuff.is_active(),
+            remote_cursor_style: cursor.is_active(),
+            paste_delay: delay.value() as u32,
+            alpha_active: active.value() as u8,
+            alpha_inactive: inactive.value() as u8,
+        };
+        s.save();
+        applied();
+    });
+    win.present();
+}
+
 /// Tera Term の「その他の設定 > コピーと貼り付け」と、クリッカブル URL。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -366,6 +588,7 @@ pub struct Settings {
     pub broadcast_history: Vec<String>,
     pub look: Look,
     pub ssh: SshConf,
+    pub other: OtherConf,
 }
 
 impl Default for Settings {
@@ -395,6 +618,7 @@ impl Default for Settings {
             broadcast_history: Vec::new(),
             look: Look::default(),
             ssh: SshConf::default(),
+            other: OtherConf::default(),
         }
     }
 }
@@ -1328,6 +1552,36 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(id) = ini.terminal_id {
         s.terminal_id = id.name().into();
+    }
+    let o = &mut s.other;
+    if let Some(v) = ini.paste_delay {
+        o.paste_delay = v.min(5000);
+    }
+    if let Some(v) = ini.remote_clear_scrollback {
+        o.remote_clear_scrollback = v;
+    }
+    if let Some(v) = ini.remote_cursor_style {
+        o.remote_cursor_style = v;
+    }
+    if let Some(v) = &ini.bell {
+        o.bell = v.clone();
+    }
+    if let Some(v) = ini.beep_on_connect {
+        o.beep_on_connect = v;
+    }
+    if let Some(v) = ini.clear_on_close {
+        o.clear_on_close = v;
+    }
+    if let Some(v) = ini.confirm_disconnect {
+        o.confirm_disconnect = v;
+    }
+    if let Some(v) = &ini.accept_title
+        && ["off", "overwrite", "ahead", "last"].contains(&v.as_str())
+    {
+        o.title_change = v.clone();
+    }
+    if let Some(v) = ini.alpha {
+        o.alpha_active = v;
     }
     if let Some(v) = ini.clipboard_write {
         s.copy_paste.remote_clipboard_write = v;

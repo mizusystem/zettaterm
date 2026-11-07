@@ -1034,6 +1034,24 @@ impl Session {
         Ok(handle)
     }
 
+    /// 貼り付けで行ごとに待つミリ秒（PasteDelayPerLine。既定 10）。
+    pub fn set_paste_delay(&self, ms_per_line: u32) {
+        self.inner.set_paste_delay(ms_per_line);
+    }
+
+    /// 相手からのスクロールバッファの消去と、カーソルの形・点滅の変更を受け付けるか（既定はどちらも断る）。
+    pub fn set_remote_control(&self, clear_scrollback: bool, cursor_style: bool) {
+        self.inner.set_remote_control(core::RemoteControl {
+            clear_scrollback,
+            cursor_style,
+        });
+    }
+
+    /// ポートを閉じて開き直す（「コントロール > ポートのリセット」。シリアルだけ）。
+    pub fn reset_port(&self) -> Result<(), MtError> {
+        Ok(self.inner.reset_port()?)
+    }
+
     /// 端末 ID（`ESC [ c` への応答）。
     pub fn set_terminal_id(&self, id: TerminalId) {
         self.inner.set_terminal_id(id.into());
