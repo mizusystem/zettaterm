@@ -1031,6 +1031,12 @@ impl Session {
     }
 
     /// 相手が消えたときに自動でつなぎ直すか（既定は true）。
+    /// 自動再接続を試す間隔（ミリ秒。既定 500）。
+    pub fn set_reconnect_interval_ms(&self, ms: u32) {
+        self.inner
+            .set_reconnect_interval(std::time::Duration::from_millis(u64::from(ms)));
+    }
+
     pub fn set_auto_reconnect(&self, enabled: bool) {
         self.inner.set_auto_reconnect(enabled);
     }

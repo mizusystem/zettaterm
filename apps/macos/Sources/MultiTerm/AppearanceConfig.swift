@@ -13,6 +13,9 @@ struct AppearanceConfig: Equatable {
     var cursorBlink = false
     var fontName = "Menlo"
     var fontSize: Double = 14
+    /// 行間と文字間に足す余白（ポイント。Tera Term の「フォント」の文字間隔）
+    var lineSpacing: Double = 0
+    var charSpacing: Double = 0
     /// 個別に変えた ANSI の 16 色（nil なら配色のまま。Tera Term の ANSIColor）
     var ansi: [UInt32]?
 
@@ -60,6 +63,8 @@ struct AppearanceConfig: Equatable {
         static let font = "appearance.fontName"
         static let size = "appearance.fontSize"
         static let ansi = "appearance.ansi"
+        static let lineSpacing = "appearance.lineSpacing"
+        static let charSpacing = "appearance.charSpacing"
     }
 
     static var saved: AppearanceConfig {
@@ -77,6 +82,8 @@ struct AppearanceConfig: Equatable {
         c.cursorBlink = d.bool(forKey: Key.blink)
         if let f = d.string(forKey: Key.font), NSFont(name: f, size: 12) != nil { c.fontName = f }
         if d.object(forKey: Key.size) != nil { c.fontSize = min(72, max(6, d.double(forKey: Key.size))) }
+        c.lineSpacing = min(20, max(0, d.double(forKey: Key.lineSpacing)))
+        c.charSpacing = min(20, max(0, d.double(forKey: Key.charSpacing)))
         if let a = d.array(forKey: Key.ansi) as? [Int], a.count == 16 {
             c.ansi = a.map { UInt32(truncatingIfNeeded: $0) }
         }
@@ -93,6 +100,8 @@ struct AppearanceConfig: Equatable {
         d.set(cursorBlink, forKey: Key.blink)
         d.set(fontName, forKey: Key.font)
         d.set(fontSize, forKey: Key.size)
+        d.set(lineSpacing, forKey: Key.lineSpacing)
+        d.set(charSpacing, forKey: Key.charSpacing)
         // 配色と同じなら覚えない（配色を変えたときに付いていく）
         if let ansi, ansi != themeAnsi {
             d.set(ansi.map { Int($0) }, forKey: Key.ansi)
@@ -249,6 +258,14 @@ struct FontSettingsView: View {
                 .frame(minWidth: 240)
                 Stepper(value: $config.fontSize, in: 6...72, step: 1) {
                     Text(L("%@ pt", String(Int(config.fontSize))))
+                }
+            }
+            HStack(spacing: 20) {
+                Stepper(value: $config.lineSpacing, in: 0...20, step: 1) {
+                    Text(L("行間 +%@", String(Int(config.lineSpacing))))
+                }
+                Stepper(value: $config.charSpacing, in: 0...20, step: 1) {
+                    Text(L("文字間 +%@", String(Int(config.charSpacing))))
                 }
             }
             Text("ABCabc 0123 日本語 ┌─┐")

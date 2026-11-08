@@ -121,6 +121,9 @@ pub struct Look {
     pub cursor_blink: bool,
     /// Pango のフォント指定（"Monospace 12" など）
     pub font: String,
+    /// 行間と文字間に足す余白（ピクセル。Tera Term の「フォント」の文字間隔）
+    pub line_spacing: u8,
+    pub char_spacing: u8,
     /// 個別に変えた ANSI の 16 色（空なら配色のまま。Tera Term の ANSIColor）
     pub ansi: Vec<u32>,
 }
@@ -136,6 +139,8 @@ impl Default for Look {
             cursor_shape: "block".to_owned(),
             cursor_blink: false,
             font: "Monospace 12".to_owned(),
+            line_spacing: 0,
+            char_spacing: 0,
             ansi: Vec::new(),
         }
     }
@@ -409,6 +414,9 @@ pub struct OtherConf {
     /// ウィンドウの不透明度（0〜255。AlphaBlendActive / AlphaBlend）
     pub alpha_active: u8,
     pub alpha_inactive: u8,
+    /// シリアルが抜けたら自動でつなぎ直す（AutoComPortReconnect）と、その間隔（ミリ秒）
+    pub auto_reconnect: bool,
+    pub reconnect_ms: u32,
 }
 
 impl Default for OtherConf {
@@ -424,6 +432,8 @@ impl Default for OtherConf {
             paste_delay: mt_core::session::DEFAULT_PASTE_DELAY_MS,
             alpha_active: 255,
             alpha_inactive: 255,
+            auto_reconnect: true,
+            reconnect_ms: 500,
         }
     }
 }
@@ -449,6 +459,10 @@ impl OtherConf {
             cursor_style: self.remote_cursor_style,
         });
         session.set_paste_delay(self.paste_delay);
+        session.set_auto_reconnect(self.auto_reconnect);
+        session.set_reconnect_interval(std::time::Duration::from_millis(u64::from(
+            self.reconnect_ms,
+        )));
     }
 }
 
@@ -477,6 +491,14 @@ pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     content.append(&beep);
     content.append(&clear);
     content.append(&confirm);
+    let reconnect = check(l("シリアルを抜いたら自動で再接続する"), c.auto_reconnect);
+    let interval = gtk::SpinButton::with_range(100.0, 60_000.0, 100.0);
+    interval.set_value(f64::from(c.reconnect_ms));
+    let rrow = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    rrow.append(&reconnect);
+    rrow.append(&interval);
+    rrow.append(&gtk::Label::new(Some(&l("ミリ秒ごと"))));
+    content.append(&rrow);
 
     content.append(&heading(tt(
         "DLG_TABSHEET_TITLE_SEQUENCE",
@@ -601,6 +623,8 @@ pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             paste_delay: delay.value() as u32,
             alpha_active: active.value() as u8,
             alpha_inactive: inactive.value() as u8,
+            auto_reconnect: reconnect.is_active(),
+            reconnect_ms: interval.value() as u32,
         };
         s.save();
         applied();
@@ -1580,10 +1604,25 @@ pub fn font_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     let button = gtk::FontDialogButton::new(Some(dialog));
     button.set_font_desc(&gtk::pango::FontDescription::from_string(&current.font));
     content.append(&button);
+    let spin = |v: u8| {
+        let b = gtk::SpinButton::with_range(0.0, 20.0, 1.0);
+        b.set_value(f64::from(v));
+        b
+    };
+    let line = spin(current.line_spacing);
+    let chars = spin(current.char_spacing);
+    let spacing = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    spacing.append(&gtk::Label::new(Some(&l("行間"))));
+    spacing.append(&line);
+    spacing.append(&gtk::Label::new(Some(&l("文字間"))));
+    spacing.append(&chars);
+    content.append(&spacing);
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
         if let Some(desc) = button.font_desc() {
             let mut s = Settings::load();
             s.look.font = desc.to_string();
+            s.look.line_spacing = line.value() as u8;
+            s.look.char_spacing = chars.value() as u8;
             s.save();
             applied();
         }
@@ -1810,6 +1849,12 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(v) = ini.alpha {
         o.alpha_active = v;
+    }
+    if let Some(v) = ini.serial_reconnect {
+        o.auto_reconnect = v;
+    }
+    if let Some(v) = ini.serial_reconnect_ms {
+        o.reconnect_ms = v.clamp(100, 60_000);
     }
     if let Some(v) = ini.clipboard_write {
         s.copy_paste.remote_clipboard_write = v;

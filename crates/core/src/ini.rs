@@ -51,6 +51,9 @@ pub struct IniSettings {
     pub accept_title: Option<String>,
     /// `AlphaBlendActive`（0〜255）
     pub alpha: Option<u8>,
+    /// `AutoComPortReconnect` と `AutoComPortReconnectRetryInterval`（ミリ秒）
+    pub serial_reconnect: Option<bool>,
+    pub serial_reconnect_ms: Option<u32>,
     /// `KanjiIn` / `KanjiOut` / `KatakanaSend`（JIS で送るとき）
     pub jis: Option<crate::charset::JisOptions>,
     // ---- 見た目
@@ -274,6 +277,9 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s.confirm_disconnect = get("confirmdisconnect").and_then(on_off);
     s.accept_title = get("accepttitlechangerequest").map(|v| v.to_ascii_lowercase());
     s.alpha = get("alphablendactive").and_then(|v| v.parse().ok());
+    s.serial_reconnect = get("autocomportreconnect").and_then(on_off);
+    s.serial_reconnect_ms =
+        get("autocomportreconnectretryinterval").and_then(|v| v.trim().parse().ok());
     if ["kanjiin", "kanjiout", "katakanasend"]
         .iter()
         .any(|k| get(k).is_some())

@@ -76,7 +76,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private var colorCache: [UInt32: CGColor] = [:]
 
     /// フォントからセルの寸法を求める。
-    private static func metrics(_ base: NSFont) -> (CTFont, CTFont, CTFont, GridGeometry, CGFloat) {
+    private static func metrics(_ config: AppearanceConfig) -> (CTFont, CTFont, CTFont, GridGeometry, CGFloat) {
+        let base = config.font
         let font = base as CTFont
         let bold = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitBold, .traitBold) ?? font
         let italic = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitItalic, .traitItalic) ?? font
@@ -85,14 +86,17 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         var ch: UniChar = 0x4D // "M"
         CTFontGetGlyphsForCharacters(font, &ch, &glyph, 1)
         CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, &advance, 1)
-        let ascent = ceil(CTFontGetAscent(font))
-        let height = ascent + ceil(CTFontGetDescent(font)) + ceil(CTFontGetLeading(font))
-        let geometry = GridGeometry(cellWidth: Double(ceil(advance.width * 2) / 2), cellHeight: Double(height), padding: 4)
+        // 行間の余白は上下に半分ずつ
+        let extraLine = CGFloat(config.lineSpacing.rounded())
+        let ascent = ceil(CTFontGetAscent(font)) + floor(extraLine / 2)
+        let height = ceil(CTFontGetAscent(font)) + ceil(CTFontGetDescent(font)) + ceil(CTFontGetLeading(font)) + extraLine
+        let geometry = GridGeometry(cellWidth: Double(ceil(advance.width * 2) / 2) + config.charSpacing.rounded(),
+                                    cellHeight: Double(height), padding: 4)
         return (font, bold, italic, geometry, ascent)
     }
 
     init() {
-        (font, boldFont, italicFont, geometry, ascent) = Self.metrics(AppearanceConfig.saved.font)
+        (font, boldFont, italicFont, geometry, ascent) = Self.metrics(AppearanceConfig.saved)
         super.init(frame: .zero)
         registerForDraggedTypes([.fileURL])
 
@@ -129,7 +133,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     /// 「設定 > ウィンドウ / フォント」を変えたとき。フォントが変われば行数・桁数も変わる。
     private func applyAppearance() {
         let config = AppearanceConfig.saved
-        (font, boldFont, italicFont, geometry, ascent) = Self.metrics(config.font)
+        (font, boldFont, italicFont, geometry, ascent) = Self.metrics(config)
         textSession?.setAppearance(appearance: config.appearance)
         urlCache = nil
         gridSize = (0, 0)
@@ -297,6 +301,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         let other = OtherConfig.saved
         opened.setRemoteControl(clearScrollback: other.remoteClearScrollback, cursorStyle: other.remoteCursorStyle)
         opened.setPasteDelay(msPerLine: other.pasteDelay)
+        opened.setAutoReconnect(enabled: other.autoReconnect)
+        opened.setReconnectIntervalMs(ms: UInt32(clamping: other.reconnectMs))
         // 待っている間にウィンドウの大きさが変わっていれば合わせる
         let now = geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
         if now != size {
@@ -443,6 +449,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     func applyOther(_ c: OtherConfig) {
         session?.setRemoteControl(clearScrollback: c.remoteClearScrollback, cursorStyle: c.remoteCursorStyle)
         session?.setPasteDelay(msPerLine: c.pasteDelay)
+        session?.setAutoReconnect(enabled: c.autoReconnect)
+        session?.setReconnectIntervalMs(ms: UInt32(clamping: c.reconnectMs))
         applyAlpha(c)
     }
 

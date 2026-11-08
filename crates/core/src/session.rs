@@ -138,6 +138,8 @@ struct Inner {
     paste_delay_ms: std::sync::atomic::AtomicU32,
     jis: Mutex<charset::JisOptions>,
     bells: Mutex<BellLimiter>,
+    /// 自動再接続を試す間隔（ミリ秒）
+    reconnect_ms: std::sync::atomic::AtomicU64,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
     recurring_gen: std::sync::atomic::AtomicU64,
     /// 受信の写しの送り先（TTL の wait など）と、最近の受信（`tap_with_history` 用）
@@ -333,6 +335,7 @@ impl Session {
             paste_delay_ms: std::sync::atomic::AtomicU32::new(DEFAULT_PASTE_DELAY_MS),
             jis: Mutex::new(charset::JisOptions::default()),
             bells: Mutex::new(BellLimiter::default()),
+            reconnect_ms: std::sync::atomic::AtomicU64::new(RECONNECT_INTERVAL.as_millis() as u64),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
         });
@@ -744,6 +747,12 @@ impl Session {
 
     pub fn set_send_delay(&self, delay: SendDelay) {
         let _ = self.inner.tx.send(WriterMsg::Delay(delay));
+    }
+
+    /// 自動再接続を試す間隔（既定 0.5 秒。100 ミリ秒から 60 秒まで）。
+    pub fn set_reconnect_interval(&self, interval: Duration) {
+        let ms = interval.as_millis().clamp(100, 60_000) as u64;
+        self.inner.reconnect_ms.store(ms, Ordering::SeqCst);
     }
 
     pub fn set_auto_reconnect(&self, enabled: bool) {
@@ -1211,7 +1220,9 @@ impl Inner {
         }
         self.set_state(SessionState::Reconnecting);
         while !self.closing.load(Ordering::SeqCst) {
-            thread::sleep(RECONNECT_INTERVAL);
+            thread::sleep(Duration::from_millis(
+                self.reconnect_ms.load(Ordering::SeqCst),
+            ));
             if self.closing.load(Ordering::SeqCst)
                 || (!forced && !self.auto_reconnect.load(Ordering::SeqCst))
             {

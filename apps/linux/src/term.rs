@@ -68,6 +68,8 @@ struct State {
     cell_w: f64,
     cell_h: f64,
     ascent: f64,
+    /// 行間の余白の上半分（文字をセルの中で下げる量）
+    text_dy: f64,
     selection: Option<Selection>,
     unit: Unit,
     /// ダブル・トリプルクリックで最初に選んだ範囲
@@ -178,6 +180,7 @@ impl TermView {
             cell_w: 8.0,
             cell_h: 16.0,
             ascent: 12.0,
+            text_dy: 0.0,
             selection: None,
             unit: Unit::Cell,
             anchor: None,
@@ -268,6 +271,11 @@ impl TermView {
 
     /// 文字の幅と高さを測る。
     fn measure(&self) {
+        let look = Settings::load().look;
+        let (line, chars) = (
+            f64::from(look.line_spacing.min(20)),
+            f64::from(look.char_spacing.min(20)),
+        );
         let ctx = self.area.pango_context();
         let mut st = self.state.borrow_mut();
         let metrics = ctx.metrics(Some(&st.font), None);
@@ -275,11 +283,14 @@ impl TermView {
         layout.set_font_description(Some(&st.font));
         layout.set_text("MMMMMMMMMM");
         let (w, _) = layout.pixel_size();
-        st.cell_w = (w as f64 / 10.0).max(1.0);
-        st.ascent = metrics.ascent() as f64 / pango::SCALE as f64;
+        st.cell_w = (w as f64 / 10.0).max(1.0) + chars;
+        // 行間の余白は上下に半分ずつ
+        st.text_dy = (line / 2.0).floor();
+        st.ascent = metrics.ascent() as f64 / pango::SCALE as f64 + st.text_dy;
         st.cell_h = ((metrics.ascent() + metrics.descent()) as f64 / pango::SCALE as f64)
             .ceil()
-            .max(1.0);
+            .max(1.0)
+            + line;
     }
 
     /// 今の大きさで入る列数・行数。
@@ -1207,7 +1218,7 @@ impl TermView {
                         ((cw - tw as f64) / 2.0)
                             .max(0.0)
                             .min(if width == 2 { cw } else { 0.0 });
-                    cr.move_to(x + dx, y);
+                    cr.move_to(x + dx, y + st.text_dy);
                     pangocairo::functions::show_layout(cr, &layout);
                 }
                 if marks.urls.iter().any(|u| u.contains(line, col as u16)) {

@@ -97,5 +97,9 @@
   "接続断の前に確認する": "Confirm before disconnecting",
   "使わない": "None",
   "Telnet・TCP・内蔵 SSH の接続に使います（ssh_config の ProxyCommand / ProxyJump があればそちら）。パスワードは保存せず、アプリを終了すると消えます。": "Used for Telnet, TCP and built-in SSH connections (ProxyCommand / ProxyJump in ssh_config take precedence). The password is not saved and is forgotten when the app quits.",
-  "既定のアプリ": "Default app"
+  "既定のアプリ": "Default app",
+  "行間": "Line spacing",
+  "文字間": "Character spacing",
+  "シリアルを抜いたら自動で再接続する": "Reconnect automatically when the serial device is unplugged",
+  "ミリ秒ごと": "ms interval"
 }

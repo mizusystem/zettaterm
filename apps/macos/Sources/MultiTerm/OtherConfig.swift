@@ -25,6 +25,9 @@ struct OtherConfig: Equatable {
     /// ウィンドウの不透明度（0〜255。AlphaBlendActive / AlphaBlend）
     var alphaActive: Int = 255
     var alphaInactive: Int = 255
+    /// シリアルが抜けたら自動でつなぎ直す（AutoComPortReconnect）と、その間隔（ミリ秒）
+    var autoReconnect = true
+    var reconnectMs: Int = 500
 
     private static let prefix = "other."
 
@@ -37,6 +40,8 @@ struct OtherConfig: Equatable {
         bool("confirmDisconnect", &c.confirmDisconnect)
         bool("remoteClearScrollback", &c.remoteClearScrollback)
         bool("remoteCursorStyle", &c.remoteCursorStyle)
+        bool("autoReconnect", &c.autoReconnect)
+        if d.object(forKey: prefix + "reconnectMs") != nil { c.reconnectMs = d.integer(forKey: prefix + "reconnectMs") }
         if let b = d.string(forKey: prefix + "bell").flatMap(Bell.init) { c.bell = b }
         if let t = d.string(forKey: prefix + "titleChange").flatMap(TitleChange.init) { c.titleChange = t }
         if d.object(forKey: prefix + "pasteDelay") != nil { c.pasteDelay = UInt32(clamping: d.integer(forKey: prefix + "pasteDelay")) }
@@ -58,6 +63,8 @@ struct OtherConfig: Equatable {
         d.set(Int(pasteDelay), forKey: p + "pasteDelay")
         d.set(alphaActive, forKey: p + "alphaActive")
         d.set(alphaInactive, forKey: p + "alphaInactive")
+        d.set(autoReconnect, forKey: p + "autoReconnect")
+        d.set(reconnectMs, forKey: p + "reconnectMs")
     }
 
     /// 開いている接続と窓にすぐ効かせる。
@@ -96,6 +103,12 @@ struct OtherSettingsView: View {
                     Toggle(L("接続時・切断時にビープ音を鳴らす"), isOn: $c.beepOnConnect)
                     Toggle(L("切断したら画面をクリアする"), isOn: $c.clearOnClose)
                     Toggle(L("接続断の前に確認する"), isOn: $c.confirmDisconnect)
+                    HStack {
+                        Toggle(L("シリアルを抜いたら自動で再接続する"), isOn: $c.autoReconnect)
+                        TextField("", value: $c.reconnectMs, format: .number.grouping(.never)).frame(width: 60)
+                            .disabled(!c.autoReconnect)
+                        Text(L("ミリ秒ごと"))
+                    }
                 }
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -160,6 +173,7 @@ struct OtherSettingsView: View {
                     .keyboardShortcut(.cancelAction)
                 Button(TT.text("BTN_OK", "OK")) {
                     c.pasteDelay = min(c.pasteDelay, 5000)
+                    c.reconnectMs = max(100, min(c.reconnectMs, 60_000))
                     c.save()
                     c.applyEverywhere()
                     dismiss()
