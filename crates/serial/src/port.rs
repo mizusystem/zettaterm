@@ -88,21 +88,38 @@ impl SerialTransport {
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotConnected))
     }
 
-    /// 再接続先のパス。USB シリアル番号があれば同じ番号のデバイスを、なければ同じパスを探す。
+    /// 再接続先のパス。
     fn find_again(&self) -> Option<String> {
-        let devices = list_devices();
-        if let Some(d) = &self.device
-            && d.serial_number.is_some()
-        {
-            return devices
-                .into_iter()
-                .find(|x| x.serial_number == d.serial_number && x.vid == d.vid && x.pid == d.pid)
-                .map(|x| x.path);
-        }
-        devices
+        find_again_in(self.device.as_ref(), &self.path, list_devices())
+    }
+}
+
+/// 再接続先を `devices` から選ぶ。USB シリアル番号があれば同じ番号のデバイス。無ければ同じパス、
+/// それも無ければ同じ VID・PID のデバイスがちょうど 1 つのときにそれ（CH340 などはシリアル番号が無く、
+/// Linux では挿し直すと ttyUSB0 が ttyUSB1 になることがある）。
+fn find_again_in(
+    device: Option<&SerialDevice>,
+    path: &str,
+    devices: Vec<SerialDevice>,
+) -> Option<String> {
+    if let Some(d) = device
+        && d.serial_number.is_some()
+    {
+        return devices
             .into_iter()
-            .find(|x| x.path == self.path)
-            .map(|x| x.path)
+            .find(|x| x.serial_number == d.serial_number && x.vid == d.vid && x.pid == d.pid)
+            .map(|x| x.path);
+    }
+    if devices.iter().any(|x| x.path == path) {
+        return Some(path.to_owned());
+    }
+    let d = device.filter(|d| d.vid.is_some())?;
+    let mut same = devices
+        .into_iter()
+        .filter(|x| x.vid == d.vid && x.pid == d.pid && x.serial_number.is_none());
+    match (same.next(), same.next()) {
+        (Some(x), None) => Some(x.path),
+        _ => None,
     }
 }
 
@@ -340,11 +357,13 @@ impl Transport for SerialTransport {
         if self.closed.load(Ordering::SeqCst) {
             return Err(io::Error::from(io::ErrorKind::NotConnected));
         }
+        // 古いハンドルを先に閉じる。抜かれたデバイスのハンドルを持ったままだと、Linux は
+        // ttyUSB0 を空けられず、挿し直したものが ttyUSB1 になる
+        self.port = None;
+        self.fd = None;
         let path = self
             .find_again()
             .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound))?;
-        // 古いハンドルを先に閉じる（排他オープンのため）
-        self.port = None;
         self.restart.store(false, Ordering::SeqCst);
         let (mut port, fd, emulation) = open_port(&path, &self.settings)?;
         self.fd = fd;
@@ -671,5 +690,50 @@ mod emulation_tests {
         };
         assert_eq!(mark5.send(&[0x01, 0xff]), [0x21, 0x3f]);
         assert_eq!(Emulation::NONE.send(&[0xab]), [0xab]);
+    }
+}
+
+#[cfg(test)]
+mod find_again_tests {
+    use super::*;
+
+    fn dev(path: &str, vid: Option<u16>, serial: Option<&str>) -> SerialDevice {
+        SerialDevice {
+            path: path.into(),
+            product: None,
+            manufacturer: None,
+            serial_number: serial.map(Into::into),
+            vid,
+            pid: vid.map(|_| 0x7523),
+        }
+    }
+
+    #[test]
+    fn same_path_then_unique_vid_pid() {
+        let ch340 = dev("/dev/ttyUSB0", Some(0x1a86), None);
+        // 同じパスで戻った
+        assert_eq!(
+            find_again_in(Some(&ch340), "/dev/ttyUSB0", vec![ch340.clone()]).as_deref(),
+            Some("/dev/ttyUSB0")
+        );
+        // 別の名前で戻った（同じ VID・PID が 1 つだけ）
+        let moved = dev("/dev/ttyUSB1", Some(0x1a86), None);
+        assert_eq!(
+            find_again_in(Some(&ch340), "/dev/ttyUSB0", vec![moved.clone()]).as_deref(),
+            Some("/dev/ttyUSB1")
+        );
+        // 同じ VID・PID が 2 つあれば決められない
+        let other = dev("/dev/ttyUSB2", Some(0x1a86), None);
+        assert_eq!(
+            find_again_in(Some(&ch340), "/dev/ttyUSB0", vec![moved, other]),
+            None
+        );
+        // シリアル番号があれば番号で探す
+        let ftdi = dev("/dev/ttyUSB0", Some(0x0403), Some("A1"));
+        let back = dev("/dev/ttyUSB3", Some(0x0403), Some("A1"));
+        assert_eq!(
+            find_again_in(Some(&ftdi), "/dev/ttyUSB0", vec![back]).as_deref(),
+            Some("/dev/ttyUSB3")
+        );
     }
 }
