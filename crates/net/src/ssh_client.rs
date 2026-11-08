@@ -50,6 +50,10 @@ pub struct SshOptions {
     /// 無通信のときに送るキープアライブの間隔（秒。TTSSH の HeartBeat）。ssh_config の
     /// ServerAliveInterval があればそちらが優先。None か 0 なら送らない
     pub keepalive_secs: Option<u64>,
+    /// ユーザー名をどこにも書いていないときに使う名前（TTSSH の「SSH 認証」の既定のユーザー名）
+    pub default_user: Option<String>,
+    /// 最初に試す秘密鍵（TTSSH の「SSH 認証」の秘密鍵ファイル）。ssh_config の IdentityFile より先
+    pub default_identity: Option<PathBuf>,
 }
 
 enum Command {
@@ -84,6 +88,14 @@ impl SshTransport {
         )?;
         if let Some(f) = options.forward_agent {
             params.forward_agent = f;
+        }
+        if params.user.is_none() {
+            params.user = options.default_user.clone().filter(|u| !u.is_empty());
+        }
+        if let Some(key) = options.default_identity.as_ref().filter(|k| k.exists())
+            && !params.identity_files.contains(key)
+        {
+            params.identity_files.insert(0, key.clone());
         }
         if params.server_alive_interval.is_none() {
             params.server_alive_interval = options

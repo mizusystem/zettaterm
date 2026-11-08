@@ -25,10 +25,21 @@ enum SshSettings {
         set { UserDefaults.standard.set(max(0, newValue), forKey: keepaliveKey) }
     }
 
+    /// 「SSH 認証」の既定：ユーザー名をどこにも書いていないときの名前と、最初に試す秘密鍵ファイル
+    static var defaultUser: String {
+        get { UserDefaults.standard.string(forKey: "ssh.defaultUser") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "ssh.defaultUser") }
+    }
+    static var keyFile: String {
+        get { UserDefaults.standard.string(forKey: "ssh.keyFile") ?? "" }
+        set { UserDefaults.standard.set(newValue, forKey: "ssh.keyFile") }
+    }
+
     /// コアに渡す（起動時と、設定を変えたとき）。読めなかった行を返す。
     @discardableResult
     static func apply() -> [String] {
-        setSshDefaults(forwards: forwards, keepaliveSecs: UInt32(clamping: keepalive), forwardAgent: forwardAgent)
+        setSshAuthDefaults(user: defaultUser, keyFile: (keyFile as NSString).expandingTildeInPath)
+        return setSshDefaults(forwards: forwards, keepaliveSecs: UInt32(clamping: keepalive), forwardAgent: forwardAgent)
     }
 }
 
@@ -39,6 +50,8 @@ struct SshSettingsView: View {
     @State private var forwards = SshSettings.forwards.joined(separator: "\n")
     @State private var bad: [String] = []
     @State private var agent = SshSettings.forwardAgent
+    @State private var defaultUser = SshSettings.defaultUser
+    @State private var keyFile = SshSettings.keyFile
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -53,6 +66,26 @@ struct SshSettingsView: View {
 
             Toggle(TT.text("DLG_SSHSETUP_FORWARDAGENT", "エージェント転送を有効にする", section: "TTSSH"), isOn: $agent)
                 .help(L("接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。"))
+
+            // TTSSH の「SSH 認証」の既定
+            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                GridRow {
+                    Text(TT.text("DLG_AUTHSETUP_USERNAME", "ユーザ名", section: "TTSSH"))
+                    TextField(L("（ssh_config かこの機械のユーザー名）"), text: $defaultUser)
+                }
+                GridRow {
+                    Text(L("秘密鍵ファイル"))
+                    HStack {
+                        TextField("~/.ssh/id_ed25519", text: $keyFile)
+                        Button("…") {
+                            let panel = NSOpenPanel()
+                            panel.showsHiddenFiles = true
+                            panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh")
+                            if panel.runModal() == .OK, let url = panel.url { keyFile = url.path }
+                        }
+                    }
+                }
+            }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(TT.text("DLG_FWDSETUP_LIST", "ポート転送", section: "TTSSH"))
@@ -96,6 +129,8 @@ struct SshSettingsView: View {
         SshSettings.forwards = lines
         SshSettings.keepalive = Int(keepalive) ?? 60
         SshSettings.forwardAgent = agent
+        SshSettings.defaultUser = defaultUser.trimmingCharacters(in: .whitespaces)
+        SshSettings.keyFile = keyFile.trimmingCharacters(in: .whitespaces)
         SshSettings.apply()
         dismiss()
     }

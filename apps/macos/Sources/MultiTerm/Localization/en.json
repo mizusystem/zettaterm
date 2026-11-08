@@ -141,5 +141,7 @@
   "OS に合わせる": "Follow the system",
   "（起動し直すと変わります）": "(takes effect after restarting)",
   "Tera Term の形で設定を保存します。": "Save the settings in the Tera Term format.",
-  "%@ に保存しました": "Saved to %@"
+  "%@ に保存しました": "Saved to %@",
+  "（ssh_config かこの機械のユーザー名）": "(from ssh_config or this computer's user name)",
+  "秘密鍵ファイル": "Private key file"
 }

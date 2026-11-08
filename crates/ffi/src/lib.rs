@@ -524,6 +524,26 @@ pub fn set_ssh_defaults(
     bad
 }
 
+static SSH_AUTH_DEFAULTS: std::sync::Mutex<(Option<String>, Option<String>)> =
+    std::sync::Mutex::new((None, None));
+
+fn auth_defaults() -> (Option<String>, Option<String>) {
+    SSH_AUTH_DEFAULTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+}
+
+/// 内蔵 SSH の「SSH 認証」の既定：ユーザー名をどこにも書いていないときの名前と、最初に試す秘密鍵ファイル（空なら使わない）。
+#[uniffi::export]
+pub fn set_ssh_auth_defaults(user: String, key_file: String) {
+    let keep = |s: String| {
+        let s = s.trim().to_owned();
+        (!s.is_empty()).then_some(s)
+    };
+    *SSH_AUTH_DEFAULTS.lock().unwrap_or_else(|e| e.into_inner()) = (keep(user), keep(key_file));
+}
+
 /// プロキシの種類（TTProxy）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ProxyKind {
@@ -842,6 +862,8 @@ impl Session {
                     forwards: defaults.0,
                     keepalive_secs: Some(defaults.1),
                     forward_agent: defaults.2.then_some(true),
+                    default_user: auth_defaults().0,
+                    default_identity: auth_defaults().1.map(std::path::PathBuf::from),
                 };
                 let prompter = Arc::new(auth::PrompterAdapter(prompter));
                 let transport = SshTransport::connect(&options, size, prompter)?;

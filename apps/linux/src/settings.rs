@@ -95,6 +95,9 @@ pub struct SshConf {
     pub forwards: Vec<String>,
     /// エージェント転送（オフでも ssh_config の ForwardAgent yes は効く）
     pub forward_agent: bool,
+    /// 「SSH 認証」の既定：ユーザー名をどこにも書いていないときの名前と、最初に試す秘密鍵ファイル
+    pub default_user: String,
+    pub key_file: String,
 }
 
 impl Default for SshConf {
@@ -103,6 +106,8 @@ impl Default for SshConf {
             keepalive: 60,
             forwards: Vec::new(),
             forward_agent: false,
+            default_user: String::new(),
+            key_file: String::new(),
         }
     }
 }
@@ -1859,6 +1864,29 @@ pub fn ssh_dialog(parent: &gtk::Window) {
         "接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。",
     )));
     content.append(&agent);
+    // 「SSH 認証」の既定
+    let user = gtk::Entry::new();
+    user.set_placeholder_text(Some(&l("（ssh_config かこの機械のユーザー名）")));
+    user.set_text(&current.default_user);
+    let key = gtk::Entry::new();
+    key.set_placeholder_text(Some("~/.ssh/id_ed25519"));
+    key.set_text(&current.key_file);
+    key.set_hexpand(true);
+    let auth = gtk::Grid::builder()
+        .row_spacing(6)
+        .column_spacing(10)
+        .build();
+    auth.attach(
+        &label(crate::strings::ssh("DLG_AUTHSETUP_USERNAME", "ユーザ名")),
+        0,
+        0,
+        1,
+        1,
+    );
+    auth.attach(&user, 1, 0, 1, 1);
+    auth.attach(&label(l("秘密鍵ファイル")), 0, 1, 1, 1);
+    auth.attach(&key, 1, 1, 1, 1);
+    content.append(&auth);
 
     let caption = gtk::Label::new(Some(&crate::strings::ssh(
         "DLG_FWDSETUP_LIST",
@@ -1918,6 +1946,13 @@ pub fn ssh_dialog(parent: &gtk::Window) {
         s.ssh.keepalive = keepalive.value() as u64;
         s.ssh.forwards = lines;
         s.ssh.forward_agent = agent.is_active();
+        s.ssh.default_user = user.text().trim().to_owned();
+        let k = key.text().trim().to_owned();
+        // ~ を展開して覚える
+        s.ssh.key_file = match k.strip_prefix("~/") {
+            Some(rest) => gtk::glib::home_dir().join(rest).display().to_string(),
+            None => k,
+        };
         s.save();
         w.close();
     });

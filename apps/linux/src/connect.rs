@@ -89,6 +89,9 @@ pub fn open_transport(
                 forwards: mt_net::forward::parse_list(&ssh.forwards).0,
                 keepalive_secs: Some(ssh.keepalive),
                 forward_agent: ssh.forward_agent.then_some(true),
+                default_user: (!ssh.default_user.is_empty()).then(|| ssh.default_user.clone()),
+                default_identity: (!ssh.key_file.is_empty())
+                    .then(|| std::path::PathBuf::from(&ssh.key_file)),
             };
             let transport = SshTransport::connect(&options, size, prompter)?;
             *files = transport.files();
