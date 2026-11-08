@@ -130,6 +130,13 @@ enum SettingsImport {
         if !ini.sshForwards.isEmpty { SshSettings.forwards = ini.sshForwards }
         SshSettings.apply()
 
+        // 読み込んだ端末の設定を、開いている接続にも移す（Tera Term もその場で使う）
+        let wide = d.bool(forKey: "terminal.ambiguousWide")
+        for c in SessionRegistry.shared.controllers {
+            c.applyTerminal(TerminalConfig.saved(TerminalConfig.scope(for: c.target)))
+            c.view.session?.setAmbiguousWide(wide: wide)
+        }
+
         // 接続先の履歴
         let targets = ini.hosts.compactMap(target)
         for t in targets.reversed() { HostStore.shared.add(t) }

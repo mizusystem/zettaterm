@@ -420,6 +420,7 @@ impl Tabs {
                                 let n = settings::apply_ini(&ini);
                                 crate::term::reload_conf();
                                 apply_look_everywhere();
+                                apply_terminal_everywhere();
                                 lf(
                                     "{} を読み込みました（接続先 {} 件）。",
                                     &[&path.display(), &n],
@@ -2304,6 +2305,7 @@ impl TermWindow {
                         settings::apply_ini(&ini);
                         crate::term::reload_conf();
                         apply_look_everywhere();
+                        apply_terminal_everywhere();
                         true
                     }
                     Err(_) => false,
@@ -2477,6 +2479,27 @@ fn apply_other_everywhere() {
                 other.apply(&s);
             }
             p.update_title();
+        }
+    });
+}
+
+/// 保存した「設定 > 端末」を、開いている接続にも移す（「設定の読み込み」と `restoresetup` の後。
+/// Tera Term も読み込んだ設定をその場で使う）。
+fn apply_terminal_everywhere() {
+    let s = Settings::load();
+    let id = mt_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default();
+    let answerback = (!s.answerback.is_empty()).then(|| s.answerback.clone());
+    ALL.with(|all| {
+        for p in all.borrow().iter().filter_map(|w| w.upgrade()) {
+            let Some(session) = p.view.session() else {
+                continue;
+            };
+            let conf = s.terminal_for(p.profile.borrow().as_ref());
+            session.set_terminal_settings(conf.core());
+            session.set_jis_options(conf.jis());
+            session.set_answerback(answerback.clone());
+            session.set_terminal_id(id);
+            session.set_ambiguous_wide(s.ambiguous_wide);
         }
     });
 }
