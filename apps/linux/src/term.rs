@@ -505,6 +505,68 @@ impl TermView {
         self.area.queue_draw();
     }
 
+    /// 印刷するもの：選んでいればその文字、無ければ今見えている画面の文字。
+    fn printable_text(&self) -> Option<String> {
+        if let Some(t) = self.selected_text() {
+            return Some(t);
+        }
+        let s = self.text_session()?;
+        let st = self.state.borrow();
+        let top = -(st.screen.scroll_offset as i32);
+        let range = Selection {
+            start: Point::new(top, 0),
+            end: Point::new(top + st.screen.rows as i32 - 1, st.screen.cols),
+            block: false,
+        };
+        drop(st);
+        let text = s.selection_text(&range);
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// 「ファイル > 印刷」：等幅の文字で印刷する（印刷のダイアログから PDF にもできる）。
+    pub fn print(&self, parent: &gtk::Window) {
+        let Some(text) = self.printable_text() else {
+            return;
+        };
+        let lines: Rc<Vec<String>> = Rc::new(text.lines().map(str::to_owned).collect());
+        let per_page = Rc::new(std::cell::Cell::new(60usize));
+        let font = pango::FontDescription::from_string(&format!(
+            "{} 9",
+            pango::FontDescription::from_string(&Settings::load().look.font)
+                .family()
+                .map(|f| f.to_string())
+                .unwrap_or_else(|| "Monospace".into())
+        ));
+        let op = gtk::PrintOperation::new();
+        {
+            let (lines, per_page, font) = (Rc::clone(&lines), Rc::clone(&per_page), font.clone());
+            op.connect_begin_print(move |op, ctx| {
+                let layout = ctx.create_pango_layout();
+                layout.set_font_description(Some(&font));
+                layout.set_text("M");
+                let (_, h) = layout.pixel_size();
+                let n = ((ctx.height() / f64::from(h.max(1))).floor() as usize).max(1);
+                per_page.set(n);
+                op.set_n_pages(lines.len().div_ceil(n).max(1) as i32);
+            });
+        }
+        op.connect_draw_page(move |_, ctx, page| {
+            let n = per_page.get();
+            let from = (page as usize) * n;
+            let chunk = lines
+                .get(from..(from + n).min(lines.len()))
+                .unwrap_or_default()
+                .join("\n");
+            let layout = ctx.create_pango_layout();
+            layout.set_font_description(Some(&font));
+            layout.set_text(&chunk);
+            let cr = ctx.cairo_context();
+            cr.set_source_rgb(0.0, 0.0, 0.0);
+            pangocairo::functions::show_layout(&cr, &layout);
+        });
+        let _ = op.run(gtk::PrintOperationAction::PrintDialog, Some(parent));
+    }
+
     /// 「表示画面を選択」
     pub fn select_screen(&self) {
         let mut st = self.state.borrow_mut();

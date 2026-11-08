@@ -428,6 +428,10 @@ impl Tabs {
             Box::new(|t, _| settings::keygen_dialog(&t.win.clone().upcast())),
         );
         add("log-view", Box::new(|_, me| me.view_log()));
+        add(
+            "print",
+            Box::new(|t, me| me.view.print(&t.win.clone().upcast())),
+        );
         add("log-dialog", Box::new(|_, me| me.log_dialog()));
         add("recv-file", Box::new(|_, me| me.begin_raw_receive()));
         add(

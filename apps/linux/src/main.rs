@@ -82,6 +82,7 @@ fn menu() -> gio::Menu {
         Some(&tt("MENU_FILE_DISCONNECT", "接続断")),
         Some("win.disconnect"),
     );
+    file.append(Some(&tt("MENU_FILE_PRINT", "印刷...")), Some("win.print"));
     file.append(Some(&l("閉じる")), Some("win.close"));
     // 終了はこのウィンドウ、全終了はすべてのウィンドウ（Tera Term と同じ）
     file.append(
@@ -427,6 +428,7 @@ fn main() -> glib::ExitCode {
         app.set_accels_for_action("win.paste-cr", &["<Control><Shift>r"]);
         app.set_accels_for_action("win.select-all", &["<Control><Shift>a"]);
         app.set_accels_for_action("win.show-menubar", &["<Control><Shift>b"]);
+        app.set_accels_for_action("win.print", &["<Control><Shift>p"]);
     });
     app.connect_activate(move |app| {
         let tabs = Tabs::new(app);

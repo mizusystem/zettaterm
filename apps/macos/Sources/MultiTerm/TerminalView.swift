@@ -716,6 +716,38 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         needsDisplay = true
     }
 
+    /// 印刷するもの：選んでいればその文字、無ければ今見えている画面の文字。
+    var printableText: String? {
+        if let text = selectedText { return text }
+        guard let session = textSession else { return nil }
+        let top = Int32(-screen.scrollOffset)
+        let range = TermRange(start: TermPoint(line: top, col: 0),
+                              end: TermPoint(line: top + Int32(screen.rows) - 1, col: gridSize.cols), block: false)
+        let text = session.selectionText(range: range)
+        return text.isEmpty ? nil : text
+    }
+
+    /// 「ファイル > 印刷」：等幅の文字で印刷する（印刷のダイアログから PDF にもできる）。
+    func printText() {
+        guard let text = printableText else { return }
+        let info = NSPrintInfo.shared
+        let width = info.paperSize.width - info.leftMargin - info.rightMargin
+        let page = NSTextView(frame: NSRect(x: 0, y: 0, width: width, height: 100))
+        page.string = text
+        page.font = NSFont(name: AppearanceConfig.saved.fontName, size: 10) ?? .monospacedSystemFont(ofSize: 10, weight: .regular)
+        page.textColor = .black
+        page.backgroundColor = .white
+        page.isVerticallyResizable = true
+        page.sizeToFit()
+        let op = NSPrintOperation(view: page, printInfo: info)
+        op.jobTitle = window?.title ?? "Multi-Term"
+        if let window {
+            op.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+        } else {
+            op.run()
+        }
+    }
+
     /// 「表示画面を選択」
     @objc func selectScreen(_ sender: Any?) {
         let top = Int32(-screen.scrollOffset)

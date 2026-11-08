@@ -241,6 +241,9 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_FILE_DISCONNECT", "接続断")) { controller?.requestDisconnect() }
                 .keyboardShortcut("i")
                 .disabled(controller == nil || controller?.status == .disconnected)
+            Button(TT.text("MENU_FILE_PRINT", "印刷...")) { controller?.view.printText() }
+                .keyboardShortcut("p")
+                .disabled(controller?.view.textSession == nil)
             // すべてのウィンドウを閉じて終わる（「Multi-Term を終了」と同じ）
             Button(TT.text("MENU_FILE_EXITALL", "全終了").replacingOccurrences(of: "Tera Term", with: "Multi-Term")) {
                 NSApp.terminate(nil)
