@@ -96,6 +96,7 @@ messagebox inputstr 'filenamebox'
 - [ ] マクロの実行中、右上の表示に今の行が出て、中断で止まり、続行で続く
 - [ ] 「ファイル > 印刷」（Mac は Cmd+P、GTK は Ctrl+Shift+P）：選んだ文字か画面が印刷のダイアログに出て、PDF に保存できる
 - [ ] 「設定 > ウィンドウ」：太字・URL を別の色で出す、スクロールバッファの行数（0 でスクロールバックが無くなる）、タイトル（ウィンドウのタイトルの前に付く）
+- [ ] 「設定 > TCP/IP」：ホストリストの上へ・下へ・削除が「新しい接続」の候補に反映される。端末タイプ（例 vt100）が相手の `echo $TERM` に出る
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

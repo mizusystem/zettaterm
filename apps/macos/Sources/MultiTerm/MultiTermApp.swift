@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 内蔵 SSH のキープアライブとポート転送
         SshSettings.apply()
         ProxyConfig.apply()
+        TcpipSettings.apply()
         setTelnetKeepalive(secs: UInt32(clamping: UserDefaults.standard.integer(forKey: "telnet.keepalive")))
         // ttermpro と同じ起動引数（open MultiTerm.app --args host /ssh /M=x.ttl など）
         SettingsImport.readLaunchArguments()
@@ -114,6 +115,7 @@ struct TerminalWindow: View {
                 case .recurring: RecurringView(controller: controller)
                 case .otherSettings: OtherSettingsView()
                 case .proxySettings: ProxySettingsView()
+                case .tcpipSettings: TcpipSettingsView()
                 case .keyboardSettings: KeyboardSettingsView()
                 }
             }
@@ -303,6 +305,8 @@ struct TerminalCommands: Commands {
             }
             .disabled(controller == nil)
             Button(TT.text("DLG_FOPT_TITLE", "ログ") + "...") { controller?.sheet = .logSettings }
+                .disabled(controller == nil)
+            Button(TT.text("MENU_SETUP_TCPIP", "TCP/IP...")) { controller?.sheet = .tcpipSettings }
                 .disabled(controller == nil)
             Button(TT.text("MENU_SETUP_ADDITION", "その他の設定...")) { controller?.sheet = .otherSettings }
                 .disabled(controller == nil)

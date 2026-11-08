@@ -74,7 +74,7 @@ impl Negotiation {
             local: [false; 256],
             remote: [false; 256],
             size,
-            term_type: TERM_TYPE.to_owned(),
+            term_type: crate::term_type(TERM_TYPE),
         }
     }
 

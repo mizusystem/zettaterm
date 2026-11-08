@@ -24,6 +24,24 @@ pub use ssh_client::{SshOptions, SshTransport};
 pub use telnet::{IpVersion, TELNET_PORT, TERM_TYPE, TcpTransport};
 pub use unix::UnixSocketTransport;
 
+static TERM_TYPE_OVERRIDE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 相手に名乗る端末の種類（Tera Term の TermType）。None なら既定（Telnet は xterm、SSH とローカルは xterm-256color）。
+/// これからの接続に効く。
+pub fn set_term_type(term: Option<String>) {
+    *TERM_TYPE_OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) =
+        term.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty());
+}
+
+/// 名乗る端末の種類（設定が無ければ `default`）。
+pub(crate) fn term_type(default: &str) -> String {
+    TERM_TYPE_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_else(|| default.to_owned())
+}
+
 /// この機械の IP アドレス（TTL の getipv4addr / getipv6addr）。動いていないインターフェースも含む。
 pub fn local_addresses() -> std::io::Result<Vec<std::net::IpAddr>> {
     let mut out: Vec<std::net::IpAddr> = if_addrs::get_if_addrs()?

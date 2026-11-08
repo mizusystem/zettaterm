@@ -32,6 +32,17 @@ final class HostStore: ObservableObject {
         recent = history?.entries().map(ConnectTarget.init) ?? recent
     }
 
+    /// 「設定 > TCP/IP」のホストリスト：削除と並べ替え。
+    func remove(at index: Int) {
+        try? history?.remove(index: UInt32(index))
+        recent = history?.entries().map(ConnectTarget.init) ?? recent
+    }
+
+    func move(from: Int, to: Int) {
+        try? history?.moveItem(from: UInt32(from), to: UInt32(to))
+        recent = history?.entries().map(ConnectTarget.init) ?? recent
+    }
+
     /// ホスト欄の候補。履歴のホスト（新しい順）のあとに ssh_config の Host 名。
     var hostSuggestions: [String] {
         var seen = Set<String>()

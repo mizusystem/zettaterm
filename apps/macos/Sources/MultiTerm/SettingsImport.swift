@@ -85,6 +85,8 @@ enum SettingsImport {
 
         if let v = ini.ambiguousWide { d.set(v, forKey: "terminal.ambiguousWide") }
 
+        if let v = ini.termType { d.set(v, forKey: "tcpip.termType"); TcpipSettings.apply() }
+
         // その他の設定
         var other = OtherConfig.saved
         if let v = ini.pasteDelay { other.pasteDelay = min(v, 5000) }

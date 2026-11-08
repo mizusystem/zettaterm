@@ -370,6 +370,12 @@ pub fn broadcast_realtime_diff(old: String, new: String) -> RealtimeDiff {
     }
 }
 
+/// 相手に名乗る端末の種類（Tera Term の TermType）。空なら既定（Telnet は xterm、SSH は xterm-256color）。
+#[uniffi::export]
+pub fn set_term_type(term: String) {
+    mt_net::set_term_type(Some(term));
+}
+
 /// 接続ダイアログのホスト名が UNIX ドメインソケットのパスなら、そのパス（`/` で始まるか `unix:` 付き）。
 #[uniffi::export]
 pub fn socket_path(host: String) -> Option<String> {

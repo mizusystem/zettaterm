@@ -284,7 +284,7 @@ async fn open_shell(
     channel
         .request_pty(
             true,
-            TERM,
+            &crate::term_type(TERM),
             u32::from(size.cols),
             u32::from(size.rows),
             0,

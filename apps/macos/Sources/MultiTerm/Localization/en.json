@@ -136,5 +136,6 @@
   "ミリ秒ごと": "ms interval",
   "曖昧な幅の文字（○ ※ ■ など）を 2 セルにする": "Show ambiguous-width characters (○ ※ ■ etc.) in two cells",
   "%@ 行目": "line %@",
-  "別の色で出す": "Use a separate color"
+  "別の色で出す": "Use a separate color",
+  "既定（Telnet は xterm、SSH は xterm-256color）": "Default (xterm for Telnet, xterm-256color for SSH)"
 }

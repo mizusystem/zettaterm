@@ -11,7 +11,7 @@ final class TerminalController: ObservableObject {
         case newConnection, serialSettings, terminalSettings, log, broadcast, auth, transfer, scp, drop
         case recurring
         case copyPasteSettings, pasteConfirm, logSettings, logComment, windowSettings, fontSettings, sshSettings, sshKeyGen, keyboardSettings
-        case otherSettings, proxySettings
+        case otherSettings, proxySettings, tcpipSettings
         var id: String { rawValue }
     }
 

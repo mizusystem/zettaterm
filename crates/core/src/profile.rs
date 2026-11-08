@@ -159,6 +159,14 @@ impl HostHistory {
         }
     }
 
+    /// 並べ替える（Tera Term の「設定 > TCP/IP」のホストリストの上へ・下へ）。
+    pub fn move_item(&mut self, from: usize, to: usize) {
+        if from < self.recent.len() && to < self.recent.len() && from != to {
+            let p = self.recent.remove(from);
+            self.recent.insert(to, p);
+        }
+    }
+
     /// 読んだファイルに書き戻す。親ディレクトリが無ければ作る。
     pub fn save(&self) -> io::Result<()> {
         let path = self
@@ -311,5 +319,21 @@ mod tests {
         assert_eq!(socket_path("unix:vm.sock").as_deref(), Some("vm.sock"));
         assert_eq!(socket_path("router"), None);
         assert_eq!(socket_path("unix:"), None);
+    }
+
+    #[test]
+    fn hosts_can_be_reordered() {
+        let mut h = HostHistory::default();
+        for host in ["c", "b", "a"] {
+            h.push(ConnectionProfile::Telnet {
+                host: host.into(),
+                port: None,
+            });
+        }
+        h.move_item(2, 0);
+        let names: Vec<String> = h.recent.iter().map(ConnectionProfile::label).collect();
+        assert_eq!(names, ["c", "a", "b"]);
+        h.move_item(0, 9);
+        assert_eq!(h.recent.len(), 3);
     }
 }

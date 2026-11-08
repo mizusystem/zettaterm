@@ -296,6 +296,10 @@ impl Tabs {
             }),
         );
         add(
+            "setup-tcpip",
+            Box::new(|t, _| settings::tcpip_dialog(&t.win.clone().upcast())),
+        );
+        add(
             "setup-proxy",
             Box::new(|t, _| settings::proxy_dialog(&t.win.clone().upcast())),
         );

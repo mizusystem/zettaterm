@@ -51,6 +51,8 @@ pub struct IniSettings {
     pub accept_title: Option<String>,
     /// `AlphaBlendActive`（0〜255）
     pub alpha: Option<u8>,
+    /// `TermType`
+    pub term_type: Option<String>,
     /// `UnicodeAmbiguousWidth` が 2
     pub ambiguous_wide: Option<bool>,
     /// `MouseEventTracking` と `DisableMouseTrackingByCtrl`
@@ -282,6 +284,9 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s.confirm_disconnect = get("confirmdisconnect").and_then(on_off);
     s.accept_title = get("accepttitlechangerequest").map(|v| v.to_ascii_lowercase());
     s.alpha = get("alphablendactive").and_then(|v| v.parse().ok());
+    s.term_type = get("termtype")
+        .map(|v| v.trim().to_owned())
+        .filter(|v| !v.is_empty());
     s.ambiguous_wide = get("unicodeambiguouswidth").map(|v| v.trim() == "2");
     s.mouse_tracking = get("mouseeventtracking").and_then(on_off);
     s.mouse_ctrl_bypass = get("disablemousetrackingbyctrl").and_then(on_off);

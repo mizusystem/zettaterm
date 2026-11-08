@@ -159,6 +159,10 @@ fn menu() -> gio::Menu {
         Some("win.setup-serial"),
     );
     setup.append(
+        Some(&tt("MENU_SETUP_TCPIP", "TCP/IP...")),
+        Some("win.setup-tcpip"),
+    );
+    setup.append(
         Some(&tt("MENU_SETUP_ADDITION", "その他の設定...")),
         Some("win.setup-other"),
     );
@@ -371,7 +375,9 @@ fn main() -> glib::ExitCode {
         .build();
     app.connect_startup(|app| {
         app.set_menubar(Some(&menu()));
-        settings::Settings::load().proxy.apply();
+        let saved = settings::Settings::load();
+        saved.proxy.apply();
+        mt_net::set_term_type(Some(saved.term_type.clone()));
         let quit = gio::SimpleAction::new("quit", None);
         let a = app.clone();
         quit.connect_activate(move |_, _| a.quit());

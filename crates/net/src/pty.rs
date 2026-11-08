@@ -44,7 +44,7 @@ impl LocalPty {
                 }
             }
         }
-        cmd.env("TERM", "xterm-256color");
+        cmd.env("TERM", crate::term_type("xterm-256color"));
         cmd.env("COLORTERM", "truecolor");
         // GUI から起動すると LANG が無く、シェルが日本語を扱えないことがある
         if std::env::var_os("LANG").is_none() {

@@ -294,6 +294,107 @@ impl LogConf {
     }
 }
 
+/// 「設定 > TCP/IP」：ホストリスト（履歴）の並べ替えと削除、端末タイプ、Telnet のキープアライブ。
+pub fn tcpip_dialog(parent: &gtk::Window) {
+    use std::cell::RefCell;
+    let (win, content, row) = modal(parent, &tt("DLG_TCPIP_TITLE", "TCP/IP"));
+    let history = Rc::new(RefCell::new(crate::connect::load_history()));
+    let list = gtk::ListBox::new();
+    list.set_selection_mode(gtk::SelectionMode::Single);
+    let fill = {
+        let (list, history) = (list.clone(), Rc::clone(&history));
+        move |select: Option<usize>| {
+            while let Some(c) = list.first_child() {
+                list.remove(&c);
+            }
+            for p in &history.borrow().recent {
+                let l = gtk::Label::new(Some(&p.label()));
+                l.set_xalign(0.0);
+                list.append(&l);
+            }
+            if let Some(r) = select.and_then(|i| list.row_at_index(i as i32)) {
+                list.select_row(Some(&r));
+            }
+        }
+    };
+    fill(None);
+    let heading = gtk::Label::new(Some(&tt("DLG_TCPIP_HOSTLIST", "ホストリスト")));
+    heading.set_xalign(0.0);
+    content.append(&heading);
+    let scroll = gtk::ScrolledWindow::builder()
+        .min_content_height(160)
+        .hexpand(true)
+        .child(&list)
+        .build();
+    let side = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    let up = gtk::Button::with_label(&tt("DLG_TCPIP_UP", "上へ"));
+    let down = gtk::Button::with_label(&tt("DLG_TCPIP_DOWN", "下へ"));
+    let remove = gtk::Button::with_label(&tt("DLG_TCPIP_REMOVE", "削除"));
+    side.append(&up);
+    side.append(&down);
+    side.append(&remove);
+    let hl = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    hl.append(&scroll);
+    hl.append(&side);
+    content.append(&hl);
+    for (button, delta) in [(up, -1i32), (down, 1), (remove, 0)] {
+        let (list, history, fill) = (list.clone(), Rc::clone(&history), fill.clone());
+        button.connect_clicked(move |_| {
+            let Some(i) = list.selected_row().map(|r| r.index() as usize) else {
+                return;
+            };
+            let mut h = history.borrow_mut();
+            let next = if delta == 0 {
+                h.remove(i);
+                i.min(h.recent.len().saturating_sub(1))
+            } else {
+                let to = (i as i32 + delta).clamp(0, h.recent.len() as i32 - 1) as usize;
+                h.move_item(i, to);
+                to
+            };
+            let _ = h.save();
+            drop(h);
+            fill(Some(next));
+        });
+    }
+    let current = Settings::load();
+    let term = gtk::Entry::new();
+    term.set_placeholder_text(Some(&l("既定（Telnet は xterm、SSH は xterm-256color）")));
+    term.set_text(&current.term_type);
+    term.set_hexpand(true);
+    let keepalive = gtk::SpinButton::with_range(0.0, 3600.0, 1.0);
+    keepalive.set_value(f64::from(current.telnet_keepalive));
+    let grid = gtk::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(10)
+        .build();
+    grid.attach(&label(tt("DLG_TCPIP_TERMTYPE", "端末タイプ:")), 0, 0, 1, 1);
+    grid.attach(&term, 1, 0, 1, 1);
+    let ka = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    ka.append(&keepalive);
+    ka.append(&gtk::Label::new(Some(&tt(
+        "DLG_TCPIP_KEEPALIVE_SEC",
+        "秒(0指定で無効)",
+    ))));
+    grid.attach(
+        &label(tt("DLG_TCPIP_KEEPALIVE", "Telnet Keep-alive")),
+        0,
+        1,
+        1,
+        1,
+    );
+    grid.attach(&ka, 1, 1, 1, 1);
+    content.append(&grid);
+    buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
+        let mut s = Settings::load();
+        s.term_type = term.text().trim().to_owned();
+        s.telnet_keepalive = keepalive.value() as u32;
+        s.save();
+        mt_net::set_term_type(Some(s.term_type.clone()));
+    });
+    win.present();
+}
+
 /// TTProxy の「プロキシの設定」。パスワードは保存しない（`PROXY_PASSWORD` に、この実行の間だけ持つ）。
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -793,6 +894,8 @@ pub struct Settings {
     pub proxy: ProxyConf,
     /// ファイルを受け取るフォルダ（「ファイル > ディレクトリを変更」。空ならダウンロード）
     pub transfer_dir: String,
+    /// 相手に名乗る端末の種類（TermType。空なら既定）
+    pub term_type: String,
 }
 
 impl Default for Settings {
@@ -826,6 +929,7 @@ impl Default for Settings {
             other: OtherConf::default(),
             proxy: ProxyConf::default(),
             transfer_dir: String::new(),
+            term_type: String::new(),
         }
     }
 }
@@ -1906,6 +2010,10 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(id) = ini.terminal_id {
         s.terminal_id = id.name().into();
+    }
+    if let Some(t) = &ini.term_type {
+        s.term_type = t.clone();
+        mt_net::set_term_type(Some(t.clone()));
     }
     if let Some(v) = ini.ambiguous_wide {
         s.ambiguous_wide = v;

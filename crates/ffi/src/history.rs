@@ -125,6 +125,13 @@ impl HostHistory {
         h.remove(index as usize);
         Ok(h.save()?)
     }
+
+    /// 並べ替える（上へ・下へ）。
+    pub fn move_item(&self, from: u32, to: u32) -> Result<(), MtError> {
+        let mut h = self.lock();
+        h.move_item(from as usize, to as usize);
+        Ok(h.save()?)
+    }
 }
 
 impl HostHistory {

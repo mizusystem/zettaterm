@@ -67,7 +67,7 @@
 - [x] **ウィンドウ (`MENU_SETUP_WINDOW`)**（※配色・文字色・背景色・カーソル色・カーソルの形と点滅・ANSI の 16 色・太字と URL の色・スクロールバッファの行数・タイトル。点滅・反転・下線の属性の色と 16 色 / 256 色の切り替えは持たない：256 色とトゥルーカラーはいつも使える）
 - [x] **フォント (`MENU_SETUP_FONT`)**（※フォント・大きさ・行間と文字間。描画品質は OS に任せる）: フォントファミリ、フォントサイズ、文字スタイル、文字間隔（上下左右余白）、描画品質
 - [x] **キーボード (`MENU_SETUP_KEYBOARD`)**（※メタキーの左右の区別とアプリケーションキーパッドの無効化は未実装）: BS キー（`BS` / `DEL`）、Del キー（`DEL` / `CSI 3 ~`）、メタキー送信（off / on / left / right）、アプリケーションキーパッド／カーソル無効化 (`DLG_KEYB_TITLE`)
-- [ ] **TCP/IP (`MENU_SETUP_TCPIP`)**: ホストリストの追加・並べ替え・削除、履歴表示有無、自動ウィンドウクローズ、デフォルトポート、Telnet Keep-Alive、端末タイプ (`TermType`) (`DLG_TCPIP_TITLE`)
+- [x] **TCP/IP (`MENU_SETUP_TCPIP`)**（※ホストリストの並べ替え・削除（追加は接続すると足される）、端末タイプ、Telnet Keep-Alive。履歴に足すかは「新しい接続」のチェック。自動で閉じるのはローカルシェルだけ）: ホストリストの追加・並べ替え・削除、履歴表示有無、自動ウィンドウクローズ、デフォルトポート、Telnet Keep-Alive、端末タイプ (`TermType`) (`DLG_TCPIP_TITLE`)
 - [ ] **全般 (`MENU_SETUP_GENERAL`)**: UI 表示言語の切り替え、デフォルト接続ポート（TCP/IP または シリアル） (`DLG_GEN_TITLE`)
 - [x] **その他の設定 (`MENU_SETUP_ADDITION`)**（※全般・制御シーケンス・貼り付け・不透明度の項目。コピーと貼り付け・ログは別の設定画面）: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
 - [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)**（※読み込みは TERATERM.INI のインポートとして実装済み） / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**
