@@ -168,7 +168,7 @@ final class TerminalController: ObservableObject {
         Task {
             do {
                 try await view.connect(target.profile)
-                prompter.setOneTimePassword(nil)
+                prompter.setOneTimeLogin(nil)
                 guard current == attempt else { return }
                 status = .connected
                 // 始められなかったポート転送など（接続はできている）
@@ -183,10 +183,10 @@ final class TerminalController: ObservableObject {
                 if let r = recurring { setRecurring(r) }
                 startLaunchExtras()
             } catch is CancellationError {
-                prompter.setOneTimePassword(nil)
+                prompter.setOneTimeLogin(nil)
                 return
             } catch {
-                prompter.setOneTimePassword(nil)
+                prompter.setOneTimeLogin(nil)
                 guard current == attempt else { return }
                 status = .disconnected
                 report(error)
@@ -201,7 +201,9 @@ final class TerminalController: ObservableObject {
         launchLog = l.logFile.map { ($0, l.logAppend) }
         launchMacro = l.macroFile.map { URL(fileURLWithPath: $0) }
         if let c = l.connect, let target = SettingsImport.target(c) {
-            if case let .ssh(_, _, _, password) = c { prompter.setOneTimePassword(password) }
+            if case let .ssh(_, _, _, password, auth, keyFile) = c {
+                prompter.setOneTimeLogin(LoginPreset(auth: auth, keyFile: keyFile, password: password))
+            }
             connect(target)
         } else {
             if l.connect != nil { errorMessage = L("起動引数の接続先はこの OS では開けません。") }

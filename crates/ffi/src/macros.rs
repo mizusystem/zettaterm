@@ -26,8 +26,12 @@ pub enum MacroConnect {
         host: String,
         port: Option<u16>,
         user: Option<String>,
-        /// `/passwd=`（あれば認証ダイアログに先に入れておく）
+        /// `/passwd=`（パスワード、または鍵のパスフレーズ）
         password: Option<String>,
+        /// `/auth=`（password / publickey / challenge / pageant）
+        auth: Option<String>,
+        /// `/keyfile=`
+        key_file: Option<String>,
     },
     Tcp {
         host: String,
@@ -202,6 +206,8 @@ pub(crate) fn macro_connect(spec: ConnectSpec) -> MacroConnect {
             port: s.port,
             user: s.user,
             password: s.password,
+            auth: s.auth,
+            key_file: s.key_file,
         },
     }
 }

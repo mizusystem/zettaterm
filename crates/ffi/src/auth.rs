@@ -134,44 +134,7 @@ impl core::AuthPrompter for PrompterAdapter {
     }
 
     fn credentials(&self, r: core::AuthRequest) -> core::AuthResponse {
-        let request = AuthRequest {
-            host: r.host,
-            port: r.port,
-            user: r.user,
-            methods: r
-                .methods
-                .into_iter()
-                .map(|m| match m {
-                    core::AuthMethod::Password => AuthMethod::Password,
-                    core::AuthMethod::PublicKey => AuthMethod::PublicKey,
-                    core::AuthMethod::KeyboardInteractive => AuthMethod::KeyboardInteractive,
-                    core::AuthMethod::Agent => AuthMethod::Agent,
-                })
-                .collect(),
-            default_key: r.default_key,
-            failed: r.failed,
-            further: r.further,
-            banner: r.banner,
-        };
-        match self.0.credentials(request) {
-            AuthResponse::Cancel => core::AuthResponse::Cancel,
-            AuthResponse::Password { user, password } => {
-                core::AuthResponse::Password { user, password }
-            }
-            AuthResponse::PublicKey {
-                user,
-                key_path,
-                passphrase,
-            } => core::AuthResponse::PublicKey {
-                user,
-                key_path,
-                passphrase,
-            },
-            AuthResponse::KeyboardInteractive { user } => {
-                core::AuthResponse::KeyboardInteractive { user }
-            }
-            AuthResponse::Agent { user } => core::AuthResponse::Agent { user },
-        }
+        self.0.credentials(r.into()).into()
     }
 
     fn keyboard_interactive(
@@ -208,5 +171,131 @@ impl core::AuthPrompter for PrompterAdapter {
                 old_password: c.old_password,
                 new_password: c.new_password,
             })
+    }
+}
+
+impl From<core::AuthRequest> for AuthRequest {
+    fn from(r: core::AuthRequest) -> Self {
+        Self {
+            host: r.host,
+            port: r.port,
+            user: r.user,
+            methods: r
+                .methods
+                .into_iter()
+                .map(|m| match m {
+                    core::AuthMethod::Password => AuthMethod::Password,
+                    core::AuthMethod::PublicKey => AuthMethod::PublicKey,
+                    core::AuthMethod::KeyboardInteractive => AuthMethod::KeyboardInteractive,
+                    core::AuthMethod::Agent => AuthMethod::Agent,
+                })
+                .collect(),
+            default_key: r.default_key,
+            failed: r.failed,
+            further: r.further,
+            banner: r.banner,
+        }
+    }
+}
+
+impl From<AuthRequest> for core::AuthRequest {
+    fn from(r: AuthRequest) -> Self {
+        Self {
+            host: r.host,
+            port: r.port,
+            user: r.user,
+            methods: r
+                .methods
+                .into_iter()
+                .map(|m| match m {
+                    AuthMethod::Password => core::AuthMethod::Password,
+                    AuthMethod::PublicKey => core::AuthMethod::PublicKey,
+                    AuthMethod::KeyboardInteractive => core::AuthMethod::KeyboardInteractive,
+                    AuthMethod::Agent => core::AuthMethod::Agent,
+                })
+                .collect(),
+            default_key: r.default_key,
+            failed: r.failed,
+            further: r.further,
+            banner: r.banner,
+        }
+    }
+}
+
+impl From<AuthResponse> for core::AuthResponse {
+    fn from(r: AuthResponse) -> Self {
+        match r {
+            AuthResponse::Cancel => Self::Cancel,
+            AuthResponse::Password { user, password } => Self::Password { user, password },
+            AuthResponse::PublicKey {
+                user,
+                key_path,
+                passphrase,
+            } => Self::PublicKey {
+                user,
+                key_path,
+                passphrase,
+            },
+            AuthResponse::KeyboardInteractive { user } => Self::KeyboardInteractive { user },
+            AuthResponse::Agent { user } => Self::Agent { user },
+        }
+    }
+}
+
+impl From<core::AuthResponse> for AuthResponse {
+    fn from(r: core::AuthResponse) -> Self {
+        match r {
+            core::AuthResponse::Cancel => Self::Cancel,
+            core::AuthResponse::Password { user, password } => Self::Password { user, password },
+            core::AuthResponse::PublicKey {
+                user,
+                key_path,
+                passphrase,
+            } => Self::PublicKey {
+                user,
+                key_path,
+                passphrase,
+            },
+            core::AuthResponse::KeyboardInteractive { user } => Self::KeyboardInteractive { user },
+            core::AuthResponse::Agent { user } => Self::Agent { user },
+        }
+    }
+}
+
+/// マクロ・起動引数の `/auth=` `/keyfile=` `/passwd=`（TTSSH の自動ログイン。`mt_core::LoginPreset`）。
+#[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
+pub struct LoginPreset {
+    pub auth: Option<String>,
+    pub key_file: Option<String>,
+    pub password: Option<String>,
+}
+
+/// [`answer_login_preset`] の結果。`response` があればダイアログを出さずにそれで答える。
+/// 無ければ `request`（鍵ファイルの初期値を入れたもの）でダイアログを出す。`preset` は次に使う残り。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct LoginAnswer {
+    pub response: Option<AuthResponse>,
+    pub request: AuthRequest,
+    pub preset: LoginPreset,
+}
+
+/// 認証の問い合わせに、マクロで決めたログインの仕方で答えられるかを見る。
+#[uniffi::export]
+pub fn answer_login_preset(preset: LoginPreset, request: AuthRequest) -> LoginAnswer {
+    let mut p = core::LoginPreset {
+        auth: preset.auth,
+        key_file: preset.key_file,
+        password: preset.password,
+    };
+    let mut r: core::AuthRequest = request.into();
+    let response = p.answer(&mut r).map(Into::into);
+    LoginAnswer {
+        response,
+        request: r.into(),
+        preset: LoginPreset {
+            auth: p.auth,
+            key_file: p.key_file,
+            password: p.password,
+        },
     }
 }

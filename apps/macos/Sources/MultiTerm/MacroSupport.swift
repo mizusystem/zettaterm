@@ -71,9 +71,9 @@ extension TerminalController {
             return .telnet(host: host, port: port, ip: .auto)
         case let .tcp(host, port):
             return .tcp(host: host, port: port, ip: .auto)
-        case let .ssh(host, port, user, password):
-            // この接続の最初の認証ダイアログの代わりに使う。ほかの接続には渡さず、接続が終わったら消す
-            prompter.setOneTimePassword(password)
+        case let .ssh(host, port, user, password, auth, keyFile):
+            // この接続の最初の認証だけに使う。ほかの接続には渡さず、接続が終わったら消す
+            prompter.setOneTimeLogin(LoginPreset(auth: auth, keyFile: keyFile, password: password))
             return .ssh(host: host, port: port, user: user)
         }
     }

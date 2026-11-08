@@ -68,24 +68,21 @@ pub enum Prompt {
 /// 接続 1 回分の問い合わせ役。接続ごとに作る。
 pub struct Prompter {
     pub tx: async_channel::Sender<Prompt>,
-    /// マクロの `/passwd=`。この接続の最初のパスワード認証で 1 回だけ使い、接続が終わったら消す
-    pub password: std::sync::Mutex<Option<String>>,
+    /// マクロの `/auth=` `/keyfile=` `/passwd=`。この接続の最初の認証で 1 回だけ使い、接続が終わったら消す
+    pub preset: std::sync::Mutex<mt_core::LoginPreset>,
 }
 
 impl Prompter {
-    pub fn new(tx: async_channel::Sender<Prompt>, password: Option<String>) -> Self {
+    pub fn new(tx: async_channel::Sender<Prompt>, preset: mt_core::LoginPreset) -> Self {
         Self {
             tx,
-            password: std::sync::Mutex::new(password),
+            preset: std::sync::Mutex::new(preset),
         }
     }
 
     /// 使わなかったパスワードを消す（接続の成功・失敗のあと）。
     pub fn forget_password(&self) {
-        self.password
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take();
+        *self.preset.lock().unwrap_or_else(|e| e.into_inner()) = mt_core::LoginPreset::default();
     }
 }
 
@@ -104,19 +101,14 @@ impl AuthPrompter for Prompter {
         self.ask(|r| Prompt::HostKey(info, r), HostKeyDecision::Reject)
     }
 
-    fn credentials(&self, request: AuthRequest) -> AuthResponse {
-        if !request.failed
-            && request.methods.contains(&mt_core::AuthMethod::Password)
-            && let Some(password) = self
-                .password
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .take()
-        {
-            return AuthResponse::Password {
-                user: request.user,
-                password,
-            };
+    fn credentials(&self, mut request: AuthRequest) -> AuthResponse {
+        let preset = self
+            .preset
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .answer(&mut request);
+        if let Some(answer) = preset {
+            return answer;
         }
         self.ask(|r| Prompt::Credentials(request, r), AuthResponse::Cancel)
     }

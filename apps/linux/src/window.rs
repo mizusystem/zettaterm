@@ -741,8 +741,8 @@ pub struct TermWindow {
     modem_timer: RefCell<Option<glib::SourceId>>,
     /// 信号線の表示（右下）
     lines_label: gtk::Label,
-    /// 次の接続だけで使うパスワード（マクロの /passwd=）
-    next_password: RefCell<Option<String>>,
+    /// 次の接続だけで使うログインの指定（マクロ・起動引数の /auth= /keyfile= /passwd=）
+    next_login: RefCell<mt_core::LoginPreset>,
 }
 
 impl TermWindow {
@@ -855,7 +855,7 @@ impl TermWindow {
             modem: Cell::new(None),
             modem_timer: RefCell::new(None),
             lines_label,
-            next_password: RefCell::new(None),
+            next_login: RefCell::default(),
         });
         me.install_drop();
         me.listen(events_rx, prompts_rx, macro_rx);
@@ -976,10 +976,7 @@ impl TermWindow {
             dirty: self.view.dirty_flag(),
             tx: self.events.clone(),
         });
-        let prompter = Arc::new(Prompter::new(
-            self.prompts.clone(),
-            self.next_password.borrow_mut().take(),
-        ));
+        let prompter = Arc::new(Prompter::new(self.prompts.clone(), self.next_login.take()));
         let prompter_done = Arc::clone(&prompter);
         let (tx, rx) = async_channel::bounded(1);
         let p = profile.clone();
@@ -1212,7 +1209,7 @@ impl TermWindow {
         match l.connect {
             Some(spec) => {
                 if let ConnectSpec::Ssh(s) = &spec {
-                    *self.next_password.borrow_mut() = s.password.clone();
+                    *self.next_login.borrow_mut() = Self::login_preset(s);
                 }
                 *self.launch_macro.borrow_mut() = macro_file;
                 self.connect(Self::macro_connect_profile(spec), true);
@@ -2171,13 +2168,22 @@ impl TermWindow {
         }
     }
 
+    /// マクロ・起動引数の `/auth=` `/keyfile=` `/passwd=`（次の接続の最初の認証で使う）。
+    fn login_preset(s: &mt_ttl::SshSpec) -> mt_core::LoginPreset {
+        mt_core::LoginPreset {
+            auth: s.auth.clone(),
+            key_file: s.key_file.clone(),
+            password: s.password.clone(),
+        }
+    }
+
     fn handle_macro(self: &Rc<Self>, req: MacroReq) {
         let parent = self.parent();
         match req {
             MacroReq::Connect(spec, reply) => {
-                // /passwd= はこの接続の最初の認証ダイアログの代わりに使う（ほかの接続には渡さない）
+                // /auth= /keyfile= /passwd= はこの接続の最初の認証だけに使う（ほかの接続には渡さない）
                 if let ConnectSpec::Ssh(s) = &spec {
-                    *self.next_password.borrow_mut() = s.password.clone();
+                    *self.next_login.borrow_mut() = Self::login_preset(s);
                 }
                 self.waiters.borrow_mut().push(Box::new(move |s| {
                     let _ = reply.send(s);

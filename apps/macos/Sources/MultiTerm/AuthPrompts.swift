@@ -108,29 +108,30 @@ final class SshPrompterBridge: SshPrompter, @unchecked Sendable {
         }
     }
 
-    /// マクロの `/passwd=`。次の接続の最初のパスワード認証で 1 回だけ使い、接続が終わったら消す
+    /// マクロ・起動引数の `/auth=` `/keyfile=` `/passwd=`。次の接続の最初の認証で 1 回だけ使い、
+    /// 接続が終わったら消す（TTSSH の自動ログイン）
     private let oneTimeLock = NSLock()
-    private var oneTimePassword: String?
+    private var oneTimeLogin: LoginPreset?
 
-    func setOneTimePassword(_ password: String?) {
+    func setOneTimeLogin(_ preset: LoginPreset?) {
         oneTimeLock.lock()
-        oneTimePassword = password
+        oneTimeLogin = preset
         oneTimeLock.unlock()
     }
 
-    private func takeOneTimePassword() -> String? {
+    /// 決めてあるログインの仕方で答えられれば、その答え。答えられなければ鍵ファイルを入れた問い合わせ
+    private func answerOneTimeLogin(_ request: AuthRequest) -> (AuthResponse?, AuthRequest) {
         oneTimeLock.lock()
         defer { oneTimeLock.unlock() }
-        let p = oneTimePassword
-        oneTimePassword = nil
-        return p
+        guard let preset = oneTimeLogin else { return (nil, request) }
+        let a = answerLoginPreset(preset: preset, request: request)
+        oneTimeLogin = a.preset
+        return (a.response, a.request)
     }
 
     func credentials(request: AuthRequest) -> AuthResponse {
-        if !request.failed, !request.further, request.methods.contains(.password),
-           let password = takeOneTimePassword() {
-            return .password(user: request.user, password: password)
-        }
+        let (preset, request) = answerOneTimeLogin(request)
+        if let preset { return preset }
         return ask(.cancel, { deliver in
             // 記憶したパスワードがあれば、最初の 1 回はダイアログを出さずに使う
             let key = PasswordMemory.key(user: request.user, host: request.host, port: request.port)

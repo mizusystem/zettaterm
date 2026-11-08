@@ -39,7 +39,7 @@ enum SettingsExport {
             case let .serial(port, config): return .serial(port: port, baud: config.baud)
             case let .telnet(host, port, _): return .telnet(host: host, port: port ?? 23)
             case let .tcp(host, port, _): return .tcp(host: host, port: port)
-            case let .ssh(host, port, user, _): return .ssh(host: host, port: port, user: user, password: nil)
+            case let .ssh(host, port, user, _): return .ssh(host: host, port: port, user: user, password: nil, auth: nil, keyFile: nil)
             default: return nil
             }
         }

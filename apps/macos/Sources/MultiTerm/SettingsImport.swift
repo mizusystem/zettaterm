@@ -160,7 +160,7 @@ enum SettingsImport {
             return .telnet(host: host, port: port == 23 ? nil : port, ip: .auto)
         case let .tcp(host, port):
             return .tcp(host: host, port: port, ip: .auto)
-        case let .ssh(host, port, user, _):
+        case let .ssh(host, port, user, _, _, _):
             return .ssh(host: host, port: port, user: user)
         }
     }
