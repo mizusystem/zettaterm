@@ -115,8 +115,8 @@ struct SerialSettingsView: View {
                 }
             }
 
-            if config.parity == .mark || config.parity == .space || config.flow == .dsrDtr {
-                Text(L("この設定は macOS ではまだ使えません（mark / space パリティ、DSR/DTR フロー制御）。"))
+            if config.parity == .space && config.dataBits == 8 {
+                Text(L("8 ビットの space パリティは macOS では使えません（7 ビットなら使えます）。"))
                     .font(.callout)
                     .foregroundStyle(.orange)
             }

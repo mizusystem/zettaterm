@@ -21,7 +21,7 @@
   "受信中": "Receiving",
   "マクロ: %@": "Macro: %@",
   "数値を入れてください": "Enter a number",
-  "この設定は macOS ではまだ使えません（mark / space パリティ、DSR/DTR フロー制御）。": "These settings are not available on macOS yet (mark / space parity, DSR/DTR flow control).",
+  "8 ビットの space パリティは macOS では使えません（7 ビットなら使えます）。": "8-bit space parity is not available on macOS (7-bit works).",
   "%@ [接続中]": "%@ [Connecting]",
   "%@ [再接続待ち]": "%@ [Waiting to reconnect]",
   "%@ [未接続]": "%@ [Disconnected]",

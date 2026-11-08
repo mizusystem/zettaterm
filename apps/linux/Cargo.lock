@@ -1513,6 +1513,7 @@ dependencies = [
 name = "mt-serial"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "mt-core",
  "serialport",
 ]

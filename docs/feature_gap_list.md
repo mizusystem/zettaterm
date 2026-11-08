@@ -178,7 +178,7 @@
 - [x] **モデムステータスライン（CTS, DSR, RI, CD/DCD）の読み取り API と UI ステータス表示**
 - [x] **DTR / RTS の手動 ON/OFF トグル UI**（`Session::set_lines` をメニューまたはステータスバーから操作可能にする）
 - [x] **可変ブレーク信号長 (`SendBreakTime`)**: 設定値（デフォルト 1000ms 等）に応じたブレーク送信（「設定 > シリアルポート」の「ブレークの長さ」。TERATERM.INI からも読む）
-- [ ] **macOS における Mark / Space パリティ・DSR/DTR フロー制御のサポート（または代替処理）**（※7 ビット mark / space と 8 ビット mark は 8 ビット・パリティなしなどで代わりにできる。8 ビット space は無理。DSR/DTR は macOS の CDSR_OFLOW / CDTR_IFLOW を試す）
+- [x] **macOS における Mark / Space パリティ・DSR/DTR フロー制御のサポート（または代替処理）**（※7 ビット以下の mark / space はデータビットを 1 つ増やして作る。8 ビット + mark は 2 ストップビット。8 ビット + space は Linux だけ（CMSPAR）。DSR/DTR は macOS だけ（CDSR_OFLOW / CDTR_IFLOW。ドライバが対応していれば）。実機では未確認）
 
 ---
 

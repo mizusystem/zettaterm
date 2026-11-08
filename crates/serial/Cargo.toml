@@ -13,6 +13,9 @@ name = "mt_serial"
 mt-core.workspace = true
 serialport = "4.10.1"
 
+[target."cfg(unix)".dependencies]
+libc = "0.2.191"
+
 [lints]
 workspace = true
 
