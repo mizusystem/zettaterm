@@ -67,6 +67,7 @@ struct LogConfig: Equatable {
         case let .telnet(host, port, _): return (host, String(port ?? 23))
         case let .tcp(host, port, _): return (host, String(port))
         case let .serial(port, _): return (port, port)
+        case let .unix(path): return ((path as NSString).lastPathComponent, "unix")
         case .localShell, .replay, .none: return ("localhost", "shell")
         }
     }

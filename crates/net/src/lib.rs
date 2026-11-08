@@ -13,6 +13,7 @@ mod ssh;
 mod ssh_client;
 pub mod ssh_config;
 mod telnet;
+mod unix;
 
 pub use forward::Forward;
 pub use proxy::{Proxy, ProxyKind};
@@ -21,6 +22,7 @@ pub use scp::{ScpJob, ScpProgress, ScpStatus, SshFiles};
 pub use ssh::{SshTarget, hosts_in, ssh_config_hosts};
 pub use ssh_client::{SshOptions, SshTransport};
 pub use telnet::{IpVersion, TELNET_PORT, TERM_TYPE, TcpTransport};
+pub use unix::UnixSocketTransport;
 
 /// この機械の IP アドレス（TTL の getipv4addr / getipv6addr）。動いていないインターフェースも含む。
 pub fn local_addresses() -> std::io::Result<Vec<std::net::IpAddr>> {

@@ -91,6 +91,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「その他の設定」で自動再接続を切ると、USB シリアルを抜いたままになる。間隔を変えると再接続の速さが変わる
 - [ ] 「設定 > 端末」の曖昧な幅を 2 セルにすると、`echo ○※■a` の a が 2 セルずつずれた位置に出る（これから届く文字に効く）
 - [ ] vim の `:set mouse=a`、tmux の `set -g mouse on`、htop でクリック・ドラッグ・ホイールが効く。Shift を押していれば選択になる。less でホイールが上下に効く
+- [ ] 「新しい接続」のホスト欄に `/tmp/x.sock` を書いて UNIX ドメインソケットにつながる（例：`socat UNIX-LISTEN:/tmp/x.sock -` か、QEMU の `-serial unix:/tmp/x.sock,server`）
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

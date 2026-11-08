@@ -99,6 +99,8 @@ pub enum Profile {
     /// ログの再生（「ファイル > ログを再生」）。ttyrec は記録した間隔で、それ以外は一定の速さで流す。
     /// `speed` は速さの倍率。履歴には残さない
     Replay { path: String, speed: f64 },
+    /// UNIX ドメインソケット（仮想マシンのシリアルポートなど。macOS / Linux）
+    Unix { path: String },
 }
 
 /// Tera Term の「IPバージョン」。
@@ -366,6 +368,12 @@ pub fn broadcast_realtime_diff(old: String, new: String) -> RealtimeDiff {
         erase: erase as u32,
         insert,
     }
+}
+
+/// 接続ダイアログのホスト名が UNIX ドメインソケットのパスなら、そのパス（`/` で始まるか `unix:` 付き）。
+#[uniffi::export]
+pub fn socket_path(host: String) -> Option<String> {
+    core::profile::socket_path(&host)
 }
 
 /// 版とビルドしたコミット（例：`0.0.0 (616d2d9)`）。「ヘルプ > バージョン情報」に出す。
@@ -851,6 +859,7 @@ impl Session {
             Profile::Tcp { host, port, ip } => {
                 Box::new(TcpTransport::raw(&host, port, ip.into(), size)?)
             }
+            Profile::Unix { path } => Box::new(mt_net::UnixSocketTransport::connect(&path)?),
             Profile::Replay { path, speed } => Box::new(core::replay::ReplayTransport::open(
                 std::path::Path::new(&path),
                 speed,

@@ -13,6 +13,7 @@ impl Profile {
         match self {
             Profile::LocalShell { .. } => core::ConnectionProfile::LocalShell,
             Profile::Replay { path, .. } => core::ConnectionProfile::Replay { path: path.clone() },
+            Profile::Unix { path } => core::ConnectionProfile::Unix { path: path.clone() },
             Profile::Serial { port, settings } => core::ConnectionProfile::Serial {
                 port: port.clone(),
                 settings: settings.port(),
@@ -72,6 +73,7 @@ impl Profile {
                 ip: IpVersion::Auto,
             },
             core::ConnectionProfile::Replay { path } => Profile::Replay { path, speed: 1.0 },
+            core::ConnectionProfile::Unix { path } => Profile::Unix { path },
             core::ConnectionProfile::Tcp { host, port } => Profile::Tcp {
                 host,
                 port,

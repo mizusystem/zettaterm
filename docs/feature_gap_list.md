@@ -172,7 +172,7 @@
 - [x] **Telnet Binary オプション (`TRANSMIT-BINARY`, Option 0)** のネゴシエーション対応（※最初から対応済み。BINARY 中は CR に NUL を付けない）
 - [x] **Telnet Keep-Alive (`TelKeepAliveInterval`)**（※値は TERATERM.INI の読み込みから。設定画面は未実装）: 定期的な `IAC NOP` (`0xFF 0xF1`) 送信
 - [x] **Telnet `IAC AYT` (Are You There)** 送信メソッドの公開
-- [ ] **名前付きパイプ (Windows Named Pipe) / UNIX ドメインソケット接続**（VMware / VirtualBox / QEMU の仮想シリアルポート直結用）
+- [x] **名前付きパイプ (Windows Named Pipe) / UNIX ドメインソケット接続**（※UNIX ドメインソケットだけ：「新しい接続」の TCP/IP のホスト欄に `/path` か `unix:path` を書く。Windows の名前付きパイプは作らない）
 
 ### 3-3. シリアルポート (`crates/serial/src/port.rs`)
 - [x] **モデムステータスライン（CTS, DSR, RI, CD/DCD）の読み取り API と UI ステータス表示**

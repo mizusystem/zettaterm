@@ -112,6 +112,10 @@ pub fn open_transport(
             Box::new(TcpTransport::raw(host, *port, IpVersion::Auto, size)?),
             SendDelay::default(),
         ),
+        ConnectionProfile::Unix { path } => (
+            Box::new(mt_net::UnixSocketTransport::connect(path)?),
+            SendDelay::default(),
+        ),
         ConnectionProfile::Replay { path } => (
             Box::new(mt_core::replay::ReplayTransport::open(
                 std::path::Path::new(path),
@@ -417,6 +421,9 @@ pub fn show_dialog(
                     user,
                     system_ssh: system_ssh.is_active(),
                 }
+            } else if let Some(path) = mt_core::profile::socket_path(&name) {
+                // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）
+                ConnectionProfile::Unix { path }
             } else if svc_telnet.is_active() {
                 ConnectionProfile::Telnet {
                     host: name,

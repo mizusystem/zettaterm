@@ -58,6 +58,20 @@ pub enum ConnectionProfile {
     Replay {
         path: String,
     },
+    /// UNIX ドメインソケット（仮想マシンのシリアルポートなど）
+    Unix {
+        path: String,
+    },
+}
+
+/// 接続ダイアログのホスト名が UNIX ドメインソケットのパスなら、そのパス
+/// （`/` で始まるか `unix:` を付けたもの）。
+pub fn socket_path(host: &str) -> Option<String> {
+    let host = host.trim();
+    if let Some(p) = host.strip_prefix("unix:") {
+        return (!p.is_empty()).then(|| p.to_owned());
+    }
+    host.starts_with('/').then(|| host.to_owned())
 }
 
 impl ConnectionProfile {
@@ -93,6 +107,7 @@ impl ConnectionProfile {
             },
             Self::Tcp { host, port } => format!("{host}:{port}"),
             Self::Serial { port, .. } => port.clone(),
+            Self::Unix { path } => format!("unix:{path}"),
             Self::Replay { path } => Path::new(path)
                 .file_name()
                 .map(|f| f.to_string_lossy().into_owned())
@@ -288,5 +303,13 @@ mod tests {
             .label(),
             "h:7"
         );
+    }
+
+    #[test]
+    fn unix_socket_paths() {
+        assert_eq!(socket_path("/tmp/vm.sock").as_deref(), Some("/tmp/vm.sock"));
+        assert_eq!(socket_path("unix:vm.sock").as_deref(), Some("vm.sock"));
+        assert_eq!(socket_path("router"), None);
+        assert_eq!(socket_path("unix:"), None);
     }
 }

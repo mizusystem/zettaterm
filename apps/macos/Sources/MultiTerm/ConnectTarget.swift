@@ -13,6 +13,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
     case tcp(host: String, port: UInt16, ip: IP)
     /// ログの再生（「ファイル > ログを再生」）。履歴には残さない
     case replay(path: String)
+    /// UNIX ドメインソケット（仮想マシンのシリアルポートなど）
+    case unix(path: String)
 
     var profile: Profile {
         switch self {
@@ -28,6 +30,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             return .tcp(host: host, port: port, ip: ip.core)
         case let .replay(path):
             return .replay(path: path, speed: 1.0)
+        case let .unix(path):
+            return .unix(path: path)
         }
     }
 
@@ -69,6 +73,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             self = .tcp(host: host, port: port, ip: IP(ip))
         case let .replay(path, _):
             self = .replay(path: path)
+        case let .unix(path):
+            self = .unix(path: path)
         }
     }
 
@@ -90,6 +96,8 @@ enum ConnectTarget: Codable, Hashable, Sendable {
             return "\(host):\(port)"
         case let .replay(path):
             return L("%@（再生）", URL(fileURLWithPath: path).lastPathComponent)
+        case let .unix(path):
+            return "unix:\(path)"
         }
     }
 
