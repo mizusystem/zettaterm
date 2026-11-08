@@ -1480,7 +1480,10 @@ impl TermView {
                 if bg != sc.default_bg {
                     let (r, g, b) = rgb(bg);
                     cr.set_source_rgb(r, g, b);
-                    cr.rectangle(x, y, cw, st.cell_h);
+                    // セルの幅は半端なピクセルなので、端を整数に丸めて隣と隙間なく塗る
+                    // （両端とも桁番号から計算する。x + cw だと誤差で隣の左端と丸めが食い違う）
+                    let (x0, x1) = (x.round(), ((col + width) as f64 * st.cell_w).round());
+                    cr.rectangle(x0, y, x1 - x0, st.cell_h);
                     let _ = cr.fill();
                 }
                 if !cell.text.trim().is_empty() {
