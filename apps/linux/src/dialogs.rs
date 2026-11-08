@@ -41,6 +41,7 @@ pub fn modal(parent: &gtk::Window, title: &str) -> (gtk::Window, gtk::Box, gtk::
         .resizable(false)
         .default_width(420)
         .build();
+    close_on_escape(&win);
     let outer = gtk::Box::new(gtk::Orientation::Vertical, 12);
     for m in [
         gtk::Widget::set_margin_top,
@@ -57,6 +58,16 @@ pub fn modal(parent: &gtk::Window, title: &str) -> (gtk::Window, gtk::Box, gtk::
     outer.append(&buttons);
     win.set_child(Some(&outer));
     (win, content, buttons)
+}
+
+/// Esc で閉じる（Tera Term のダイアログと同じくキャンセル扱い。閉じたときの処理は close-request で行う）。
+pub fn close_on_escape(win: &gtk::Window) {
+    let keys = gtk::ShortcutController::new();
+    keys.add_shortcut(gtk::Shortcut::new(
+        gtk::ShortcutTrigger::parse_string("Escape"),
+        Some(gtk::NamedAction::new("window.close")),
+    ));
+    win.add_controller(keys);
 }
 
 fn wrap_label(text: &str) -> gtk::Label {

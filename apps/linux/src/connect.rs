@@ -141,6 +141,7 @@ pub fn show_dialog(
         .modal(true)
         .resizable(false)
         .build();
+    crate::dialogs::close_on_escape(&win);
     let grid = gtk::Grid::builder()
         .row_spacing(8)
         .column_spacing(10)
