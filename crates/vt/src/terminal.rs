@@ -291,6 +291,47 @@ impl Terminal {
         select::search(&self.all_lines(), re)
     }
 
+    /// 先頭（スクロールバックを含む）からカーソルの直前までの文字。カーソルより後ろに何も無いときだけ返す。
+    /// 受信の途中からログを始めるとき、それまでに届いた分として書く。続きの受信がカーソルの位置からつながる
+    /// （カーソルの行の空白も残す）。全画面のアプリなどでカーソルより後ろに文字があれば None。
+    pub fn text_to_cursor(&self) -> Option<String> {
+        let c = self.cursor();
+        let row = i32::from(c.row);
+        let bottom = i32::from(self.rows()) - 1;
+        let rows = self.lines(row - 1, bottom);
+        let at = |line: i32| rows.iter().find(|r| r.line == line);
+        let blank =
+            |r: &Row, from: usize| r.cells.iter().skip(from).all(|c| c.text.trim().is_empty());
+        let cursor_row = at(row)?;
+        if !blank(cursor_row, usize::from(c.col))
+            || ((row + 1)..=bottom).any(|l| at(l).is_some_and(|r| !blank(r, 0)))
+        {
+            return None;
+        }
+        let top = -(self.term.grid().history_size() as i32);
+        let mut out = if row > top {
+            self.selection_text(&Selection {
+                start: Point::new(top, 0),
+                end: Point::new(row - 1, self.cols()),
+                block: false,
+            })
+        } else {
+            String::new()
+        };
+        // 前の行が折り返しで続いていれば改行しない
+        if !out.is_empty() && !at(row - 1).is_some_and(|r| r.wrapped) {
+            out.push('\n');
+        }
+        out.extend(
+            cursor_row
+                .cells
+                .iter()
+                .take(usize::from(c.col))
+                .map(|c| c.text.as_str()),
+        );
+        Some(out)
+    }
+
     /// 選択範囲を、表示中の内容全体に広げたもの（全て選択）。
     pub fn select_all(&self) -> Selection {
         let top = -(self.term.grid().history_size() as i32);
@@ -586,6 +627,19 @@ mod tests {
             .collect::<String>()
             .trim_end()
             .to_owned()
+    }
+
+    #[test]
+    fn text_to_cursor_keeps_the_prompt_and_gives_up_on_full_screen_apps() {
+        let mut t = Terminal::new(20, 4, 100);
+        assert_eq!(t.text_to_cursor().as_deref(), Some(""));
+        t.feed(b"Welcome\r\n$ ");
+        assert_eq!(t.text_to_cursor().as_deref(), Some("Welcome\n$ "));
+        t.feed(b"\r\n");
+        assert_eq!(t.text_to_cursor().as_deref(), Some("Welcome\n$\n"));
+        // カーソルより後ろに文字がある（全画面のアプリ）
+        t.feed(b"\x1b[4;1Hstatus\x1b[1;1H");
+        assert_eq!(t.text_to_cursor(), None);
     }
 
     #[test]

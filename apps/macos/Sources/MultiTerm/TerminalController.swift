@@ -65,6 +65,8 @@ final class TerminalController: ObservableObject {
     @Published private(set) var remoteTitle = ""
     @Published private(set) var target: ConnectTarget?
     @Published var sheet: Sheet?
+    /// シートのために広げる前の端末の桁数と行数（閉じたら戻す）
+    var gridBeforeSheet: (cols: Int, rows: Int)?
     @Published var errorMessage: String?
     /// しばらく右上に出す短い知らせ（相手がクリップボードに書いたときなど）
     @Published var notice: String?
@@ -220,7 +222,8 @@ final class TerminalController: ObservableObject {
     private func startLaunchExtras() {
         if let (path, append) = launchLog {
             launchLog = nil
-            var options = LogOptionsView.savedOptions(path: path)
+            // 接続の直後に始める。それまでに届いた分（歓迎の表示など）は画面から書く（Tera Term は最初から記録する）
+            var options = LogOptionsView.savedOptions(path: path, includeScreen: true)
             options.append = append
             startLog(options)
         }
@@ -453,7 +456,8 @@ final class TerminalController: ObservableObject {
         let path = config.path(for: target)
         try? FileManager.default.createDirectory(
             at: URL(fileURLWithPath: path).deletingLastPathComponent(), withIntermediateDirectories: true)
-        startLog(LogOptionsView.savedOptions(path: path))
+        // 接続の直後に始める。それまでに届いた分は画面から書く
+        startLog(LogOptionsView.savedOptions(path: path, includeScreen: true))
     }
 
     /// 「ログを中断」と再開。

@@ -1225,7 +1225,8 @@ impl TermWindow {
         if let Some((path, append)) = self.launch_log.borrow_mut().take() {
             let mut opts = Settings::load().log.options(path.into());
             opts.append = append;
-            opts.include_screen = false;
+            // 接続の直後に始める。それまでに届いた分（歓迎の表示など）は画面から書く（Tera Term は最初から記録する）
+            opts.include_screen = true;
             match session.log_start(&opts) {
                 Ok(()) => self.logging.set(true),
                 Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),
@@ -1248,7 +1249,8 @@ impl TermWindow {
             let _ = std::fs::create_dir_all(dir);
         }
         let mut opts = conf.options(path);
-        opts.include_screen = false;
+        // 接続の直後に始める。それまでに届いた分は画面から書く（Tera Term は最初から記録する）
+        opts.include_screen = true;
         match session.log_start(&opts) {
             Ok(()) => self.logging.set(true),
             Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),

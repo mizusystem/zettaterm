@@ -687,6 +687,31 @@ fn log_can_start_with_the_screen_and_be_paused() {
     session.close();
 }
 
+/// 接続の直後に始めたログ（起動引数の /L= や自動開始）：それまでに届いた分をカーソルまで書き、
+/// 続きの受信がプロンプトの行につながる（Tera Term は最初から記録するので同じ内容になる）。
+#[test]
+fn log_started_right_after_connecting_continues_the_prompt_line() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("connect.log");
+    let (transport, remote) = MockTransport::pair();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    remote.send(b"Welcome\r\n$ ");
+    assert!(wait_until(|| screen_text(&session).contains("$")));
+    let mut options = LogOptions::new(&path);
+    options.include_screen = true;
+    session.log_start(&options).unwrap();
+    remote.send(b"ls\r\nfile\r\n$ ");
+    assert!(wait_until(|| screen_text(&session).contains("file")));
+    std::thread::sleep(Duration::from_millis(50));
+    session.log_stop();
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "Welcome\n$ ls\nfile\n$ "
+    );
+    session.close();
+}
+
 /// TTXViewMode：閲覧専用の間はキー入力と貼り付けを送らない。TTXRecurringCommand：一定間隔で送る。
 #[test]
 fn view_only_and_recurring_command() {

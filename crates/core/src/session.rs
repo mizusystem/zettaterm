@@ -826,12 +826,19 @@ impl Session {
         if options.include_screen {
             // 受信スレッドがログに書き始める前に、今の画面の内容を書く
             let mut log = self.inner.log();
-            let text = {
+            // カーソルより後ろが空なら（接続の直後など）カーソルまでを書き、続きの受信をその位置からつなげる。
+            // 全画面のアプリなどは画面全体を書く
+            let (upto, all) = {
                 let vt = self.inner.vt();
-                vt.selection_text(&vt.select_all())
+                match vt.text_to_cursor() {
+                    Some(t) => (Some(t), String::new()),
+                    None => (None, vt.selection_text(&vt.select_all())),
+                }
             };
-            if !text.is_empty() {
-                logger.write_text(&text)?;
+            match upto {
+                Some(t) => logger.write_until_cursor(&t)?,
+                None if !all.is_empty() => logger.write_text(&all)?,
+                None => {}
             }
             *log = Some(logger);
             return Ok(());

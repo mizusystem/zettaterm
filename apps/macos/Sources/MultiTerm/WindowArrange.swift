@@ -37,6 +37,9 @@ enum WindowArrange {
             case .cascade:
                 let step: CGFloat = 28
                 var f = w.frame
+                // ずらした分だけはみ出さないよう、入りきらなければ縮める（Windows の重ねて表示も画面に収める）
+                f.size.width = min(f.width, screen.width - step * (n - 1))
+                f.size.height = min(f.height, screen.height - step * (n - 1))
                 f.origin.x = screen.minX + step * k
                 f.origin.y = screen.maxY - f.height - step * k
                 frame = f

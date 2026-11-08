@@ -47,6 +47,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     /// 最初にウィンドウに入ったとき、端末サイズの設定に合わせたか
     private var fittedStartupSize = false
     /// 今の端末の桁数と行数（まだ決まっていなければウィンドウの大きさから）
+    /// 接続を始めて端末の大きさが決まったか（まだなら起動時の大きさで開く）
+    var hasGrid: Bool { gridSize.cols > 0 }
     var terminalSize: (cols: UInt16, rows: UInt16) {
         gridSize.cols > 0 ? gridSize : geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
     }

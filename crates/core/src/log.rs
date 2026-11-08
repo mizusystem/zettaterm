@@ -269,6 +269,36 @@ impl Logger {
         self.rotate_if_needed()
     }
 
+    /// 開始時の画面のうちカーソルまでを書く。最後の行は改行で閉じず、続きの受信がその行につながる。
+    pub(crate) fn write_until_cursor(&mut self, text: &str) -> io::Result<()> {
+        if text.is_empty() {
+            return Ok(());
+        }
+        let mut out = String::new();
+        let mut pieces = text.split('\n').peekable();
+        while let Some(line) = pieces.next() {
+            let last = pieces.peek().is_none();
+            if last && line.is_empty() {
+                break;
+            }
+            if let (LogFormat::Text, Some(kind)) = (self.format, self.timestamp) {
+                out.push_str(&self.stamp(kind));
+            }
+            out.push_str(line);
+            if !last {
+                out.push('\n');
+            }
+        }
+        if self.format == LogFormat::Ttyrec {
+            return self.write(out.as_bytes(), out.as_bytes());
+        }
+        self.out.write_all(out.as_bytes())?;
+        self.add(out.len());
+        self.at_line_start = text.ends_with('\n');
+        self.out.flush()?;
+        self.rotate_if_needed()
+    }
+
     pub(crate) fn set_paused(&mut self, paused: bool) {
         self.paused = paused;
     }

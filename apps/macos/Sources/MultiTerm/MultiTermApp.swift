@@ -92,6 +92,7 @@ struct TerminalWindow: View {
             }
             .sheet(item: $controller.sheet, onDismiss: {
                 controller.authSheetDismissed()
+                shrinkBackAfterSheet()
                 controller.focusTerminal()
             }) { sheet in
                 Group {
@@ -153,6 +154,14 @@ extension TerminalWindow {
         grow(window, toFit: need)
     }
 
+    /// シートのために広げたウィンドウを、閉じたら元の桁数と行数に戻す（Tera Term のダイアログは端末の大きさを変えない）。
+    fileprivate func shrinkBackAfterSheet() {
+        guard let grid = controller.gridBeforeSheet else { return }
+        controller.gridBeforeSheet = nil
+        guard let window = controller.view.window, !window.styleMask.contains(.fullScreen) else { return }
+        controller.view.fitWindow(cols: grid.cols, rows: grid.rows)
+    }
+
     /// 表示されたシートの大きさに合わせて広げる（タイトルバーとタブの分を足す）。
     fileprivate func growToFit(sheet size: CGSize) {
         guard let window = controller.view.window, !window.styleMask.contains(.fullScreen),
@@ -164,6 +173,13 @@ extension TerminalWindow {
         var frame = window.frame
         let w = max(frame.width, need.width), h = max(frame.height, need.height)
         guard w != frame.width || h != frame.height else { return }
+        // 閉じたら戻す大きさ（接続前の新しいウィンドウは起動時の大きさ）
+        if controller.gridBeforeSheet == nil {
+            let view = controller.view
+            controller.gridBeforeSheet = view.hasGrid
+                ? (Int(view.terminalSize.cols), Int(view.terminalSize.rows))
+                : TerminalConfig.startupSize
+        }
         // 上端をそろえたまま下へ広げる
         frame.origin.y -= h - frame.height
         frame.size = CGSize(width: w, height: h)
