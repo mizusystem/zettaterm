@@ -1137,8 +1137,9 @@ impl TermView {
                 st.blink_on = true;
                 area.queue_draw();
             }
+            // 切断後も、読み取り用に残した接続の画面（クリアや配色の変更）を描き直す
             if st.dirty.swap(false, Ordering::SeqCst)
-                && let Some(s) = st.session.clone()
+                && let Some(s) = st.text_session().cloned()
             {
                 let snap = s.snapshot(st.screen.generation);
                 let before = st.screen.history;
