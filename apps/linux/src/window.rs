@@ -181,6 +181,23 @@ impl Tabs {
         });
         tabs.install_actions();
         {
+            // メニューやダイアログから戻ったら、キー入力を端末に戻す（メニューバーに残っていると、
+            // 打った文字や Enter がメニューに行き「設定」の先頭の項目が開いてしまう）
+            let t = Rc::downgrade(&tabs);
+            tabs.win.connect_is_active_notify(move |w| {
+                if !w.is_active() {
+                    return;
+                }
+                let in_menubar = gtk::prelude::RootExt::focus(w)
+                    .is_some_and(|f| f.ancestor(gtk::PopoverMenuBar::static_type()).is_some());
+                if (in_menubar || gtk::prelude::RootExt::focus(w).is_none())
+                    && let Some(p) = t.upgrade().and_then(|t| t.current())
+                {
+                    p.view.area.grab_focus();
+                }
+            });
+        }
+        {
             let t = Rc::downgrade(&tabs);
             tabs.notebook.connect_switch_page(move |_, page, _| {
                 let Some(t) = t.upgrade() else { return };
@@ -692,6 +709,8 @@ pub struct TermWindow {
     badge_pause: gtk::ToggleButton,
     pause_handler: Cell<Option<glib::SignalHandlerId>>,
     badge: gtk::Box,
+    /// マクロの名前・今の行・中断・停止の段（マクロの実行中だけ出す）
+    badge_macro: gtk::Box,
     badge_name: gtk::Label,
     badge_status: gtk::Label,
     badge_transfer: gtk::Label,
@@ -809,6 +828,7 @@ impl TermWindow {
             badge_pause,
             pause_handler: Cell::new(None),
             badge,
+            badge_macro: top,
             badge_name,
             badge_status,
             badge_transfer,
@@ -1059,9 +1079,15 @@ impl TermWindow {
                 "相手がクリップボードに書き込みました（{} 文字）",
                 &[&n],
             ));
+            let macro_running = self.macro_stop.borrow().is_some();
+            // マクロが動いていなければ、知らせの文だけを出す
+            self.badge_macro.set_visible(macro_running);
+            if !macro_running {
+                self.badge_transfer.set_visible(false);
+            }
+            self.badge_status.set_visible(true);
             self.badge.set_visible(true);
             let (badge, status) = (self.badge.clone(), self.badge_status.clone());
-            let macro_running = self.macro_stop.borrow().is_some();
             glib::timeout_add_seconds_local_once(3, move || {
                 status.set_text("");
                 if !macro_running {
@@ -2065,6 +2091,7 @@ impl TermWindow {
         ));
         self.badge_status.set_visible(false);
         self.badge_transfer.set_visible(false);
+        self.badge_macro.set_visible(true);
         self.badge.set_visible(true);
         let session = if self.connected() {
             self.view.session()
