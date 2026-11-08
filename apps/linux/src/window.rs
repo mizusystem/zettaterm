@@ -373,7 +373,14 @@ impl Tabs {
             "setup-copypaste",
             Box::new(|t, _| {
                 crate::settings::copy_paste_dialog(&t.win.clone().upcast(), || {
-                    crate::term::reload_conf()
+                    crate::term::reload_conf();
+                    // OSC 52 の受け付けは端末の側で決めるので、開いている接続にも伝える
+                    let allow = Settings::load().copy_paste.remote_clipboard_write;
+                    for p in connected_panes() {
+                        if let Some(s) = p.view.session() {
+                            s.set_clipboard_write(allow);
+                        }
+                    }
                 })
             }),
         );

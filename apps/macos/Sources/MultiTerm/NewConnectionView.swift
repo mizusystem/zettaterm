@@ -218,12 +218,19 @@ struct NewConnectionView: View {
         switch kind {
         case .tcpip:
             savedKind = "tcpip"
-            let h = host.trimmingCharacters(in: .whitespaces)
+            var h = host.trimmingCharacters(in: .whitespaces)
+            var port = self.port
             // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）。
             // SSH の接続先が / で始まることは無いので、サービスの選択によらない
             if let path = socketPath(host: h) {
                 controller.connect(.unix(path: path), remember: addToHistory)
                 return
+            }
+            // "host:port" と書かれていれば、そのポートを使う（":" が 1 つだけのとき。IPv6 は対象外）
+            if h.filter({ $0 == ":" }).count == 1, let i = h.lastIndex(of: ":"),
+               let typed = UInt16(h[h.index(after: i)...]) {
+                port = typed
+                h = String(h[..<i])
             }
             switch service {
             case .ssh:

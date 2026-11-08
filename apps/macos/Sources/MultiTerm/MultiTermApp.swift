@@ -94,6 +94,7 @@ struct TerminalWindow: View {
                 controller.authSheetDismissed()
                 controller.focusTerminal()
             }) { sheet in
+                Group {
                 switch sheet {
                 case .newConnection: NewConnectionView(controller: controller)
                 case .serialSettings: SerialSettingsView(controller: controller)
@@ -118,6 +119,13 @@ struct TerminalWindow: View {
                 case .tcpipSettings: TcpipSettingsView()
                 case .keyboardSettings: KeyboardSettingsView()
                 }
+                }
+                // 決め打ちの大きさで足りないシート（その他の設定など）のため、実際の大きさを測って広げる
+                .background(GeometryReader { g in
+                    Color.clear
+                        .onAppear { growToFit(sheet: g.size) }
+                        .onChange(of: g.size) { _, size in growToFit(sheet: size) }
+                })
             }
             .alert(
                 "Multi-Term",
@@ -142,6 +150,17 @@ extension TerminalWindow {
         case .auth: need = CGSize(width: 600, height: 520)
         default: need = CGSize(width: 580, height: 420)
         }
+        grow(window, toFit: need)
+    }
+
+    /// 表示されたシートの大きさに合わせて広げる（タイトルバーとタブの分を足す）。
+    fileprivate func growToFit(sheet size: CGSize) {
+        guard let window = controller.view.window, !window.styleMask.contains(.fullScreen),
+              size.width > 0, size.height > 0 else { return }
+        grow(window, toFit: CGSize(width: size.width + 40, height: size.height + 90))
+    }
+
+    private func grow(_ window: NSWindow, toFit need: CGSize) {
         var frame = window.frame
         let w = max(frame.width, need.width), h = max(frame.height, need.height)
         guard w != frame.width || h != frame.height else { return }

@@ -126,7 +126,10 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             forName: .copyPasteConfigChanged, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.copyPaste = CopyPasteConfig.saved
+                let config = CopyPasteConfig.saved
+                self?.copyPaste = config
+                // OSC 52 の受け付けは端末の側で決めるので、開いている接続にも伝える
+                self?.session?.setClipboardWrite(allow: config.remoteClipboardWrite)
                 self?.urlCache = nil
                 self?.needsDisplay = true
             }
