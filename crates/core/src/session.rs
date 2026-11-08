@@ -1275,6 +1275,9 @@ impl Inner {
             return None;
         }
         self.set_state(SessionState::Reconnecting);
+        // 古い送信口も先に手放す。シリアルは排他で開くので、送信スレッドが前のハンドルを
+        // 持ったままだと開き直せない（ポートのリセットで、デバイスが挿さったままのとき）
+        let _ = self.tx.send(WriterMsg::Replace(Box::new(io::sink())));
         while !self.closing.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(
                 self.reconnect_ms.load(Ordering::SeqCst),

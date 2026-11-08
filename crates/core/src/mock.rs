@@ -4,6 +4,7 @@
 //! - [`MockTransport::replay`]：記録済みのバイト列（ファイルの中身など）を流す
 //! - [`MockTransport::reconnectable`]：USB シリアルの抜き差しを [`MockRemote::unplug`] /
 //!   [`MockRemote::plug_in`] で再現する
+//! - [`MockTransport::exclusive`]：シリアルのように排他で開く（古い送信口が残っていると開き直せない）
 
 use std::io::{self, Read, Write};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -26,6 +27,10 @@ struct Shared {
     /// 相手がいる（抜かれていない）
     present: bool,
     reconnects: usize,
+    /// 排他で開く：生きている送信口（writer）があれば reconnect が失敗する
+    exclusive: bool,
+    /// 送信口の数を数える（ChanWriter が複製を持つ）
+    writers: Arc<()>,
 }
 
 pub struct MockTransport {
@@ -62,6 +67,8 @@ impl MockTransport {
             },
             present: true,
             reconnects: 0,
+            exclusive: false,
+            writers: Arc::new(()),
         }));
         let remote = MockRemote {
             shared: Arc::clone(&shared),
@@ -81,6 +88,13 @@ impl MockTransport {
     pub fn reconnectable() -> (Self, MockRemote) {
         let (mut t, r) = Self::pair();
         t.reconnectable = true;
+        (t, r)
+    }
+
+    /// シリアルのように排他で開く、つなぎ直せるモック。前の reader・writer を閉じるまで開き直せない。
+    pub fn exclusive() -> (Self, MockRemote) {
+        let (t, r) = Self::reconnectable();
+        lock(&t.shared).exclusive = true;
         (t, r)
     }
 
@@ -172,8 +186,10 @@ impl Transport for MockTransport {
     }
 
     fn writer(&mut self) -> io::Result<Box<dyn Write + Send>> {
+        let s = lock(&self.shared);
         Ok(Box::new(ChanWriter {
-            tx: lock(&self.shared).outbound.clone(),
+            tx: s.outbound.clone(),
+            _live: Arc::clone(&s.writers),
         }))
     }
 
@@ -229,6 +245,9 @@ impl Transport for MockTransport {
         if !s.present {
             return Err(io::Error::from(io::ErrorKind::NotFound));
         }
+        if s.exclusive && Arc::strong_count(&s.writers) > 1 {
+            return Err(io::Error::from(io::ErrorKind::ResourceBusy));
+        }
         let (tx, rx) = mpsc::channel();
         s.inbound = tx;
         s.pending_reader = Some(rx);
@@ -268,6 +287,8 @@ impl Read for ChanReader {
 
 struct ChanWriter {
     tx: Option<Sender<Vec<u8>>>,
+    /// 生きている送信口の数え札（排他のモックで使う）
+    _live: Arc<()>,
 }
 
 impl Write for ChanWriter {

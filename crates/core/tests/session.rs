@@ -760,6 +760,20 @@ fn paste_waits_between_lines() {
     session.close();
 }
 
+/// 「ポートのリセット」はシリアルのように排他で開くポートでも開き直せる（前の送信口を手放す）。
+#[test]
+fn reset_port_reopens_an_exclusive_port() {
+    let (transport, remote) = MockTransport::exclusive();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.reset_port().unwrap();
+    assert!(wait_until(|| remote.reconnects() == 1));
+    assert!(wait_until(|| session.state() == SessionState::Connected));
+    session.write(b"after".to_vec());
+    assert_eq!(recv_until(&remote, b"after"), b"after");
+    session.close();
+}
+
 /// 「ポートのリセット」：自動再接続を切っていても開き直し、そのまま使える。
 #[test]
 fn reset_port_reopens_the_port() {
