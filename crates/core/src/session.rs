@@ -796,6 +796,11 @@ impl Session {
         self.inner.transport().ok()?.serial_settings()
     }
 
+    /// 今開いているシリアルポートの名前（自動再接続で別の名前に変わることがある）。シリアル以外は None。
+    pub fn port_name(&self) -> Option<String> {
+        self.inner.transport().ok()?.port_name()
+    }
+
     /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。
     pub fn set_serial_settings(&self, settings: &SerialSettings) -> io::Result<()> {
         self.inner.transport()?.set_serial_settings(settings)

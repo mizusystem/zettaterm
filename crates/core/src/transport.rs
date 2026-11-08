@@ -92,6 +92,11 @@ pub trait Transport: Send + 'static {
         None
     }
 
+    /// 今開いているシリアルポートの名前（挿し直して ttyUSB0 が ttyUSB1 になれば変わる）。シリアル以外は None。
+    fn port_name(&self) -> Option<String> {
+        None
+    }
+
     /// 接続したままシリアル設定を変える（Tera Term の「現在の接続を再設定」）。シリアル以外は未対応。
     fn set_serial_settings(&mut self, _settings: &SerialSettings) -> io::Result<()> {
         Err(unsupported("set_serial_settings"))

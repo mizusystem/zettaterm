@@ -2358,6 +2358,15 @@ impl TermWindow {
                         if me.status.get() == Status::Connecting && status == Status::Disconnected {
                             continue;
                         }
+                        // 挿し直したシリアルが別の名前（ttyUSB0 → ttyUSB1）で戻ったら、タイトルも変える
+                        if status == Status::Connected
+                            && let Some(now) = me.view.session().and_then(|s| s.port_name())
+                            && let Some(ConnectionProfile::Serial { port, .. }) =
+                                me.profile.borrow_mut().as_mut()
+                            && *port != now
+                        {
+                            *port = now;
+                        }
                         me.set_status(status);
                         me.update_title();
                         // シェルが終わったらウィンドウを閉じる（他はエラーが読めるよう残す）

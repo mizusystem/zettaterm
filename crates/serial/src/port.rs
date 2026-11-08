@@ -341,6 +341,10 @@ impl Transport for SerialTransport {
         Some(self.settings)
     }
 
+    fn port_name(&self) -> Option<String> {
+        Some(self.path.clone())
+    }
+
     fn set_serial_settings(&mut self, settings: &SerialSettings) -> io::Result<()> {
         let fd = self.fd;
         let emulation = apply(self.port()?.as_mut(), fd, settings)?;
