@@ -19,6 +19,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 | `apps/linux` | — | GTK4（ワークスペース外） |
 | `apps/windows` | — | 必要になるまで作らない（GTK 版と `mt` で代用。docs/design.md） |
 | `tools/extract-tt-ui`, `spec/` | — | Tera Term の `.rc` / `.lng` / INI から JSON と文言カタログを生成 |
+| `vendor/alacritty_terminal` | — | alacritty_terminal 0.26.0 の写しに、曖昧な幅を 2 セルにする変更を当てたもの（`PATCHES.md`。`[patch.crates-io]` で使う） |
 
 パッケージ名の `mt-` は仮。`core` は Rust 組み込みの `core` クレートと衝突するため、ディレクトリ名とは別に接頭辞を付けている。アプリ名が決まったら置き換える。
 

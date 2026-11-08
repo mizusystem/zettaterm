@@ -51,6 +51,8 @@ pub struct IniSettings {
     pub accept_title: Option<String>,
     /// `AlphaBlendActive`（0〜255）
     pub alpha: Option<u8>,
+    /// `UnicodeAmbiguousWidth` が 2
+    pub ambiguous_wide: Option<bool>,
     /// `AutoComPortReconnect` と `AutoComPortReconnectRetryInterval`（ミリ秒）
     pub serial_reconnect: Option<bool>,
     pub serial_reconnect_ms: Option<u32>,
@@ -277,6 +279,7 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s.confirm_disconnect = get("confirmdisconnect").and_then(on_off);
     s.accept_title = get("accepttitlechangerequest").map(|v| v.to_ascii_lowercase());
     s.alpha = get("alphablendactive").and_then(|v| v.parse().ok());
+    s.ambiguous_wide = get("unicodeambiguouswidth").map(|v| v.trim() == "2");
     s.serial_reconnect = get("autocomportreconnect").and_then(on_off);
     s.serial_reconnect_ms =
         get("autocomportreconnectretryinterval").and_then(|v| v.trim().parse().ok());

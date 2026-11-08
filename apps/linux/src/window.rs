@@ -930,6 +930,7 @@ impl TermWindow {
                         mt_core::TerminalId::from_name(&saved.terminal_id).unwrap_or_default(),
                     );
                     session.set_clipboard_write(saved.copy_paste.remote_clipboard_write);
+                    session.set_ambiguous_wide(saved.ambiguous_wide);
                     saved.other.apply(&session);
                     session.set_jis_options(saved.terminal_for(Some(&profile)).jis());
                     // つなぎ直しても、閲覧専用と繰り返し送信はそのまま
@@ -1003,6 +1004,7 @@ impl TermWindow {
                 session.set_terminal_id(
                     mt_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default(),
                 );
+                session.set_ambiguous_wide(s.ambiguous_wide);
             }
             // 端末サイズを変えたら、その大きさになるようにウィンドウを変える
             if size != before {

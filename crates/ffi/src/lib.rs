@@ -1106,6 +1106,11 @@ impl Session {
         Ok(self.inner.reset_port()?)
     }
 
+    /// 曖昧な幅の文字（○ ※ ■ など）を 2 セルで扱うか。これから届く文字に効く。
+    pub fn set_ambiguous_wide(&self, wide: bool) {
+        self.inner.set_ambiguous_wide(wide);
+    }
+
     /// 端末 ID（`ESC [ c` への応答）。
     pub fn set_terminal_id(&self, id: TerminalId) {
         self.inner.set_terminal_id(id.into());

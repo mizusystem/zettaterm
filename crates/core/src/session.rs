@@ -446,6 +446,11 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner()) = text.map(|t| t.replace('\u{5}', ""));
     }
 
+    /// 曖昧な幅の文字を 2 セルで扱うか（Tera Term の UnicodeAmbiguousWidth=2）。これから届く文字に効く。
+    pub fn set_ambiguous_wide(&self, wide: bool) {
+        self.inner.vt().set_ambiguous_wide(wide);
+    }
+
     /// 端末 ID（Tera Term の TerminalID）。`ESC [ c` への応答が変わる。
     pub fn set_terminal_id(&self, id: mt_vt::TerminalId) {
         self.inner.vt().set_terminal_id(id);

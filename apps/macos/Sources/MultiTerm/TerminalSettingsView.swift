@@ -9,6 +9,7 @@ struct TerminalSettingsView: View {
     @State private var cols = 80
     @State private var rows = 24
     @State private var startSize = (80, 24)
+    @AppStorage("terminal.ambiguousWide") private var ambiguousWide = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -79,6 +80,8 @@ struct TerminalSettingsView: View {
                 }
             }
 
+            Toggle(L("曖昧な幅の文字（○ ※ ■ など）を 2 セルにする"), isOn: $ambiguousWide)
+
             Toggle(TT.text("DLG_TERM_LOCALECHO", "ローカルエコー:").trimmingCharacters(in: CharacterSet(charactersIn: ":：")),
                    isOn: $config.localEcho)
 
@@ -114,6 +117,7 @@ struct TerminalSettingsView: View {
                 Button(TT.text("BTN_OK", "OK")) {
                     dismiss()
                     controller.applyTerminal(config)
+                    for c in SessionRegistry.shared.controllers { c.view.session?.setAmbiguousWide(wide: ambiguousWide) }
                     // 端末サイズを変えたら、その大きさになるようにウィンドウを変える
                     let size = (max(10, min(cols, 500)), max(2, min(rows, 200)))
                     if size != startSize { controller.view.fitWindow(cols: size.0, rows: size.1) }

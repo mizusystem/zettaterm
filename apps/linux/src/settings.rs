@@ -730,6 +730,8 @@ pub struct Settings {
     pub answerback: String,
     /// 端末 ID（TerminalID。`VT100` など）
     pub terminal_id: String,
+    /// 曖昧な幅の文字を 2 セルにする（UnicodeAmbiguousWidth=2）
+    pub ambiguous_wide: bool,
     /// 「設定 > キーボード」
     pub keyboard: KeyboardConf,
     /// Telnet のキープアライブ（秒。0 で送らない。TelKeepAliveInterval）
@@ -770,6 +772,7 @@ impl Default for Settings {
             log: LogConf::default(),
             answerback: String::new(),
             terminal_id: "VT100".into(),
+            ambiguous_wide: false,
             keyboard: KeyboardConf::default(),
             raw_receive_idle: 0,
             telnet_keepalive: 0,
@@ -1002,11 +1005,15 @@ pub fn terminal_dialog(
     jis_row.append(&kana7);
     grid.attach(&label("JIS".to_owned()), 0, 9, 1, 1);
     grid.attach(&jis_row, 1, 9, 1, 1);
+    let ambiguous = gtk::CheckButton::with_label(&l("曖昧な幅の文字（○ ※ ■ など）を 2 セルにする"));
+    ambiguous.set_active(Settings::load().ambiguous_wide);
+    grid.attach(&ambiguous, 1, 10, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
         let mut saved = Settings::load();
         saved.answerback = answerback.text().to_string();
+        saved.ambiguous_wide = ambiguous.is_active();
         saved.terminal_id = mt_core::TerminalId::ALL
             [(term_id.selected() as usize).min(mt_core::TerminalId::ALL.len() - 1)]
         .name()
@@ -1819,6 +1826,9 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(id) = ini.terminal_id {
         s.terminal_id = id.name().into();
+    }
+    if let Some(v) = ini.ambiguous_wide {
+        s.ambiguous_wide = v;
     }
     let o = &mut s.other;
     if let Some(v) = ini.paste_delay {

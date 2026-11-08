@@ -28,3 +28,7 @@ toml = "0.9"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+# ワークスペースと同じ、変更を当てた alacritty_terminal（vendor/alacritty_terminal/PATCHES.md）
+[patch.crates-io]
+alacritty_terminal = { path = "../../vendor/alacritty_terminal" }

@@ -106,7 +106,7 @@
 - [x] **端末 ID (`TerminalID`)**（※DA1 の応答。既定は Tera Term と同じ VT100）: `VT100`, `VT101`, `VT102`, `VT220`, `VT282`, `VT320`, `VT382`, `VT420`, `VT520` の応答切り替え
 - [x] **アンサーバック (`Answerback`)**: `ENQ` (`0x05`) 受信時に自動返送する文字列
 - [x] **漢字イン (`KanjiIn`: `^[$B` / `^[$@`)** / **漢字アウト (`KanjiOut`: `^[(B` / `^[(J` / `^[(H`)** および **7bit カタカナ送受信 (`KatakanaReceive` / `KatakanaSend`)**（※送信の既定は Tera Term と同じく 8 ビットの半角カナ。受信は 7 ビット・8 ビットのどちらも読む）
-- [ ] **Ambiguous（曖昧）文字幅設定 (`UnicodeAmbiguousWidth`)**（※本家は設定と TTXKanjiMenu のメニューで切り替え、既定は 1 セル。VT に使っている alacritty_terminal が 1 セル固定なので、幅を外から決められる小さな改造を当てて入れる）: 1 セル（半角） / 2 セル（全角）の切り替え、絵文字幅の上書き (`UnicodeEmojiWidth`)
+- [x] **Ambiguous（曖昧）文字幅設定 (`UnicodeAmbiguousWidth`)**（※「設定 > 端末」。alacritty_terminal に小さな変更を当てて入れた：vendor/alacritty_terminal/PATCHES.md。絵文字はもともと 2 セル。`UnicodeEmojiWidth` の上書きは未対応）: 1 セル（半角） / 2 セル（全角）の切り替え
 - [x] **追加の文字エンコーディング**（※CP437 / CP850 は未対応）: 韓国語 (`KS5601` / `CP949`)、簡体字中国語 (`GB2312` / `CP936`)、繁体字中国語 (`Big5` / `CP950`)、ロシア語 (`KOI8-R` / `CP1251` / `CP866`)、西欧・中欧 (`ISO-8859-1`〜`15`, `CP437`, `CP850`, `CP1252`)
 
 ### 2-2. 既存の「ブロードキャストコマンド」ダイアログに不足している項目

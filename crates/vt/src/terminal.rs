@@ -125,6 +125,17 @@ impl Terminal {
         } else {
             alacritty_terminal::term::Osc52::Disabled
         };
+        self.update_config();
+    }
+
+    /// 曖昧な幅の文字（○ ※ ■ など）を 2 セルで扱うか（Tera Term の UnicodeAmbiguousWidth=2）。
+    /// これから届く文字に効く（今の画面はそのまま）。
+    pub fn set_ambiguous_wide(&mut self, wide: bool) {
+        self.config.ambiguous_wide = wide;
+        self.update_config();
+    }
+
+    fn update_config(&mut self) {
         // set_options はタイトルを知らせ直すので、そのとき足された通知は捨てる
         let before = self.events.0.lock().map(|q| q.len()).unwrap_or(0);
         self.term.set_options(self.config.clone());
@@ -615,6 +626,22 @@ mod tests {
         assert_eq!(row.cells[0].fg, 0xCD0000);
         assert_eq!(row.cells[1].fg, palette::DEFAULT_BG);
         assert_eq!(row.cells[1].bg, palette::DEFAULT_FG);
+    }
+
+    #[test]
+    fn ambiguous_characters_can_take_two_cells() {
+        let mut t = Terminal::new(10, 2, 0);
+        t.feed("○a".as_bytes());
+        let row = &t.snapshot(0).lines[0];
+        assert_eq!(row.cells[1].text, "a");
+        t.set_ambiguous_wide(true);
+        t.feed("\r\n○a".as_bytes());
+        let row = &t.snapshot(0).lines[1];
+        assert!(row.cells[0].flags & crate::CellFlags::WIDE != 0);
+        assert_eq!(row.cells[2].text, "a");
+        // 曖昧でない文字はそのまま
+        t.feed("\r\nAあ".as_bytes());
+        assert_eq!(t.snapshot(0).lines[1].cells[1].text, "あ");
     }
 
     #[test]

@@ -40,3 +40,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 この表示は About 画面にも載せる。
+
+## alacritty_terminal
+
+端末の処理（VT の解釈と画面の格子）に alacritty_terminal 0.26.0 を使っている。曖昧な幅の文字を 2 セルにするため、
+写しを `vendor/alacritty_terminal/` に置き、小さな変更を当てている（変更の内容は `vendor/alacritty_terminal/PATCHES.md`）。
+
+- Project: https://github.com/alacritty/alacritty
+- License: Apache-2.0（全文は `vendor/alacritty_terminal/LICENSE-APACHE`）

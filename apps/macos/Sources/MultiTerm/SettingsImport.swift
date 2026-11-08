@@ -83,6 +83,8 @@ enum SettingsImport {
         if let v = ini.logTimestamp { d.set(v, forKey: "log.timestamp") }
         if let v = ini.logTimestampUtc { d.set(v, forKey: "log.utc") }
 
+        if let v = ini.ambiguousWide { d.set(v, forKey: "terminal.ambiguousWide") }
+
         // その他の設定
         var other = OtherConfig.saved
         if let v = ini.pasteDelay { other.pasteDelay = min(v, 5000) }

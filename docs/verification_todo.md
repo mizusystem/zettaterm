@@ -89,6 +89,7 @@ messagebox inputstr 'filenamebox'
 - [ ] （対応する機器があれば）7 ビット + mark / space、8 ビット + mark で通信できる。DSR/DTR フロー制御が macOS の USB シリアルで効く
 - [ ] 「設定 > フォント」の行間・文字間で、文字の間隔が広がる（選択やカーソルの位置もずれない）
 - [ ] 「その他の設定」で自動再接続を切ると、USB シリアルを抜いたままになる。間隔を変えると再接続の速さが変わる
+- [ ] 「設定 > 端末」の曖昧な幅を 2 セルにすると、`echo ○※■a` の a が 2 セルずつずれた位置に出る（これから届く文字に効く）
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版
