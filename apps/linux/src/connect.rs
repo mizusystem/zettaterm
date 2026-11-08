@@ -418,16 +418,17 @@ pub fn show_dialog(
             // ホスト欄の user@host が優先、無ければユーザー名の欄
             let typed_user = user_entry.text().trim().to_owned();
             let user = user.or((!typed_user.is_empty()).then_some(typed_user));
-            if svc_ssh.is_active() {
+            // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）。
+            // SSH の接続先が / で始まることは無いので、サービスの選択によらない
+            if let Some(path) = mt_core::profile::socket_path(&name) {
+                ConnectionProfile::Unix { path }
+            } else if svc_ssh.is_active() {
                 ConnectionProfile::Ssh {
                     host: name,
                     port: (p != 22).then_some(p),
                     user,
                     system_ssh: system_ssh.is_active(),
                 }
-            } else if let Some(path) = mt_core::profile::socket_path(&name) {
-                // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）
-                ConnectionProfile::Unix { path }
             } else if svc_telnet.is_active() {
                 ConnectionProfile::Telnet {
                     host: name,

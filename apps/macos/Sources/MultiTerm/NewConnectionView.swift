@@ -219,8 +219,9 @@ struct NewConnectionView: View {
         case .tcpip:
             savedKind = "tcpip"
             let h = host.trimmingCharacters(in: .whitespaces)
-            // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）
-            if service != .ssh, let path = socketPath(host: h) {
+            // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）。
+            // SSH の接続先が / で始まることは無いので、サービスの選択によらない
+            if let path = socketPath(host: h) {
                 controller.connect(.unix(path: path), remember: addToHistory)
                 return
             }
