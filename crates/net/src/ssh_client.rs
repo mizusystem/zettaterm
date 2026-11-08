@@ -17,7 +17,7 @@ use std::time::Duration;
 
 use mt_core::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
-    HostKeyStatus, KeyboardPrompt, Transport, WindowSize,
+    HostKeyStatus, KeyboardPrompt, PasswordChangeRequest, Transport, WindowSize,
 };
 use russh::client::{self, AuthResult, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
@@ -734,6 +734,11 @@ impl From<AuthResult> for Outcome {
                 methods: methods_of(&remaining_methods),
                 partial: partial_success,
             },
+            // password_auth が答える。ここに来たら（他の方式への答えとしては）失敗扱い
+            AuthResult::PasswordChangeRequired { .. } => Outcome::Failure {
+                methods: Vec::new(),
+                partial: false,
+            },
         }
     }
 }
@@ -822,12 +827,7 @@ async fn authenticate(
             }
             AuthResponse::Password { user: u, password } => {
                 user = u;
-                Some(Outcome::from(
-                    handle
-                        .authenticate_password(&user, password)
-                        .await
-                        .map_err(other)?,
-                ))
+                Some(password_auth(handle, params, &user, password, prompter).await?)
             }
             AuthResponse::PublicKey {
                 user: u,
@@ -865,6 +865,48 @@ async fn authenticate(
             }
         }
     }
+}
+
+/// パスワード認証。サーバーがパスワードの変更を求めたら（期限切れなど）、旧・新のパスワードを
+/// 尋ねて送る（TTSSH の「パスワード変更」）。新しいパスワードが通らなければもう一度尋ねる。
+async fn password_auth(
+    handle: &mut Handle<Client>,
+    params: &SshParams,
+    user: &str,
+    password: String,
+    prompter: &Arc<dyn AuthPrompter>,
+) -> io::Result<Outcome> {
+    let mut result = handle
+        .authenticate_password(user, password)
+        .await
+        .map_err(other)?;
+    let mut failed = false;
+    while let AuthResult::PasswordChangeRequired { prompt } = result {
+        let request = PasswordChangeRequest {
+            host: params.alias.clone(),
+            port: params.port,
+            user: user.to_owned(),
+            prompt,
+            failed,
+        };
+        let p = Arc::clone(prompter);
+        let Some(change) = tokio::task::spawn_blocking(move || p.password_change(request))
+            .await
+            .ok()
+            .flatten()
+        else {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "authentication canceled",
+            ));
+        };
+        result = handle
+            .authenticate_password_change(user, change.old_password, change.new_password)
+            .await
+            .map_err(other)?;
+        failed = true;
+    }
+    Ok(Outcome::from(result))
 }
 
 async fn try_key_file(

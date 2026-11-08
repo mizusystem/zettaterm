@@ -9,6 +9,7 @@ final class AuthPrompt: Identifiable {
         case credentials(AuthRequest)
         case keyboard(name: String, instructions: String, prompts: [KeyboardPrompt])
         case passphrase(keyPath: String, failed: Bool)
+        case passwordChange(PasswordChangeRequest)
     }
 
     enum Answer {
@@ -16,6 +17,7 @@ final class AuthPrompt: Identifiable {
         case credentials(AuthResponse)
         case keyboard([String]?)
         case passphrase(String?)
+        case passwordChange(PasswordChange?)
     }
 
     let id = UUID()
@@ -41,6 +43,7 @@ final class AuthPrompt: Identifiable {
         case .credentials: answer(.credentials(.cancel))
         case .keyboard: answer(.keyboard(nil))
         case .passphrase: answer(.passphrase(nil))
+        case .passwordChange: answer(.passwordChange(nil))
         }
     }
 }
@@ -155,5 +158,22 @@ final class SshPrompterBridge: SshPrompter, @unchecked Sendable {
             if case let .passphrase(p) = $0 { return p }
             return nil
         }
+    }
+
+    func passwordChange(request: PasswordChangeRequest) -> PasswordChange? {
+        let change: PasswordChange? = ask(nil, { _ in .passwordChange(request) }) {
+            if case let .passwordChange(c) = $0 { return c }
+            return nil
+        }
+        // 「パスワードをメモリ上に記憶する」で覚えていたなら、新しいパスワードに置き換える
+        if let change {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    let key = PasswordMemory.key(user: request.user, host: request.host, port: request.port)
+                    if PasswordMemory.get(key) != nil { PasswordMemory.set(key, change.newPassword) }
+                }
+            }
+        }
+        return change
     }
 }

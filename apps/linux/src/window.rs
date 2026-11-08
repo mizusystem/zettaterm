@@ -2373,6 +2373,11 @@ impl TermWindow {
                     } => dialogs::passphrase(&parent, key_path, failed, move |a| {
                         let _ = reply.send(a);
                     }),
+                    Prompt::PasswordChange(req, reply) => {
+                        dialogs::password_change(&parent, req, move |a| {
+                            let _ = reply.send(a);
+                        })
+                    }
                 }
             }
         });

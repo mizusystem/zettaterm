@@ -21,7 +21,7 @@ pub mod transport;
 
 pub use auth::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
-    HostKeyStatus, KeyboardPrompt, NoPrompt,
+    HostKeyStatus, KeyboardPrompt, NoPrompt, PasswordChange, PasswordChangeRequest,
 };
 pub use charset::{Charset, JisOptions};
 pub use log::{

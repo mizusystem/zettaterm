@@ -9,7 +9,7 @@ use std::sync::mpsc;
 
 use mt_core::{
     AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, KeyboardPrompt,
-    SessionListener, SessionState, TransferRequest,
+    PasswordChange, PasswordChangeRequest, SessionListener, SessionState, TransferRequest,
 };
 
 pub enum Event {
@@ -62,6 +62,7 @@ pub enum Prompt {
         failed: bool,
         reply: mpsc::Sender<Option<String>>,
     },
+    PasswordChange(PasswordChangeRequest, mpsc::Sender<Option<PasswordChange>>),
 }
 
 /// 接続 1 回分の問い合わせ役。接続ごとに作る。
@@ -146,5 +147,9 @@ impl AuthPrompter for Prompter {
             },
             None,
         )
+    }
+
+    fn password_change(&self, request: PasswordChangeRequest) -> Option<PasswordChange> {
+        self.ask(|r| Prompt::PasswordChange(request, r), None)
     }
 }

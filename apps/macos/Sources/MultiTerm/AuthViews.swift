@@ -19,6 +19,8 @@ struct AuthPromptView: View {
                     }
                 case let .passphrase(path, failed):
                     PassphraseView(keyPath: path, failed: failed) { controller.answer(.passphrase($0)) }
+                case let .passwordChange(request):
+                    PasswordChangeView(request: request) { controller.answer(.passwordChange($0)) }
                 }
             } else {
                 EmptyView()
@@ -315,5 +317,65 @@ struct PassphraseView: View {
                     .keyboardShortcut(.defaultAction)
             }
         }
+    }
+}
+
+// MARK: - パスワード変更
+
+/// TTSSH の「パスワード変更」：サーバーが期限切れなどでパスワードの変更を求めてきたとき。
+struct PasswordChangeView: View {
+    let request: PasswordChangeRequest
+    let done: (PasswordChange?) -> Void
+    @State private var oldPassword = ""
+    @State private var newPassword = ""
+    @State private var confirm = ""
+    @State private var mismatch = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(ttssh("DLG_PASSCHG_TITLE", "TTSSH: パスワード変更")).font(.headline)
+            Text(ttssh("DLG_PASSCHG_MESSAGE", "サーバはパスワードの変更を要求しています."))
+            Text("\(request.user)@\(request.host)").font(.system(.callout, design: .monospaced))
+                .foregroundStyle(.secondary)
+            if !request.prompt.isEmpty {
+                Text(request.prompt).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            if request.failed {
+                Text(L("新しいパスワードは受け付けられませんでした。")).foregroundStyle(.red)
+            }
+            Grid(alignment: .leading, verticalSpacing: 8) {
+                GridRow {
+                    Text(ttssh("DLG_PASSCHG_OLDPASSWD", "旧パスワード(&O)"))
+                    SecureField("", text: $oldPassword)
+                }
+                GridRow {
+                    Text(ttssh("DLG_PASSCHG_NEWPASSWD", "新パスワード(&N)"))
+                    SecureField("", text: $newPassword)
+                }
+                GridRow {
+                    Text(ttssh("DLG_PASSCHG_CONFIRMPASSWD", "新パスワード確認(&C)"))
+                    SecureField("", text: $confirm).onSubmit(ok)
+                }
+            }
+            if mismatch {
+                Text(ttssh("MSG_PASSCHG_MISMATCH", "新パスワードが一致しません.")).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button(TT.text("BTN_CANCEL", "キャンセル")) { done(nil) }
+                    .keyboardShortcut(.cancelAction)
+                Button(TT.text("BTN_OK", "OK"), action: ok)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+    }
+
+    private func ok() {
+        guard newPassword == confirm else {
+            mismatch = true
+            confirm = ""
+            return
+        }
+        done(PasswordChange(oldPassword: oldPassword, newPassword: newPassword))
     }
 }

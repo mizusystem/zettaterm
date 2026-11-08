@@ -104,6 +104,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「設定 > ウィンドウ」の背景画像：選んだ画像が背景に薄く出て、濃さで変わり、「外す」で消える。文字は読める
 - [ ] 「設定 > キーマップ読み込み」：`[User keys]` に `User1=64,0,show run^M` を書いた KEYBOARD.CNF を読むと、F6 で `show run` と Enter が送られる
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
+- [ ] SSH のパスワード変更：test-sshd に kt / `expired` でつなぐと「パスワード変更」が出る。新と確認が違うと「新パスワードが一致しません.」、5 文字以下だと「受け付けられませんでした」で尋ね直し、6 文字以上で入れる。キャンセルで接続が終わる
 
 ## Linux（GTK）版
 

@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use mt_core::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
-    HostKeyStatus, KeyboardPrompt, Session, SessionListener, SessionOptions, SessionState,
-    WindowSize,
+    HostKeyStatus, KeyboardPrompt, PasswordChange, PasswordChangeRequest, Session, SessionListener,
+    SessionOptions, SessionState, WindowSize,
 };
 use mt_net::{SshOptions, SshTransport};
 use russh::keys::ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey};
@@ -167,6 +167,34 @@ impl server::Handler for Server {
         self.check_user(user)?;
         self.log.lock().unwrap().push(format!("password {user}"));
         Ok(if user == "kt" && password == "secret" {
+            Auth::Accept
+        } else if user == "kt" && password == "expired" {
+            Auth::PasswordChange {
+                prompt: "Your password has expired".into(),
+            }
+        } else {
+            Auth::reject()
+        })
+    }
+
+    /// "expired" の変更：新しいパスワードが短すぎればもう一度求め、"fresh-pass" なら通す。
+    async fn auth_password_change(
+        &mut self,
+        user: &str,
+        password: &str,
+        new_password: &str,
+    ) -> Result<Auth, Self::Error> {
+        self.log
+            .lock()
+            .unwrap()
+            .push(format!("password change {user} {password} {new_password}"));
+        Ok(if user != "kt" || password != "expired" {
+            Auth::reject()
+        } else if new_password.len() < 6 {
+            Auth::PasswordChange {
+                prompt: "too short".into(),
+            }
+        } else if new_password == "fresh-pass" {
             Auth::Accept
         } else {
             Auth::reject()
@@ -530,6 +558,8 @@ struct Scripted {
     requests: Mutex<Vec<AuthRequest>>,
     keyboard_prompts: Mutex<Vec<Vec<KeyboardPrompt>>>,
     passphrase_calls: Mutex<Vec<(String, bool)>>,
+    password_changes: Mutex<VecDeque<PasswordChange>>,
+    password_change_calls: Mutex<Vec<PasswordChangeRequest>>,
 }
 
 impl AuthPrompter for Scripted {
@@ -564,6 +594,10 @@ impl AuthPrompter for Scripted {
             .unwrap()
             .push((key_path, failed));
         self.passphrases.lock().unwrap().pop_front()
+    }
+    fn password_change(&self, request: PasswordChangeRequest) -> Option<PasswordChange> {
+        self.password_change_calls.lock().unwrap().push(request);
+        self.password_changes.lock().unwrap().pop_front()
     }
 }
 
@@ -822,6 +856,73 @@ fn password_dialog_retries_after_failure() {
             .contains(&AuthMethod::KeyboardInteractive)
     );
     session.close();
+}
+
+#[test]
+fn expired_password_is_changed() {
+    let server = start_server(random_key(), vec![]);
+    let env = Env::new();
+    env.trust(&server);
+    let config = env.config(&server, None, "");
+
+    let prompter = Arc::new(Scripted::default());
+    prompter
+        .credentials
+        .lock()
+        .unwrap()
+        .push_back(AuthResponse::Password {
+            user: "kt".into(),
+            password: "expired".into(),
+        });
+    {
+        let mut c = prompter.password_changes.lock().unwrap();
+        // 1 回目は短すぎてもう一度求められる
+        c.push_back(PasswordChange {
+            old_password: "expired".into(),
+            new_password: "abc".into(),
+        });
+        c.push_back(PasswordChange {
+            old_password: "expired".into(),
+            new_password: "fresh-pass".into(),
+        });
+    }
+    let session = open(connect(&config, "test", &prompter).unwrap());
+    wait_for(&session, "welcome");
+    session.close();
+    let calls = prompter.password_change_calls.lock().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].prompt, "Your password has expired");
+    assert_eq!(
+        (calls[0].user.as_str(), calls[0].host.as_str()),
+        ("kt", "test")
+    );
+    assert!(!calls[0].failed);
+    assert_eq!(calls[1].prompt, "too short");
+    assert!(calls[1].failed);
+    let log = server.log.lock().unwrap();
+    assert!(log.contains(&"password change kt expired fresh-pass".to_owned()));
+}
+
+#[test]
+fn canceling_password_change_fails_the_connection() {
+    let server = start_server(random_key(), vec![]);
+    let env = Env::new();
+    env.trust(&server);
+    let config = env.config(&server, None, "");
+    let prompter = Arc::new(Scripted::default());
+    prompter
+        .credentials
+        .lock()
+        .unwrap()
+        .push_back(AuthResponse::Password {
+            user: "kt".into(),
+            password: "expired".into(),
+        });
+    let err = connect(&config, "test", &prompter)
+        .err()
+        .expect("must fail");
+    assert_eq!(err.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(prompter.password_change_calls.lock().unwrap().len(), 1);
 }
 
 #[test]

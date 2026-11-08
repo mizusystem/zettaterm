@@ -20,6 +20,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 | `apps/windows` | — | 必要になるまで作らない（GTK 版と `mt` で代用。docs/design.md） |
 | `tools/extract-tt-ui`, `spec/` | — | Tera Term の `.rc` / `.lng` / INI から JSON と文言カタログを生成 |
 | `vendor/alacritty_terminal` | — | alacritty_terminal 0.26.0 の写しに、曖昧な幅を 2 セルにする変更を当てたもの（`PATCHES.md`。`[patch.crates-io]` で使う） |
+| `vendor/russh` | — | russh 0.65.1 の写しに、パスワード変更（メッセージ 60）を扱う変更を当てたもの（`PATCHES.md`。`[patch.crates-io]` で使う） |
 
 パッケージ名の `mt-` は仮。`core` は Rust 組み込みの `core` クレートと衝突するため、ディレクトリ名とは別に接頭辞を付けている。アプリ名が決まったら置き換える。
 
@@ -110,7 +111,7 @@ SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証�
 
 ```bash
 cargo test -p mt-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
-cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234）
+cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234、expired で変更を求める）
 cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
 ```
 

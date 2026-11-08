@@ -151,5 +151,6 @@
   "外す": "Remove",
   "なし": "None",
   "Tera Term のキーボード設定ファイル（KEYBOARD.CNF）を選んでください。": "Choose a Tera Term keyboard file (KEYBOARD.CNF).",
-  "キーマップを読み込みました（%@ 個のキー）": "Loaded the keymap (%@ keys)"
+  "キーマップを読み込みました（%@ 個のキー）": "Loaded the keymap (%@ keys)",
+  "新しいパスワードは受け付けられませんでした。": "The new password was not accepted."
 }

@@ -74,6 +74,25 @@ pub struct KeyboardPrompt {
     pub echo: bool,
 }
 
+/// サーバーがパスワードの変更を求めてきた（TTSSH の「パスワード変更」）。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct PasswordChangeRequest {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    /// サーバーの文言（空のこともある）
+    pub prompt: String,
+    /// 直前の新しいパスワードが受け付けられなかった
+    pub failed: bool,
+}
+
+/// パスワード変更ダイアログの答え（確認欄との一致は UI が確かめる）。
+#[derive(Clone, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct PasswordChange {
+    pub old_password: String,
+    pub new_password: String,
+}
+
 /// UI が実装する問い合わせ窓口（TTSSH の「セキュリティ警告」「SSH認証」「SSH 認証チャレンジ」）。
 #[uniffi::export(with_foreign)]
 pub trait SshPrompter: Send + Sync {
@@ -88,6 +107,8 @@ pub trait SshPrompter: Send + Sync {
     ) -> Option<Vec<String>>;
     /// None なら、その鍵は飛ばす
     fn passphrase(&self, key_path: String, failed: bool) -> Option<String>;
+    /// None なら中止
+    fn password_change(&self, request: PasswordChangeRequest) -> Option<PasswordChange>;
 }
 
 pub(crate) struct PrompterAdapter(pub Arc<dyn SshPrompter>);
@@ -171,5 +192,21 @@ impl core::AuthPrompter for PrompterAdapter {
 
     fn passphrase(&self, key_path: String, failed: bool) -> Option<String> {
         self.0.passphrase(key_path, failed)
+    }
+
+    fn password_change(&self, r: core::PasswordChangeRequest) -> Option<core::PasswordChange> {
+        let request = PasswordChangeRequest {
+            host: r.host,
+            port: r.port,
+            user: r.user,
+            prompt: r.prompt,
+            failed: r.failed,
+        };
+        self.0
+            .password_change(request)
+            .map(|c| core::PasswordChange {
+                old_password: c.old_password,
+                new_password: c.new_password,
+            })
     }
 }

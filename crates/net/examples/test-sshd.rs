@@ -3,6 +3,7 @@
 //!     cargo run -p mt-net --example test-sshd -- 2222
 //!
 //! 受け付ける認証：ユーザー kt のパスワード `secret`、キーボードインタラクティブの `1234`。
+//! パスワード `expired` は期限切れとして変更を求める（新しいパスワードは 6 文字以上で通す）。
 //! 公開鍵はすべて断る（クライアントの自動認証が失敗して、認証ダイアログに進むのを確かめるため）。
 //! シェルは入力をそのまま「echo:」付きで返し、`exit` で閉じる。
 //! SSH SCP は本物の scp をフォルダ（2 つ目の引数、既定は一時フォルダの mt-test-sshd）で動かす。
@@ -49,8 +50,34 @@ impl server::Handler for Server {
         );
         Ok(if user == "kt" && password == "secret" {
             Auth::Accept
+        } else if user == "kt" && password == "expired" {
+            Auth::PasswordChange {
+                prompt: "Your password has expired.".into(),
+            }
         } else {
             Auth::reject()
+        })
+    }
+
+    async fn auth_password_change(
+        &mut self,
+        user: &str,
+        password: &str,
+        new_password: &str,
+    ) -> Result<Auth, Self::Error> {
+        println!(
+            "password change: user={user} old_ok={} new_len={}",
+            password == "expired",
+            new_password.chars().count()
+        );
+        Ok(if user != "kt" || password != "expired" {
+            Auth::reject()
+        } else if new_password.chars().count() < 6 {
+            Auth::PasswordChange {
+                prompt: "The new password is too short (6 characters or more).".into(),
+            }
+        } else {
+            Auth::Accept
         })
     }
 

@@ -48,3 +48,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - Project: https://github.com/alacritty/alacritty
 - License: Apache-2.0（全文は `vendor/alacritty_terminal/LICENSE-APACHE`）
+
+## russh
+
+内蔵の SSH に russh 0.65.1 を使っている。パスワード変更（SSH_MSG_USERAUTH_PASSWD_CHANGEREQ）を扱うため、
+写しを `vendor/russh/` に置き、変更を当てている（変更の内容は `vendor/russh/PATCHES.md`）。
+
+- Project: https://github.com/warp-tech/russh
+- License: Apache-2.0（全文は `vendor/russh/LICENSE-APACHE`）

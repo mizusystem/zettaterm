@@ -14,8 +14,8 @@ use std::time::Duration;
 
 use mt_core::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
-    HostKeyStatus, KeyboardPrompt, SerialSettings, Session, SessionListener, SessionOptions,
-    SessionState, Transport, WindowSize,
+    HostKeyStatus, KeyboardPrompt, PasswordChange, PasswordChangeRequest, SerialSettings, Session,
+    SessionListener, SessionOptions, SessionState, Transport, WindowSize,
 };
 use mt_net::{IpVersion, SshOptions, SshTransport, TcpTransport};
 use mt_serial::SerialTransport;
@@ -373,5 +373,26 @@ impl AuthPrompter for CliPrompter {
 
     fn passphrase(&self, key_path: String, _failed: bool) -> Option<String> {
         rpassword::prompt_password(format!("\n[ssh] passphrase for {key_path}: ")).ok()
+    }
+
+    fn password_change(&self, request: PasswordChangeRequest) -> Option<PasswordChange> {
+        let reason = if request.prompt.is_empty() {
+            "the server requests a password change"
+        } else {
+            &request.prompt
+        };
+        eprintln!("\n[ssh] {reason}");
+        let old_password = rpassword::prompt_password("[ssh] old password: ").ok()?;
+        loop {
+            let new_password = rpassword::prompt_password("[ssh] new password: ").ok()?;
+            let confirm = rpassword::prompt_password("[ssh] confirm new password: ").ok()?;
+            if new_password == confirm {
+                return Some(PasswordChange {
+                    old_password,
+                    new_password,
+                });
+            }
+            eprintln!("[ssh] the new passwords do not match");
+        }
     }
 }

@@ -18,7 +18,7 @@ mod scp;
 mod transfer;
 pub use auth::{
     AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
-    KeyboardPrompt, SshPrompter,
+    KeyboardPrompt, PasswordChange, PasswordChangeRequest, SshPrompter,
 };
 pub use macros::{MacroConnect, MacroHost, MacroRun, run_macro};
 pub use scp::ScpHandle;

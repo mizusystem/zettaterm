@@ -165,7 +165,7 @@
   - X11 フォワーディング
 - [x] **SSH エージェント転送 (`auth-agent-req@openssh.com`)** と要求時確認通知（※macOS / Linux のみ。要求時の確認・通知は未実装）
 - [x] **SSH キープアライブ (HeartBeat)** タスク（無通信時に指定秒間隔で `keepalive@openssh.com` または ignore パケットを送信）
-- [ ] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**（※後回し。russh のクライアントがパスワード認証中のメッセージ 60 を扱わないので、russh にも変更を当てる必要がある。OpenSSH の期限切れパスワードはキーボードインタラクティブ（PAM）で来るので、そちらは今も変更できる）
+- [x] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**（russh の写しを `vendor/russh` に置いて、メッセージ 60 を扱う変更を当てた。サーバーが求めたら旧・新・確認の 3 欄のダイアログを出し、新と確認が違えば「新パスワードが一致しません.」。新しいパスワードが通らずにまた求められたら、もう一度尋ねる。`mt` は端末で尋ねる。OpenSSH の期限切れパスワードはキーボードインタラクティブ（PAM）で来るので、そちらは前から変更できる）
 - [x] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定（※「設定 > プロキシ...」。Telnet・TCP・内蔵 SSH。パスワードは保存しない。TTProxy の URL 表記・ログ・プロンプト文字列は未対応）
 
 ### 3-2. Telnet / TCP (`crates/net/src/telnet.rs`)

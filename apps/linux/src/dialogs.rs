@@ -6,10 +6,10 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use mt_core::{
     AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
-    KeyboardPrompt,
+    KeyboardPrompt, PasswordChange, PasswordChangeRequest,
 };
 
-use crate::strings::{lf, ssh, tt};
+use crate::strings::{l, lf, ssh, tt};
 
 /// 答えを 1 回だけ返す入れ物。閉じられたら `fallback` を返す。
 type Answer<T> = Option<Box<dyn FnOnce(T)>>;
@@ -415,6 +415,88 @@ pub fn passphrase(
         move || Some(e.text().to_string()),
         None,
         answer,
+    );
+}
+
+/// パスワード変更（TTSSH の「パスワード変更」）。旧・新・確認の 3 欄。新と確認が違えば知らせて尋ね直す。
+pub fn password_change(
+    parent: &gtk::Window,
+    req: PasswordChangeRequest,
+    answer: impl FnOnce(Option<PasswordChange>) + 'static,
+) {
+    let title = ssh("DLG_PASSCHG_TITLE", "TTSSH: パスワード変更");
+    let (win, content, buttons) = modal(parent, &title);
+    let mut msg = ssh(
+        "DLG_PASSCHG_MESSAGE",
+        "サーバはパスワードの変更を要求しています.",
+    );
+    msg.push_str(&format!("\n{}@{}", req.user, req.host));
+    if req.failed {
+        msg.push('\n');
+        msg.push_str(&l("新しいパスワードは受け付けられませんでした。"));
+    }
+    content.append(&wrap_label(&msg));
+    if !req.prompt.is_empty() {
+        let p = wrap_label(&req.prompt);
+        p.add_css_class("dim-label");
+        content.append(&p);
+    }
+    let grid = gtk::Grid::builder()
+        .row_spacing(8)
+        .column_spacing(10)
+        .build();
+    let entry = || {
+        let e = gtk::PasswordEntry::new();
+        e.set_show_peek_icon(true);
+        e.set_activates_default(true);
+        e.set_hexpand(true);
+        e
+    };
+    let (old, new, confirm) = (entry(), entry(), entry());
+    for (row, (key, fallback, e)) in [
+        ("DLG_PASSCHG_OLDPASSWD", "旧パスワード", &old),
+        ("DLG_PASSCHG_NEWPASSWD", "新パスワード", &new),
+        ("DLG_PASSCHG_CONFIRMPASSWD", "新パスワード確認", &confirm),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let label = gtk::Label::new(Some(&ssh(key, fallback)));
+        label.set_xalign(1.0);
+        grid.attach(&label, 0, row as i32, 1, 1);
+        grid.attach(e, 1, row as i32, 1, 1);
+    }
+    content.append(&grid);
+    old.grab_focus();
+    let parent = parent.clone();
+    finish(
+        &win,
+        &buttons,
+        &tt("BTN_OK", "OK"),
+        move || {
+            Some((
+                old.text().to_string(),
+                new.text().to_string(),
+                confirm.text().to_string(),
+            ))
+        },
+        None,
+        move |r| match r {
+            None => answer(None),
+            Some((old_password, new_password, confirm)) if new_password == confirm => {
+                answer(Some(PasswordChange {
+                    old_password,
+                    new_password,
+                }))
+            }
+            Some(_) => {
+                let text = ssh("MSG_PASSCHG_MISMATCH", "新パスワードが一致しません.");
+                let p = parent.clone();
+                message(&parent, &title, &text, move || {
+                    password_change(&p, req, answer)
+                });
+            }
+        },
     );
 }
 

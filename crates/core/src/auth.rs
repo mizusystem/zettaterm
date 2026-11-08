@@ -100,6 +100,26 @@ pub struct KeyboardPrompt {
     pub echo: bool,
 }
 
+/// パスワード認証の途中で、サーバーがパスワードの変更を求めてきた（TTSSH の「パスワード変更」。
+/// SSH_MSG_USERAUTH_PASSWD_CHANGEREQ）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasswordChangeRequest {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    /// サーバーの文言（空のこともある）
+    pub prompt: String,
+    /// 直前に送った新しいパスワードが受け付けられなかった（もう一度尋ねている）
+    pub failed: bool,
+}
+
+/// パスワード変更ダイアログの答え（新パスワードの確認欄との一致は UI が確かめる）。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PasswordChange {
+    pub old_password: String,
+    pub new_password: String,
+}
+
 /// 利用者に尋ねる窓口。UI 側が実装する。
 pub trait AuthPrompter: Send + Sync {
     /// known_hosts と合わないホスト鍵を受け入れるか。
@@ -119,6 +139,12 @@ pub trait AuthPrompter: Send + Sync {
     /// パスフレーズ付きの鍵（ssh_config の IdentityFile など）を自動で試すときのパスフレーズ。
     /// None なら、その鍵は飛ばす。
     fn passphrase(&self, key_path: String, failed: bool) -> Option<String>;
+
+    /// サーバーがパスワードの変更を求めてきたときに、旧・新のパスワードを尋ねる。None なら中止。
+    fn password_change(&self, request: PasswordChangeRequest) -> Option<PasswordChange> {
+        let _ = request;
+        None
+    }
 }
 
 /// 何も尋ねられない場面（テストや CLI の非対話実行）用。未知のホスト鍵は拒否し、認証は中止する。
