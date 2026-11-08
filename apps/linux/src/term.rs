@@ -1035,10 +1035,12 @@ impl TermView {
         let mut st = self.state.borrow_mut();
         let history = st.screen.history as f64;
         let rows = st.screen.rows as f64;
+        let offset = st.screen.scroll_offset as f64;
         st.adjusting = true;
+        // 借りたまま configure しない（値が変わると value-changed の中でまた借りる）
         drop(st);
         adj.configure(
-            history - self.state.borrow().screen.scroll_offset as f64,
+            history - offset,
             0.0,
             history + rows,
             1.0,
