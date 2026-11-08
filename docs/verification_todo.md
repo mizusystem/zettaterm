@@ -45,7 +45,7 @@ messagebox inputstr 'filenamebox'
 
 ## 設定の読み込み・起動引数（Step 4）
 
-- [ ] 「設定 > 設定の読み込み...」で Windows の TERATERM.INI を読み、配色・ログ・ホスト一覧が移る
+- [x] 「設定 > 設定の読み込み...」で Windows の TERATERM.INI を読み、配色・ログ・ホスト一覧が移る（GTK と Mac（起動引数 `/F=`）で確認：本家の TERATERM.INI を Shift_JIS・CRLF で書き、色・ANSI 色・カーソル形・端末サイズ・改行・文字コード・端末タイプ・ログの自動開始と名前・ホスト一覧が移る。Windows のパスのログフォルダと COM ポートの接続先は移さない。Windows 実機の INI ではまだ）
 - [x] 起動引数：`open apps/macos/build/MultiTerm.app --args 192.0.2.1 /ssh /W=router /L=$HOME/Desktop/r.log`（Mac で確認：test-sshd に `127.0.0.1:2222 /ssh /user=kt /passwd=secret /W=router /L=...` で、尋ねられずに入り、タイトルが router、ログは接続直後の表示から入る（この確認で直した）。`/M=` のマクロの connect も同じく入る）
 
 ## ログ
@@ -63,7 +63,7 @@ messagebox inputstr 'filenamebox'
 - [x] 「設定 > 端末...」の応答（アンサーバック）と、増えた文字コード（EUC-KR、GBK、Big5、KOI8-R など）（GTK で確認：応答 MTANS、EUC-KR の「가한」）
 - [x] 「コントロール > リモートタイトルリセット」「常に最前面に表示」（Mac のみ）（Mac で確認：OSC 0 で変えたタイトルが元に戻る。最前面はウィンドウのレベルが 3 になり、もう一度で 0 に戻る）
 - [ ] 「設定 > シリアルポート」の「ブレークの長さ」（既定 1000 ミリ秒）で「ブレーク送信」の長さが変わる（ESP32 には送らない）
-- [ ] Telnet で「コントロール > AYT送信」：相手（Cisco など）が `[Yes]` を返す
+- [x] Telnet で「コントロール > AYT送信」：相手（Cisco など）が `[Yes]` を返す（GTK で確認：AYT に [Yes] と返す相手役のサーバーに IAC AYT が届き、[Yes] が出る。実機では未確認）
 
 ## 2026-11-08 の追加
 
