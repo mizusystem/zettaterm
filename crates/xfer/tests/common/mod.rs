@@ -169,6 +169,12 @@ pub fn run_pty(transfer: &mut dyn Transfer, program: &str, args: &[&str], cwd: &
     while start.elapsed() < Duration::from_secs(60) {
         let out = match rx.recv_timeout(Duration::from_millis(20)) {
             Ok(data) => {
+                if std::env::var_os("MT_XFER_DEBUG").is_some() {
+                    eprintln!(
+                        "<< {:?}",
+                        String::from_utf8_lossy(&data[..data.len().min(160)])
+                    );
+                }
                 seen.extend_from_slice(&data);
                 transfer.receive(&data, Instant::now())
             }

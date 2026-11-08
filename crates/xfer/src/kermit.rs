@@ -239,7 +239,17 @@ impl Reader {
                 return None;
             }
             let len = usize::from(unchar(self.buf[1]));
-            if !(3..=94).contains(&len) {
+            if len == 0 {
+                // 長いパケット（LEN が空白で、LENX1・LENX2・HCHECK が続く）。こちらは使わないと
+                // 答えても送ってくる C-Kermit がある（10.0 で確認）ので、読めるようにしておく
+                match self.next_long(chkt) {
+                    Some(Some(r)) => return Some(r),
+                    Some(None) => continue,
+                    None => return None,
+                }
+            }
+            // 規格の上限は 94 だが、C-Kermit 10.0 は MAXL 94 と伝えても 95（LEN が DEL）で送ってくる
+            if !(3..=95).contains(&len) {
                 self.buf.remove(0);
                 continue;
             }
@@ -265,6 +275,45 @@ impl Reader {
                 data: pkt[4..body_end].to_vec(),
             }));
         }
+    }
+}
+
+impl Reader {
+    /// `buf` の先頭（MARK の位置）の長いパケットを読む。まだ足りなければ None、
+    /// ヘッダが壊れていれば MARK を捨てて Some(None)。
+    fn next_long(&mut self, chkt: u8) -> Option<Option<Read>> {
+        // MARK LEN(空白) SEQ TYPE LENX1 LENX2 HCHECK
+        if self.buf.len() < 7 {
+            return None;
+        }
+        let s: u32 = self.buf[1..6].iter().map(|&b| u32::from(b)).sum();
+        let hcheck = tochar(((s + ((s & 0o300) >> 6)) & 0o77) as u8);
+        if self.buf[6] != hcheck {
+            self.buf.remove(0);
+            return Some(None);
+        }
+        // LENX は DATA と CHECK の長さ
+        let lenx = usize::from(unchar(self.buf[4])) * 95 + usize::from(unchar(self.buf[5]));
+        if self.buf.len() < 7 + lenx {
+            return None;
+        }
+        let pkt: Vec<u8> = self.buf.drain(..7 + lenx).collect();
+        let seq = unchar(pkt[2]) & 63;
+        let typ = pkt[3];
+        let kind = if typ == b'S' || chkt == 0 { b'1' } else { chkt };
+        let clen = check_len(kind);
+        if lenx < clen {
+            return Some(Some(Read::Bad));
+        }
+        let body_end = 7 + lenx - clen;
+        if check(kind, &pkt[1..body_end]) != pkt[body_end..] {
+            return Some(Some(Read::Bad));
+        }
+        Some(Some(Read::Packet(Packet {
+            seq,
+            typ,
+            data: pkt[7..body_end].to_vec(),
+        })))
     }
 }
 
@@ -638,6 +687,15 @@ impl Receiver {
                     self.params.qbin,
                 ))
                 .into_owned();
+                // C-Kermit は名前を大文字にして送る（K.BIN）。Unix の C-Kermit と同じく、
+                // 全部大文字の名前は小文字に戻す
+                let name = if name.chars().any(|c| c.is_ascii_uppercase())
+                    && !name.chars().any(|c| c.is_ascii_lowercase())
+                {
+                    name.to_ascii_lowercase()
+                } else {
+                    name
+                };
                 let path = unique_path(&self.dir, &name);
                 match File::create(&path) {
                     Ok(f) => self.file = Some(f),
@@ -843,6 +901,59 @@ impl Transfer for Finish {
 
 #[cfg(test)]
 mod tests {
+
+    /// 長さ 95（LEN が DEL）のパケットも読める。C-Kermit 10.0 は MAXL 94 と伝えてもこれを送ってくる。
+    #[test]
+    fn reads_length_95_packets() {
+        let data = vec![b'x'; 95 - 2 - 3];
+        let mut body = vec![tochar(95), tochar(3), b'D'];
+        body.extend_from_slice(&data);
+        let c = check(b'3', &body);
+        let mut pkt = vec![MARK];
+        pkt.extend_from_slice(&body);
+        pkt.extend_from_slice(&c);
+        let mut r = Reader::default();
+        r.push(&pkt);
+        match r.next(b'3') {
+            Some(Read::Packet(p)) => assert_eq!((p.seq, p.data), (3, data)),
+            _ => panic!("length 95 packet not read"),
+        }
+    }
+
+    /// 長いパケット（LEN が空白）も読める。C-Kermit 10.0 はこちらが使わないと答えても送ってくる。
+    #[test]
+    fn reads_long_packets() {
+        let data: Vec<u8> = (0..300).map(|i| b'A' + (i % 26) as u8).collect();
+        let lenx = data.len() + 3;
+        let mut body = vec![
+            b' ',
+            tochar(2),
+            b'D',
+            tochar((lenx / 95) as u8),
+            tochar((lenx % 95) as u8),
+        ];
+        let s: u32 = body.iter().map(|&b| u32::from(b)).sum();
+        body.push(tochar(((s + ((s & 0o300) >> 6)) & 0o77) as u8));
+        body.extend_from_slice(&data);
+        let c = check(b'3', &body);
+        let mut pkt = vec![MARK];
+        pkt.extend_from_slice(&body);
+        pkt.extend_from_slice(&c);
+        pkt.push(b'\r');
+        let mut r = Reader::default();
+        // 途中までしか届いていなければ待つ
+        r.push(&pkt[..100]);
+        assert!(r.next(b'3').is_none());
+        r.push(&pkt[100..]);
+        match r.next(b'3') {
+            Some(Read::Packet(p)) => {
+                assert_eq!((p.seq, p.typ), (2, b'D'));
+                assert_eq!(p.data, data);
+            }
+            _ => panic!("long packet not read"),
+        }
+    }
+
     use super::*;
     use crate::testutil::{pump, sample};
 

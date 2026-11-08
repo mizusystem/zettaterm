@@ -48,7 +48,11 @@ fn kermit_receive_from_c_kermit() {
     f.input("k3.bin", &sample(40_000, 8));
     let mut t = new_transfer(Protocol::Kermit, Direction::Receive(f.out())).unwrap();
     run_pty(t.as_mut(), &k, &["-i", "-s", "k3.bin"], &f.in_dir());
-    assert_eq!(read_ci(&f.out(), "k3.bin"), sample(40_000, 8));
+    // C-Kermit は K3.BIN と大文字で送ってくるが、小文字に戻して書く
+    assert_eq!(
+        std::fs::read(f.out().join("k3.bin")).unwrap(),
+        sample(40_000, 8)
+    );
 }
 
 /// Get のあと Finish をつなげて 1 つの転送にする（サーバーは Finish で終わる）。
