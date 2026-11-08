@@ -4,6 +4,7 @@
 //! システムの `ssh` を PTY で起動する（`SshTarget`）。
 //! OS 分岐は `cfg(target_os)` でこのクレート内に閉じる。
 
+pub mod algorithms;
 pub mod forward;
 pub mod keygen;
 pub mod proxy;

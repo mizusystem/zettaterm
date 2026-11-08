@@ -373,6 +373,7 @@ async fn open_transport(
             keepalive_interval: params.server_alive_interval,
             keepalive_max: 3,
             nodelay: true,
+            preferred: crate::algorithms::preferred(),
             ..Default::default()
         });
         let banner = Arc::new(Mutex::new(None));

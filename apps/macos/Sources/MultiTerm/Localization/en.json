@@ -143,5 +143,8 @@
   "Tera Term の形で設定を保存します。": "Save the settings in the Tera Term format.",
   "%@ に保存しました": "Saved to %@",
   "（ssh_config かこの機械のユーザー名）": "(from ssh_config or this computer's user name)",
-  "秘密鍵ファイル": "Private key file"
+  "秘密鍵ファイル": "Private key file",
+  "アルゴリズムの優先順位": "Algorithm order",
+  "圧縮する（zlib）": "Compress (zlib)",
+  "カンマで区切って、前に置きたいものから書きます。書かなかったものは既定の順で後ろに並びます（空なら既定のまま）。": "Comma-separated, most preferred first. Algorithms you leave out follow in the default order (empty keeps the default)."
 }

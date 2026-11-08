@@ -98,6 +98,23 @@ pub struct SshConf {
     /// 「SSH 認証」の既定：ユーザー名をどこにも書いていないときの名前と、最初に試す秘密鍵ファイル
     pub default_user: String,
     pub key_file: String,
+    /// 交渉の優先順位（前に置きたい名前。空なら既定の順）と圧縮
+    pub kex: Vec<String>,
+    pub cipher: Vec<String>,
+    pub mac: Vec<String>,
+    pub compression: bool,
+}
+
+impl SshConf {
+    /// 交渉の優先順位をコアに渡す。知らない名前を返す。
+    pub fn apply_algorithms(&self) -> Vec<String> {
+        mt_net::algorithms::set(Some(mt_net::algorithms::AlgorithmPrefs {
+            kex: self.kex.clone(),
+            cipher: self.cipher.clone(),
+            mac: self.mac.clone(),
+            compression: self.compression,
+        }))
+    }
 }
 
 impl Default for SshConf {
@@ -108,6 +125,10 @@ impl Default for SshConf {
             forward_agent: false,
             default_user: String::new(),
             key_file: String::new(),
+            kex: Vec::new(),
+            cipher: Vec::new(),
+            mac: Vec::new(),
+            compression: false,
         }
     }
 }
@@ -1887,6 +1908,43 @@ pub fn ssh_dialog(parent: &gtk::Window) {
     auth.attach(&label(l("秘密鍵ファイル")), 0, 1, 1, 1);
     auth.attach(&key, 1, 1, 1, 1);
     content.append(&auth);
+    // 交渉の優先順位。書いた名前が前に来て、書かなかったものは既定の順で後ろに並ぶ
+    let defaults = mt_net::algorithms::defaults();
+    let algo = |now: &[String], def: &[String]| {
+        let e = gtk::Entry::new();
+        e.set_text(&now.join(", "));
+        e.set_placeholder_text(Some(&def.join(", ")));
+        e.set_hexpand(true);
+        e
+    };
+    let cipher = algo(&current.cipher, &defaults.cipher);
+    let kex = algo(&current.kex, &defaults.kex);
+    let mac = algo(&current.mac, &defaults.mac);
+    let compress = gtk::CheckButton::with_label(&l("圧縮する（zlib）"));
+    compress.set_active(current.compression);
+    let order = gtk::Grid::builder()
+        .row_spacing(6)
+        .column_spacing(10)
+        .build();
+    for (i, (k, f, w)) in [
+        (
+            "DLG_SSHSETUP_CIPHER",
+            "優先する暗号アルゴリズムの順",
+            &cipher,
+        ),
+        ("DLG_SSHSETUP_KEX", "優先する鍵交換アルゴリズムの順", &kex),
+        ("DLG_SSHSETUP_MAC", "優先するMACアルゴリズムの順", &mac),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        order.attach(&label(crate::strings::ssh(k, f)), 0, i as i32, 1, 1);
+        order.attach(w, 1, i as i32, 1, 1);
+    }
+    order.attach(&compress, 1, 3, 1, 1);
+    let expander = gtk::Expander::new(Some(&l("アルゴリズムの優先順位")));
+    expander.set_child(Some(&order));
+    content.append(&expander);
 
     let caption = gtk::Label::new(Some(&crate::strings::ssh(
         "DLG_FWDSETUP_LIST",
@@ -1946,6 +2004,18 @@ pub fn ssh_dialog(parent: &gtk::Window) {
         s.ssh.keepalive = keepalive.value() as u64;
         s.ssh.forwards = lines;
         s.ssh.forward_agent = agent.is_active();
+        let split = |e: &gtk::Entry| -> Vec<String> {
+            e.text()
+                .split(',')
+                .map(|x| x.trim().to_owned())
+                .filter(|x| !x.is_empty())
+                .collect()
+        };
+        s.ssh.cipher = split(&cipher);
+        s.ssh.kex = split(&kex);
+        s.ssh.mac = split(&mac);
+        s.ssh.compression = compress.is_active();
+        s.ssh.apply_algorithms();
         s.ssh.default_user = user.text().trim().to_owned();
         let k = key.text().trim().to_owned();
         // ~ を展開して覚える

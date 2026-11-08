@@ -100,6 +100,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「その他の設定」の UI 言語を English にして起動し直すと、メニューやダイアログが英語になる。「OS に合わせる」で戻る
 - [ ] 「設定 > 設定の保存」で書いた TERATERM.INI を「設定の読み込み」で読み直すと同じ設定になる（Windows の Tera Term でも読める）
 - [ ] 「設定 > SSH...」の既定のユーザー名と秘密鍵ファイル：ユーザー名を書かずにつなぐとその名前で、鍵はそのファイルを最初に試す
+- [ ] 「設定 > SSH...」のアルゴリズムの優先順位：暗号に aes128-ctr を書くと、`ssh -v` 相当でそれが選ばれる（相手の sshd のログか `ss`）。知らない名前は保存されずに示される。圧縮のオン・オフ
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

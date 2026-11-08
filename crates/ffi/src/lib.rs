@@ -524,6 +524,39 @@ pub fn set_ssh_defaults(
     bad
 }
 
+/// 内蔵 SSH の交渉の優先順位（TTSSH の「SSH 設定」）。
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct SshAlgorithms {
+    pub kex: Vec<String>,
+    pub cipher: Vec<String>,
+    pub mac: Vec<String>,
+    pub compression: bool,
+}
+
+/// 既定の優先順位（設定画面に出す）。
+#[uniffi::export]
+pub fn ssh_default_algorithms() -> SshAlgorithms {
+    let d = mt_net::algorithms::defaults();
+    SshAlgorithms {
+        kex: d.kex,
+        cipher: d.cipher,
+        mac: d.mac,
+        compression: d.compression,
+    }
+}
+
+/// これからの内蔵 SSH の接続に使う優先順位。書いた名前が前に来て、書かなかったものは既定の順で後ろに並ぶ。
+/// 知らない名前を返す。
+#[uniffi::export]
+pub fn set_ssh_algorithms(algorithms: SshAlgorithms) -> Vec<String> {
+    mt_net::algorithms::set(Some(mt_net::algorithms::AlgorithmPrefs {
+        kex: algorithms.kex,
+        cipher: algorithms.cipher,
+        mac: algorithms.mac,
+        compression: algorithms.compression,
+    }))
+}
+
 static SSH_AUTH_DEFAULTS: std::sync::Mutex<(Option<String>, Option<String>)> =
     std::sync::Mutex::new((None, None));
 

@@ -110,5 +110,7 @@
   "（起動し直すと変わります）": "(takes effect after restarting)",
   "{} に保存しました": "Saved to {}",
   "（ssh_config かこの機械のユーザー名）": "(from ssh_config or this computer's user name)",
-  "秘密鍵ファイル": "Private key file"
+  "秘密鍵ファイル": "Private key file",
+  "アルゴリズムの優先順位": "Algorithm order",
+  "圧縮する（zlib）": "Compress (zlib)"
 }

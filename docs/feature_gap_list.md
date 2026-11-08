@@ -71,8 +71,8 @@
 - [x] **全般 (`MENU_SETUP_GENERAL`)**（※「その他の設定」の全般に UI 言語（OS に合わせる / 日本語 / English。起動し直すと効く）。新しい接続の既定は、前回選んだ種類（TCP/IP / シリアル）を覚えている）
 - [x] **その他の設定 (`MENU_SETUP_ADDITION`)**（※全般・制御シーケンス・貼り付け・不透明度の項目。コピーと貼り付け・ログは別の設定画面）: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
 - [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)** / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**（※保存・読み込み・設定フォルダは実装済み：保存は TERATERM.INI の形で、読み込める項目だけ。残りはキーマップ）
-- [ ] **TTSSH 追加設定ダイアログ**:
-  - [ ] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**: 暗号・KEX・MAC・ホスト鍵・署名アルゴリズムの優先順位リスト、圧縮レベル、HeartBeat（キープアライブ）、書き込みバッファサイズ
+- [x] **TTSSH 追加設定ダイアログ**:
+  - [x] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**（※暗号・鍵交換・MAC の優先順位（前に置きたいものを書く。書かなかったものは既定の順で後ろ。使わないようにはできない）、圧縮のオン・オフ、Keepalive。ホスト鍵・署名の順と書き込みバッファは持たない）
   - [x] **SSH 認証... (`MENU_SSH_AUTH` / `DLG_AUTHSETUP_TITLE`)**（※「設定 > SSH...」に既定のユーザー名と最初に試す秘密鍵ファイル。エージェントはいつも使う。認証方式はサーバーの求めに合わせて順に試す）
   - [x] **SSH 転送... (`MENU_SSH_FORWARD` / `DLG_FWDSETUP_TITLE`)**（※1 行 1 つの文字で編集する。X11 転送は未実装）: ポートフォワーディング（ローカル `-L` / リモート `-R` / ダイナミック `-D`）の一覧・追加・編集・削除、X11 転送設定
   - [x] **SSH 鍵生成... (`MENU_SSH_KEYGEN` / `DLG_KEYGEN_TITLE`)**（※OpenSSH 形式のみ。PuTTY / SSH2 形式は未実装）: RSA / ECDSA / Ed25519 鍵ペア生成、パスフレーズ設定、OpenSSH / PuTTY / SSH2 形式での公開鍵・秘密鍵保存

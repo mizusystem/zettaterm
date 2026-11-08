@@ -35,10 +35,29 @@ enum SshSettings {
         set { UserDefaults.standard.set(newValue, forKey: "ssh.keyFile") }
     }
 
+    /// 交渉の優先順位（前に置きたい名前。空なら既定の順）と圧縮
+    static var algorithms: SshAlgorithms {
+        get {
+            let d = UserDefaults.standard
+            return SshAlgorithms(kex: d.stringArray(forKey: "ssh.kex") ?? [],
+                                 cipher: d.stringArray(forKey: "ssh.cipher") ?? [],
+                                 mac: d.stringArray(forKey: "ssh.mac") ?? [],
+                                 compression: d.bool(forKey: "ssh.compression"))
+        }
+        set {
+            let d = UserDefaults.standard
+            d.set(newValue.kex, forKey: "ssh.kex")
+            d.set(newValue.cipher, forKey: "ssh.cipher")
+            d.set(newValue.mac, forKey: "ssh.mac")
+            d.set(newValue.compression, forKey: "ssh.compression")
+        }
+    }
+
     /// コアに渡す（起動時と、設定を変えたとき）。読めなかった行を返す。
     @discardableResult
     static func apply() -> [String] {
         setSshAuthDefaults(user: defaultUser, keyFile: (keyFile as NSString).expandingTildeInPath)
+        _ = setSshAlgorithms(algorithms: algorithms)
         return setSshDefaults(forwards: forwards, keepaliveSecs: UInt32(clamping: keepalive), forwardAgent: forwardAgent)
     }
 }
@@ -52,6 +71,11 @@ struct SshSettingsView: View {
     @State private var agent = SshSettings.forwardAgent
     @State private var defaultUser = SshSettings.defaultUser
     @State private var keyFile = SshSettings.keyFile
+    @State private var kex = SshSettings.algorithms.kex.joined(separator: ", ")
+    @State private var cipher = SshSettings.algorithms.cipher.joined(separator: ", ")
+    @State private var mac = SshSettings.algorithms.mac.joined(separator: ", ")
+    @State private var compression = SshSettings.algorithms.compression
+    private let defaults = sshDefaultAlgorithms()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -66,6 +90,28 @@ struct SshSettingsView: View {
 
             Toggle(TT.text("DLG_SSHSETUP_FORWARDAGENT", "エージェント転送を有効にする", section: "TTSSH"), isOn: $agent)
                 .help(L("接続先でさらに ssh するとき、手元の ssh-agent の鍵で認証できるようにします。信頼できるサーバーでだけ使ってください。"))
+
+            // 交渉の優先順位。書いた名前が前に来て、書かなかったものは既定の順で後ろに並ぶ
+            DisclosureGroup(L("アルゴリズムの優先順位")) {
+                Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
+                    GridRow {
+                        Text(TT.text("DLG_SSHSETUP_CIPHER", "優先する暗号アルゴリズムの順", section: "TTSSH"))
+                        TextField(defaults.cipher.joined(separator: ", "), text: $cipher)
+                    }
+                    GridRow {
+                        Text(TT.text("DLG_SSHSETUP_KEX", "優先する鍵交換アルゴリズムの順", section: "TTSSH"))
+                        TextField(defaults.kex.joined(separator: ", "), text: $kex)
+                    }
+                    GridRow {
+                        Text(TT.text("DLG_SSHSETUP_MAC", "優先するMACアルゴリズムの順", section: "TTSSH"))
+                        TextField(defaults.mac.joined(separator: ", "), text: $mac)
+                    }
+                }
+                Toggle(L("圧縮する（zlib）"), isOn: $compression)
+                Text(L("カンマで区切って、前に置きたいものから書きます。書かなかったものは既定の順で後ろに並びます（空なら既定のまま）。"))
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             // TTSSH の「SSH 認証」の既定
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 6) {
@@ -117,6 +163,17 @@ struct SshSettingsView: View {
     }
 
     private func save() {
+        let split = { (s: String) in
+            s.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        let algos = SshAlgorithms(kex: split(kex), cipher: split(cipher), mac: split(mac), compression: compression)
+        let unknown = setSshAlgorithms(algorithms: algos)
+        if !unknown.isEmpty {
+            bad = unknown
+            SshSettings.apply()
+            return
+        }
+        SshSettings.algorithms = algos
         let lines = forwards.split(whereSeparator: \.isNewline).map(String.init)
             .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let rejected = setSshDefaults(forwards: lines, keepaliveSecs: UInt32(clamping: Int(keepalive) ?? 60), forwardAgent: agent)

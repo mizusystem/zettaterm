@@ -381,6 +381,7 @@ fn main() -> glib::ExitCode {
         app.set_menubar(Some(&menu()));
         let saved = settings::Settings::load();
         saved.proxy.apply();
+        saved.ssh.apply_algorithms();
         mt_net::set_term_type(Some(saved.term_type.clone()));
         let quit = gio::SimpleAction::new("quit", None);
         let a = app.clone();
