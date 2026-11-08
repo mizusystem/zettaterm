@@ -769,8 +769,77 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         }
     }
 
+    // MARK: - マウスの通知（vim の set mouse=a、tmux、htop など）
+
+    /// 押したのを相手に送った（そのあとの移動と離したのも送る）
+    private var mouseReporting = false
+
+    /// 相手がマウスを求めていて、選択に使わないとき。Shift（と、設定によって Ctrl）を押していれば選択する。
+    private func mouseAllowed(_ event: NSEvent) -> Bool {
+        guard let session, screen.scrollOffset == 0 else { return false }
+        let c = OtherConfig.saved
+        guard c.mouseTracking, session.mouseMode().tracking else { return false }
+        let f = event.modifierFlags
+        if f.contains(.shift) { return false }
+        if c.mouseCtrlBypass && f.contains(.control) { return false }
+        return true
+    }
+
+    @discardableResult
+    private func sendMouse(_ event: NSEvent, _ action: MouseAction, _ button: MouseButton) -> Bool {
+        guard let session else { return false }
+        let here = cell(event)
+        let f = event.modifierFlags
+        let mods = Modifiers(shift: false, ctrl: f.contains(.control), alt: f.contains(.option))
+        return session.mouseEvent(action: action, button: button, col: here.col,
+                                  row: UInt16(clamping: max(0, Int(here.line))), mods: mods)
+    }
+
+    /// 押したとき：送ったら true（選択はしない）。
+    private func mousePressed(_ event: NSEvent, _ button: MouseButton) -> Bool {
+        guard mouseAllowed(event) else { return false }
+        mouseReporting = sendMouse(event, .press, button)
+        return mouseReporting
+    }
+
+    private func mouseReleased(_ event: NSEvent, _ button: MouseButton) -> Bool {
+        guard mouseReporting else { return false }
+        mouseReporting = false
+        sendMouse(event, .release, button)
+        return true
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        // ボタンを押していない移動（モード 1003）のため
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+                                       owner: self, userInfo: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        if mouseAllowed(event) { sendMouse(event, .move, .none) }
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        if mouseReporting { sendMouse(event, .move, .right) }
+    }
+
+    override func otherMouseDragged(with event: NSEvent) {
+        if mouseReporting { sendMouse(event, .move, .middle) }
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        if !mouseReleased(event, .right) { super.rightMouseUp(with: event) }
+    }
+
+    override func otherMouseUp(with event: NSEvent) {
+        if !mouseReleased(event, .middle) { super.otherMouseUp(with: event) }
+    }
+
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
+        if mousePressed(event, .left) { return }
         guard let session = textSession else { return }
         let here = cell(event)
         if event.modifierFlags.contains(.command), copyPaste.clickableUrl,
@@ -801,6 +870,10 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     }
 
     override func mouseDragged(with event: NSEvent) {
+        if mouseReporting {
+            sendMouse(event, .move, .left)
+            return
+        }
         guard selection != nil else { return }
         // 端より外へ引っぱったらスクロールする
         let y = convert(event.locationInWindow, from: nil).y
@@ -820,6 +893,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if mouseReleased(event, .left) { return }
         guard let sel = selection else { return }
         if sel.isEmpty {
             selection = nil
@@ -830,6 +904,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     }
 
     override func rightMouseDown(with event: NSEvent) {
+        if mousePressed(event, .right) { return }
         if copyPaste.rightClickPaste {
             pasteClipboard()
         } else {
@@ -838,6 +913,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     }
 
     override func otherMouseDown(with event: NSEvent) {
+        if event.buttonNumber == 2 && mousePressed(event, .middle) { return }
         if event.buttonNumber == 2 && copyPaste.middleClickPaste {
             pasteClipboard()
         } else {
@@ -887,12 +963,23 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     // MARK: - スクロール
 
     override func scrollWheel(with event: NSEvent) {
-        guard !screen.altScreen else { return }
         let lines = event.hasPreciseScrollingDeltas ? event.scrollingDeltaY / cellH : event.scrollingDeltaY
         scrollRemainder += lines
         let whole = Int(scrollRemainder.rounded(.towardZero))
         scrollRemainder -= CGFloat(whole)
-        if whole != 0 && screen.scroll(by: whole) { scrollChanged() }
+        guard whole != 0 else { return }
+        // 相手がマウスを求めていればホイールも送る。代替画面（less や vim）なら上下の矢印キーにする
+        if mouseAllowed(event) {
+            for _ in 0..<abs(whole) { sendMouse(event, .press, whole > 0 ? .wheelUp : .wheelDown) }
+            return
+        }
+        if screen.altScreen {
+            if let session, session.mouseMode().alternateScroll {
+                for _ in 0..<abs(whole) { send(whole > 0 ? .up : .down) }
+            }
+            return
+        }
+        if screen.scroll(by: whole) { scrollChanged() }
     }
 
     private func scrollChanged() {

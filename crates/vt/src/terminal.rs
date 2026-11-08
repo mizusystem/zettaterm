@@ -113,6 +113,28 @@ impl Terminal {
         self.filter.allow = allow;
     }
 
+    /// 相手が求めているマウスの通知（vim の `set mouse=a` などで変わる）。
+    pub fn mouse_mode(&self) -> crate::mouse::MouseMode {
+        let m = self.term.mode();
+        let mut mode = crate::mouse::MouseMode {
+            click: m.contains(TermMode::MOUSE_REPORT_CLICK),
+            drag: m.contains(TermMode::MOUSE_DRAG),
+            motion: m.contains(TermMode::MOUSE_MOTION),
+            sgr: m.contains(TermMode::SGR_MOUSE),
+            utf8: m.contains(TermMode::UTF8_MOUSE),
+            alternate_scroll: false,
+        };
+        mode.alternate_scroll = !mode.tracking()
+            && m.contains(TermMode::ALT_SCREEN)
+            && m.contains(TermMode::ALTERNATE_SCROLL);
+        mode
+    }
+
+    /// マウスの出来事を送るバイト列に（相手が求めていなければ None）。
+    pub fn encode_mouse(&self, event: &crate::mouse::MouseEvent) -> Option<Vec<u8>> {
+        crate::mouse::encode(self.mouse_mode(), event)
+    }
+
     /// 端末 ID（DA1 の応答）。
     pub fn set_terminal_id(&mut self, id: TerminalId) {
         self.terminal_id = id;
@@ -626,6 +648,18 @@ mod tests {
         assert_eq!(row.cells[0].fg, 0xCD0000);
         assert_eq!(row.cells[1].fg, palette::DEFAULT_BG);
         assert_eq!(row.cells[1].bg, palette::DEFAULT_FG);
+    }
+
+    #[test]
+    fn mouse_mode_follows_the_remote() {
+        let mut t = Terminal::new(10, 2, 0);
+        assert!(!t.mouse_mode().tracking());
+        t.feed(b"\x1b[?1002h\x1b[?1006h");
+        let m = t.mouse_mode();
+        assert!(m.drag && m.sgr);
+        t.feed(b"\x1b[?1002l\x1b[?1049h");
+        // 代替画面でマウスを求めていなければ、ホイールは矢印キー
+        assert!(t.mouse_mode().alternate_scroll);
     }
 
     #[test]

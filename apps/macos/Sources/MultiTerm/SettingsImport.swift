@@ -97,6 +97,8 @@ enum SettingsImport {
         if let v = ini.acceptTitle.flatMap(OtherConfig.TitleChange.init) { other.titleChange = v }
         if let v = ini.alpha { other.alphaActive = Int(v) }
         if let v = ini.serialReconnect { other.autoReconnect = v }
+        if let v = ini.mouseTracking { other.mouseTracking = v }
+        if let v = ini.mouseCtrlBypass { other.mouseCtrlBypass = v }
         if let v = ini.serialReconnectMs { other.reconnectMs = max(100, min(Int(v), 60_000)) }
         other.save()
         other.applyEverywhere()

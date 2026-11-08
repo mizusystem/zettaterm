@@ -83,6 +83,10 @@ struct State {
     /// 表示中の行の URL（世代とスクロール位置が変わったら取り直す）
     urls: Option<(u64, u32, Vec<Selection>)>,
     scroll_rest: f64,
+    /// 押したのを相手に送ったボタン（そのあとの移動と離したのも送る）
+    mouse_reporting: Option<mt_core::MouseButton>,
+    /// 最後のマウスの位置（ホイールを送るとき）
+    pointer: (f64, f64),
     focused: bool,
     /// スクロールバーをプログラムから動かしている
     adjusting: bool,
@@ -191,6 +195,8 @@ impl TermView {
             current: None,
             urls: None,
             scroll_rest: 0.0,
+            mouse_reporting: None,
+            pointer: (0.0, 0.0),
             focused: false,
             adjusting: false,
             blink_on: true,
@@ -704,6 +710,87 @@ impl TermView {
         }
     }
 
+    /// 相手がマウスを求めていて、選択に使わないとき。Shift（と、設定によって Ctrl）を押していれば選択する。
+    fn mouse_allowed(&self, state: gdk::ModifierType) -> bool {
+        let session = {
+            let st = self.state.borrow();
+            if st.screen.scroll_offset != 0 {
+                return false;
+            }
+            st.session.clone()
+        };
+        let Some(session) = session else {
+            return false;
+        };
+        let o = Settings::load().other;
+        if !o.mouse_tracking || !session.mouse_mode().tracking() {
+            return false;
+        }
+        if state.contains(gdk::ModifierType::SHIFT_MASK) {
+            return false;
+        }
+        !(o.mouse_ctrl_bypass && state.contains(gdk::ModifierType::CONTROL_MASK))
+    }
+
+    fn send_mouse(
+        &self,
+        action: mt_core::MouseAction,
+        button: mt_core::MouseButton,
+        x: f64,
+        y: f64,
+        state: gdk::ModifierType,
+    ) -> bool {
+        let Some(session) = self.state.borrow().session.clone() else {
+            return false;
+        };
+        let p = self.cell_at(x, y);
+        session.mouse(&mt_core::MouseEvent {
+            action,
+            button,
+            col: p.col,
+            row: p.line.max(0) as u16,
+            mods: Modifiers {
+                shift: false,
+                ctrl: state.contains(gdk::ModifierType::CONTROL_MASK),
+                alt: state.contains(gdk::ModifierType::ALT_MASK),
+            },
+        })
+    }
+
+    /// 押したとき：相手に送ったら true（選択はしない）。
+    fn mouse_pressed(
+        &self,
+        button: mt_core::MouseButton,
+        x: f64,
+        y: f64,
+        state: gdk::ModifierType,
+    ) -> bool {
+        if !self.mouse_allowed(state) {
+            return false;
+        }
+        let sent = self.send_mouse(mt_core::MouseAction::Press, button, x, y, state);
+        if sent {
+            self.area.grab_focus();
+            self.state.borrow_mut().mouse_reporting = Some(button);
+        }
+        sent
+    }
+
+    fn mouse_released(
+        &self,
+        button: mt_core::MouseButton,
+        x: f64,
+        y: f64,
+        state: gdk::ModifierType,
+    ) -> bool {
+        if self.state.borrow().mouse_reporting != Some(button) {
+            return false;
+        }
+        self.state.borrow_mut().mouse_reporting = None;
+        self.send_mouse(mt_core::MouseAction::Release, button, x, y, state);
+        true
+    }
+
     fn press(&self, x: f64, y: f64, state: gdk::ModifierType) {
         self.area.grab_focus();
         let here = self.cell_at(x, y);
@@ -982,22 +1069,46 @@ impl TermView {
         let drag = gtk::GestureDrag::new();
         drag.set_button(gdk::BUTTON_PRIMARY);
         let view = self.clone();
-        drag.connect_drag_begin(move |g, x, y| view.press(x, y, g.current_event_state()));
-        let view = self.clone();
-        drag.connect_drag_update(move |g, dx, dy| {
-            if let Some((sx, sy)) = g.start_point() {
-                view.drag_to(sx + dx, sy + dy);
+        drag.connect_drag_begin(move |g, x, y| {
+            let state = g.current_event_state();
+            if !view.mouse_pressed(mt_core::MouseButton::Left, x, y, state) {
+                view.press(x, y, state);
             }
         });
         let view = self.clone();
-        drag.connect_drag_end(move |_, _, _| view.release());
+        drag.connect_drag_update(move |g, dx, dy| {
+            if let Some((sx, sy)) = g.start_point() {
+                if view.state.borrow().mouse_reporting.is_some() {
+                    let state = g.current_event_state();
+                    let b = mt_core::MouseButton::Left;
+                    view.send_mouse(mt_core::MouseAction::Move, b, sx + dx, sy + dy, state);
+                } else {
+                    view.drag_to(sx + dx, sy + dy);
+                }
+            }
+        });
+        let view = self.clone();
+        drag.connect_drag_end(move |g, dx, dy| {
+            let (sx, sy) = g.start_point().unwrap_or_default();
+            let state = g.current_event_state();
+            if !view.mouse_released(mt_core::MouseButton::Left, sx + dx, sy + dy, state) {
+                view.release();
+            }
+        });
         self.area.add_controller(drag);
 
         // 中クリックで PRIMARY を貼り付け（X11 の習慣）
         let middle = gtk::GestureClick::new();
         middle.set_button(gdk::BUTTON_MIDDLE);
         let view = self.clone();
-        middle.connect_pressed(move |_, _, _, _| {
+        middle.connect_released(move |g, _, x, y| {
+            view.mouse_released(mt_core::MouseButton::Middle, x, y, g.current_event_state());
+        });
+        let view = self.clone();
+        middle.connect_pressed(move |g, _, x, y| {
+            if view.mouse_pressed(mt_core::MouseButton::Middle, x, y, g.current_event_state()) {
+                return;
+            }
             if !conf().middle_click_paste {
                 return;
             }
@@ -1016,7 +1127,14 @@ impl TermView {
         let right = gtk::GestureClick::new();
         right.set_button(gdk::BUTTON_SECONDARY);
         let view = self.clone();
-        right.connect_pressed(move |_, _, x, y| {
+        right.connect_released(move |g, _, x, y| {
+            view.mouse_released(mt_core::MouseButton::Right, x, y, g.current_event_state());
+        });
+        let view = self.clone();
+        right.connect_pressed(move |g, _, x, y| {
+            if view.mouse_pressed(mt_core::MouseButton::Right, x, y, g.current_event_state()) {
+                return;
+            }
             if conf().right_click_paste {
                 view.paste();
             } else {
@@ -1027,7 +1145,26 @@ impl TermView {
         });
         self.area.add_controller(right);
 
-        // ホイールでスクロールバック
+        // ボタンを押していない移動（モード 1003）
+        let motion = gtk::EventControllerMotion::new();
+        let view = self.clone();
+        motion.connect_motion(move |c, x, y| {
+            view.state.borrow_mut().pointer = (x, y);
+            let state = c.current_event_state();
+            if view.state.borrow().mouse_reporting.is_none() && view.mouse_allowed(state) {
+                view.send_mouse(
+                    mt_core::MouseAction::Move,
+                    mt_core::MouseButton::None,
+                    x,
+                    y,
+                    state,
+                );
+            }
+        });
+        self.area.add_controller(motion);
+
+        // ホイールでスクロールバック。相手がマウスを求めていればホイールも送り、
+        // 代替画面（less や vim）なら上下の矢印キーにする
         let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::VERTICAL);
         let view = self.clone();
         scroll.connect_scroll(move |c, _, dy| {
@@ -1040,7 +1177,37 @@ impl TermView {
             st.scroll_rest -= lines;
             let whole = st.scroll_rest.trunc();
             st.scroll_rest -= whole;
-            let moved = whole != 0.0 && st.screen.scroll(whole as i32);
+            let alt = st.screen.alt_screen;
+            let session = st.session.clone();
+            drop(st);
+            if whole == 0.0 {
+                return glib::Propagation::Stop;
+            }
+            let state = c.current_event_state();
+            let n = whole.abs() as usize;
+            if view.mouse_allowed(state) {
+                let b = if whole > 0.0 {
+                    mt_core::MouseButton::WheelUp
+                } else {
+                    mt_core::MouseButton::WheelDown
+                };
+                let (x, y) = view.state.borrow().pointer;
+                for _ in 0..n {
+                    view.send_mouse(mt_core::MouseAction::Press, b, x, y, state);
+                }
+                return glib::Propagation::Stop;
+            }
+            if alt {
+                if session.is_some_and(|s| s.mouse_mode().alternate_scroll) {
+                    let key = if whole > 0.0 { Key::Up } else { Key::Down };
+                    for _ in 0..n {
+                        view.send_key(key.clone(), Modifiers::default());
+                    }
+                }
+                return glib::Propagation::Stop;
+            }
+            let mut st = view.state.borrow_mut();
+            let moved = st.screen.scroll(whole as i32);
             drop(st);
             if moved {
                 view.update_scrollbar();

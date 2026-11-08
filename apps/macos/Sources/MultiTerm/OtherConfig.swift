@@ -28,6 +28,10 @@ struct OtherConfig: Equatable {
     /// シリアルが抜けたら自動でつなぎ直す（AutoComPortReconnect）と、その間隔（ミリ秒）
     var autoReconnect = true
     var reconnectMs: Int = 500
+    /// 相手が求めたらマウスの操作を送る（MouseEventTracking）。Shift を押していれば送らずに選択する
+    var mouseTracking = true
+    /// Ctrl を押している間も送らない（DisableMouseTrackingByCtrl）
+    var mouseCtrlBypass = true
 
     private static let prefix = "other."
 
@@ -41,6 +45,8 @@ struct OtherConfig: Equatable {
         bool("remoteClearScrollback", &c.remoteClearScrollback)
         bool("remoteCursorStyle", &c.remoteCursorStyle)
         bool("autoReconnect", &c.autoReconnect)
+        bool("mouseTracking", &c.mouseTracking)
+        bool("mouseCtrlBypass", &c.mouseCtrlBypass)
         if d.object(forKey: prefix + "reconnectMs") != nil { c.reconnectMs = d.integer(forKey: prefix + "reconnectMs") }
         if let b = d.string(forKey: prefix + "bell").flatMap(Bell.init) { c.bell = b }
         if let t = d.string(forKey: prefix + "titleChange").flatMap(TitleChange.init) { c.titleChange = t }
@@ -64,6 +70,8 @@ struct OtherConfig: Equatable {
         d.set(alphaActive, forKey: p + "alphaActive")
         d.set(alphaInactive, forKey: p + "alphaInactive")
         d.set(autoReconnect, forKey: p + "autoReconnect")
+        d.set(mouseTracking, forKey: p + "mouseTracking")
+        d.set(mouseCtrlBypass, forKey: p + "mouseCtrlBypass")
         d.set(reconnectMs, forKey: p + "reconnectMs")
     }
 
@@ -119,6 +127,12 @@ struct OtherSettingsView: View {
                            isOn: $c.remoteClearScrollback)
                     Toggle(TT.text("DLG_TAB_SEQUENCE_CURSOR_CTRL", "カーソル形状/点滅変更制御シーケンス"),
                            isOn: $c.remoteCursorStyle)
+                    Toggle(TT.text("DLG_TAB_SEQUENCE_ACCEPT_MOUSE_EVENT_TRACKING", "マウスイベント通知要求を受け入れる"),
+                           isOn: $c.mouseTracking)
+                    Toggle(TT.text("DLG_TAB_SEQUENCE_DISABLE_MOUSE_TRACKING_CTRL", "Controlキーを押している間はマウスイベントを通知しない"),
+                           isOn: $c.mouseCtrlBypass)
+                        .disabled(!c.mouseTracking)
+                        .padding(.leading, 20)
                     HStack {
                         Text(TT.text("DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING", "ウィンドウタイトルの変更要求を受け入れる"))
                         Picker("", selection: $c.titleChange) {

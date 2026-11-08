@@ -30,7 +30,8 @@ pub use log::{
 pub use mt_vt::select::{DEFAULT_DELIMITERS, table_to_tsv};
 pub use mt_vt::{
     Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, KeyboardOptions,
-    Modifiers, Point, RemoteControl, Row, SearchQuery, Selection, TerminalId, UrlMatch, themes,
+    Modifiers, MouseAction, MouseButton, MouseEvent, MouseMode, Point, RemoteControl, Row,
+    SearchQuery, Selection, TerminalId, UrlMatch, themes,
 };
 pub use newline::{NewlineReceive, NewlineSend};
 pub use paste::{PasteCheck, check_paste, default_dangerous_words};

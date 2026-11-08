@@ -728,6 +728,34 @@ pub struct Modifiers {
     pub alt: bool,
 }
 
+/// マウスのボタン（マウスの通知）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum MouseButton {
+    Left,
+    Middle,
+    Right,
+    WheelUp,
+    WheelDown,
+    /// ボタンを押していない（動かしただけ）
+    None,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum MouseAction {
+    Press,
+    Release,
+    Move,
+}
+
+/// 相手が求めているマウスの通知。
+#[derive(Clone, Copy, Debug, uniffi::Record)]
+pub struct MouseMode {
+    /// 押した・離したなどを送る（選択の代わりに `mouse_event` を使う）
+    pub tracking: bool,
+    /// 代替画面で、ホイールを上下の矢印キーとして送る
+    pub alternate_scroll: bool,
+}
+
 // ---- Session ----
 
 #[derive(uniffi::Object)]
@@ -844,6 +872,49 @@ impl Session {
 
     pub fn write(&self, bytes: Vec<u8>) {
         self.inner.write(bytes);
+    }
+
+    /// 相手が求めているマウスの通知（vim の `set mouse=a`、tmux、htop など）。
+    pub fn mouse_mode(&self) -> MouseMode {
+        let m = self.inner.mouse_mode();
+        MouseMode {
+            tracking: m.tracking(),
+            alternate_scroll: m.alternate_scroll,
+        }
+    }
+
+    /// マウスの出来事を送る。相手が求めていなければ送らずに false。
+    /// `col` / `row` は画面の左上を 0 とするセルの位置。
+    pub fn mouse_event(
+        &self,
+        action: MouseAction,
+        button: MouseButton,
+        col: u16,
+        row: u16,
+        mods: Modifiers,
+    ) -> bool {
+        self.inner.mouse(&core::MouseEvent {
+            action: match action {
+                MouseAction::Press => core::MouseAction::Press,
+                MouseAction::Release => core::MouseAction::Release,
+                MouseAction::Move => core::MouseAction::Move,
+            },
+            button: match button {
+                MouseButton::Left => core::MouseButton::Left,
+                MouseButton::Middle => core::MouseButton::Middle,
+                MouseButton::Right => core::MouseButton::Right,
+                MouseButton::WheelUp => core::MouseButton::WheelUp,
+                MouseButton::WheelDown => core::MouseButton::WheelDown,
+                MouseButton::None => core::MouseButton::None,
+            },
+            col,
+            row,
+            mods: core::Modifiers {
+                shift: mods.shift,
+                ctrl: mods.ctrl,
+                alt: mods.alt,
+            },
+        })
     }
 
     pub fn key(&self, key: Key, mods: Modifiers) {

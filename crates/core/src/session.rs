@@ -446,6 +446,26 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner()) = text.map(|t| t.replace('\u{5}', ""));
     }
 
+    /// 相手が求めているマウスの通知。UI は `tracking()` なら選択の代わりに `mouse` で送る。
+    pub fn mouse_mode(&self) -> mt_vt::MouseMode {
+        self.inner.vt().mouse_mode()
+    }
+
+    /// マウスの出来事を送る。相手が求めていなければ送らずに false。閲覧専用でも送らない。
+    pub fn mouse(&self, event: &mt_vt::MouseEvent) -> bool {
+        if self.inner.view_only.load(Ordering::SeqCst) {
+            return false;
+        }
+        let bytes = self.inner.vt().encode_mouse(event);
+        match bytes {
+            Some(b) => {
+                self.write(b);
+                true
+            }
+            None => false,
+        }
+    }
+
     /// 曖昧な幅の文字を 2 セルで扱うか（Tera Term の UnicodeAmbiguousWidth=2）。これから届く文字に効く。
     pub fn set_ambiguous_wide(&self, wide: bool) {
         self.inner.vt().set_ambiguous_wide(wide);

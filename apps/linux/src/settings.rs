@@ -417,6 +417,10 @@ pub struct OtherConf {
     /// シリアルが抜けたら自動でつなぎ直す（AutoComPortReconnect）と、その間隔（ミリ秒）
     pub auto_reconnect: bool,
     pub reconnect_ms: u32,
+    /// 相手が求めたらマウスの操作を送る（MouseEventTracking）。Shift を押していれば送らずに選択する
+    pub mouse_tracking: bool,
+    /// Ctrl を押している間も送らない（DisableMouseTrackingByCtrl）
+    pub mouse_ctrl_bypass: bool,
 }
 
 impl Default for OtherConf {
@@ -434,6 +438,8 @@ impl Default for OtherConf {
             alpha_inactive: 255,
             auto_reconnect: true,
             reconnect_ms: 500,
+            mouse_tracking: true,
+            mouse_ctrl_bypass: true,
         }
     }
 }
@@ -520,6 +526,23 @@ pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     );
     content.append(&sbuff);
     content.append(&cursor);
+    let mouse = check(
+        tt(
+            "DLG_TAB_SEQUENCE_ACCEPT_MOUSE_EVENT_TRACKING",
+            "マウスイベント通知要求を受け入れる",
+        ),
+        c.mouse_tracking,
+    );
+    let mouse_ctrl = check(
+        tt(
+            "DLG_TAB_SEQUENCE_DISABLE_MOUSE_TRACKING_CTRL",
+            "Controlキーを押している間はマウスイベントを通知しない",
+        ),
+        c.mouse_ctrl_bypass,
+    );
+    mouse_ctrl.set_margin_start(20);
+    content.append(&mouse);
+    content.append(&mouse_ctrl);
     let titles = ["off", "overwrite", "ahead", "last"];
     let title = gtk::DropDown::from_strings(&[
         &tt("DLG_TAB_SEQUENCE_ACCEPT_TITLE_CHANGING_OFF", "無効"),
@@ -625,6 +648,8 @@ pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             alpha_inactive: inactive.value() as u8,
             auto_reconnect: reconnect.is_active(),
             reconnect_ms: interval.value() as u32,
+            mouse_tracking: mouse.is_active(),
+            mouse_ctrl_bypass: mouse_ctrl.is_active(),
         };
         s.save();
         applied();
@@ -1862,6 +1887,12 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(v) = ini.serial_reconnect {
         o.auto_reconnect = v;
+    }
+    if let Some(v) = ini.mouse_tracking {
+        o.mouse_tracking = v;
+    }
+    if let Some(v) = ini.mouse_ctrl_bypass {
+        o.mouse_ctrl_bypass = v;
     }
     if let Some(v) = ini.serial_reconnect_ms {
         o.reconnect_ms = v.clamp(100, 60_000);

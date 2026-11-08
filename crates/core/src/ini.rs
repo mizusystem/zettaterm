@@ -53,6 +53,9 @@ pub struct IniSettings {
     pub alpha: Option<u8>,
     /// `UnicodeAmbiguousWidth` が 2
     pub ambiguous_wide: Option<bool>,
+    /// `MouseEventTracking` と `DisableMouseTrackingByCtrl`
+    pub mouse_tracking: Option<bool>,
+    pub mouse_ctrl_bypass: Option<bool>,
     /// `AutoComPortReconnect` と `AutoComPortReconnectRetryInterval`（ミリ秒）
     pub serial_reconnect: Option<bool>,
     pub serial_reconnect_ms: Option<u32>,
@@ -280,6 +283,8 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s.accept_title = get("accepttitlechangerequest").map(|v| v.to_ascii_lowercase());
     s.alpha = get("alphablendactive").and_then(|v| v.parse().ok());
     s.ambiguous_wide = get("unicodeambiguouswidth").map(|v| v.trim() == "2");
+    s.mouse_tracking = get("mouseeventtracking").and_then(on_off);
+    s.mouse_ctrl_bypass = get("disablemousetrackingbyctrl").and_then(on_off);
     s.serial_reconnect = get("autocomportreconnect").and_then(on_off);
     s.serial_reconnect_ms =
         get("autocomportreconnectretryinterval").and_then(|v| v.trim().parse().ok());

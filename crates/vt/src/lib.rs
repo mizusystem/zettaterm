@@ -5,6 +5,7 @@
 
 mod filter;
 mod keys;
+pub mod mouse;
 mod palette;
 pub mod select;
 mod terminal;
@@ -12,6 +13,7 @@ mod types;
 
 pub use filter::RemoteControl;
 pub use keys::{Key, KeyboardOptions, Modifiers};
+pub use mouse::{MouseAction, MouseButton, MouseEvent, MouseMode};
 pub use palette::themes;
 pub use select::{Point, SearchQuery, Selection, UrlMatch};
 pub use terminal::{Terminal, VtEvent};
