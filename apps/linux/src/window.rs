@@ -626,6 +626,11 @@ pub struct TermWindow {
     prompts: async_channel::Sender<Prompt>,
     macro_tx: async_channel::Sender<MacroReq>,
     macro_stop: RefCell<Option<Arc<AtomicBool>>>,
+    /// 実行中のマクロの中断・続行と今の行（マクロウィンドウ）
+    macro_control: RefCell<Option<Arc<mt_ttl::MacroControl>>>,
+    badge_line: gtk::Label,
+    badge_pause: gtk::ToggleButton,
+    pause_handler: Cell<Option<glib::SignalHandlerId>>,
     badge: gtk::Box,
     badge_name: gtk::Label,
     badge_status: gtk::Label,
@@ -683,8 +688,16 @@ impl TermWindow {
         let stop = gtk::Button::from_icon_name("media-playback-stop-symbolic");
         stop.set_tooltip_text(Some(&l("マクロの停止")));
         stop.set_action_name(Some("win.macro-stop"));
+        // 中断・続行（Tera Term のマクロウィンドウ）と、今の行
+        let badge_pause = gtk::ToggleButton::new();
+        badge_pause.set_icon_name("media-playback-pause-symbolic");
+        badge_pause.set_tooltip_text(Some(&tt("BTN_PAUSE", "中断")));
+        let badge_line = gtk::Label::new(None);
+        badge_line.add_css_class("dim-label");
         top.append(&spinner);
         top.append(&badge_name);
+        top.append(&badge_line);
+        top.append(&badge_pause);
         top.append(&stop);
         let badge_status = gtk::Label::new(None);
         let badge_transfer = gtk::Label::new(None);
@@ -731,6 +744,10 @@ impl TermWindow {
             prompts,
             macro_tx,
             macro_stop: RefCell::new(None),
+            macro_control: RefCell::new(None),
+            badge_line,
+            badge_pause,
+            pause_handler: Cell::new(None),
             badge,
             badge_name,
             badge_status,
@@ -1921,6 +1938,52 @@ impl TermWindow {
     pub fn run_macro(self: &Rc<Self>, path: std::path::PathBuf) {
         let stop = Arc::new(AtomicBool::new(false));
         *self.macro_stop.borrow_mut() = Some(Arc::clone(&stop));
+        let control = Arc::new(mt_ttl::MacroControl::default());
+        *self.macro_control.borrow_mut() = Some(Arc::clone(&control));
+        self.badge_pause.set_active(false);
+        {
+            let c = Arc::clone(&control);
+            let pause = self.badge_pause.clone();
+            // 前のマクロのつなぎを外してから、このマクロにつなぐ
+            if let Some(id) = self.pause_handler.take() {
+                pause.disconnect(id);
+            }
+            let id = pause.connect_toggled(move |b| {
+                c.paused
+                    .store(b.is_active(), std::sync::atomic::Ordering::SeqCst);
+                b.set_icon_name(if b.is_active() {
+                    "media-playback-start-symbolic"
+                } else {
+                    "media-playback-pause-symbolic"
+                });
+                b.set_tooltip_text(Some(&if b.is_active() {
+                    tt("BTN_CONTINUE", "続行")
+                } else {
+                    tt("BTN_PAUSE", "中断")
+                }));
+            });
+            self.pause_handler.set(Some(id));
+        }
+        // 今の行を 0.5 秒ごとに出す（マクロが終わったら止める）
+        {
+            let (c, label, me) = (
+                Arc::clone(&control),
+                self.badge_line.clone(),
+                Rc::downgrade(self),
+            );
+            glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+                let Some(me) = me.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                let current = me.macro_control.borrow().clone();
+                if !current.is_some_and(|x| Arc::ptr_eq(&x, &c)) {
+                    return glib::ControlFlow::Break;
+                }
+                let n = c.line.load(std::sync::atomic::Ordering::SeqCst);
+                label.set_text(&lf("{} 行目", &[&n]));
+                glib::ControlFlow::Continue
+            });
+        }
         self.badge_name.set_text(&lf(
             "マクロ: {}",
             &[&path
@@ -1940,6 +2003,7 @@ impl TermWindow {
             path,
             session,
             stop,
+            control,
             self.macro_tx.clone(),
             transfer::downloads_dir(),
         );
@@ -2145,6 +2209,8 @@ impl TermWindow {
                 self.badge_transfer.set_text(t.as_deref().unwrap_or(""));
             }
             MacroReq::Finished(result) => {
+                self.macro_control.borrow_mut().take();
+                self.badge_line.set_text("");
                 *self.macro_stop.borrow_mut() = None;
                 self.badge.set_visible(false);
                 if let Err(e) = result {

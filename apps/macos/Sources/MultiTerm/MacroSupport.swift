@@ -307,12 +307,31 @@ final class MacroBridge: MacroHost, @unchecked Sendable {
 struct MacroBadge: View {
     let macro: ActiveMacro
     let stop: () -> Void
+    /// 中断中（Tera Term のマクロウィンドウの「中断」「続行」）
+    @State private var paused = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
             HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
+                if paused {
+                    Image(systemName: "pause.circle").foregroundStyle(.secondary)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
                 Text(L("マクロ: %@", macro.name)).font(.caption).lineLimit(1)
+                // 今の行（0.5 秒ごとに取り直す）
+                TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                    Text(L("%@ 行目", String(macro.run.currentLine())))
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                }
+                Button {
+                    paused.toggle()
+                    macro.run.setPaused(paused: paused)
+                } label: {
+                    Image(systemName: paused ? "play.fill" : "pause.fill")
+                }
+                .buttonStyle(.borderless)
+                .help(paused ? TT.text("BTN_CONTINUE", "続行") : TT.text("BTN_PAUSE", "中断"))
                 Button {
                     stop()
                 } label: {

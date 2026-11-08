@@ -93,6 +93,7 @@ messagebox inputstr 'filenamebox'
 - [ ] vim の `:set mouse=a`、tmux の `set -g mouse on`、htop でクリック・ドラッグ・ホイールが効く。Shift を押していれば選択になる。less でホイールが上下に効く
 - [ ] 「新しい接続」のホスト欄に `/tmp/x.sock` を書いて UNIX ドメインソケットにつながる（例：`socat UNIX-LISTEN:/tmp/x.sock -` か、QEMU の `-serial unix:/tmp/x.sock,server`）
 - [ ] 「ファイル > ログ記録中ダイアログを表示」：ファイル名と大きさが 1 秒ごとに増え、一時停止・再開・ログを終了が効く
+- [ ] マクロの実行中、右上の表示に今の行が出て、中断で止まり、続行で続く
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

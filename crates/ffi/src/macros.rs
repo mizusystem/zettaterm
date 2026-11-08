@@ -108,6 +108,7 @@ pub struct MacroWindowPosition {
 pub struct MacroRun {
     stop: Arc<AtomicBool>,
     running: Arc<AtomicBool>,
+    control: Arc<mt_ttl::MacroControl>,
 }
 
 #[uniffi::export]
@@ -119,6 +120,20 @@ impl MacroRun {
 
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::SeqCst)
+    }
+
+    /// 中断する・続ける（Tera Term のマクロウィンドウの「中断」「続行」）。
+    pub fn set_paused(&self, paused: bool) {
+        self.control.paused.store(paused, Ordering::SeqCst);
+    }
+
+    pub fn is_paused(&self) -> bool {
+        self.control.paused.load(Ordering::SeqCst)
+    }
+
+    /// 今実行している行（1 から）。
+    pub fn current_line(&self) -> u32 {
+        self.control.line.load(Ordering::SeqCst)
     }
 }
 
@@ -133,9 +148,11 @@ pub fn run_macro(
 ) -> Arc<MacroRun> {
     let stop = Arc::new(AtomicBool::new(false));
     let running = Arc::new(AtomicBool::new(true));
+    let control = Arc::new(mt_ttl::MacroControl::default());
     let run = Arc::new(MacroRun {
         stop: Arc::clone(&stop),
         running: Arc::clone(&running),
+        control: Arc::clone(&control),
     });
     let core_session = session.as_ref().map(|s| Arc::clone(&s.inner));
     let spawned = std::thread::Builder::new().name("mt-macro".into()).spawn({
@@ -148,6 +165,7 @@ pub fn run_macro(
             };
             let result = {
                 let mut interp = Interp::new(&mut adapter, core_session, stop);
+                interp.set_control(control);
                 interp.run_file(Path::new(&path), &params)
             };
             running.store(false, Ordering::SeqCst);

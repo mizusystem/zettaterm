@@ -276,6 +276,7 @@ pub fn spawn(
     path: PathBuf,
     session: Option<Arc<Session>>,
     stop: Arc<AtomicBool>,
+    control: Arc<mt_ttl::MacroControl>,
     tx: async_channel::Sender<MacroReq>,
     downloads: PathBuf,
 ) {
@@ -289,6 +290,7 @@ pub fn spawn(
             };
             let result = {
                 let mut interp = Interp::new(&mut host, session, stop);
+                interp.set_control(control);
                 interp.run_file(&path, &[])
             };
             let _ = tx.send_blocking(MacroReq::Finished(result.map_err(|e| e.to_string())));

@@ -264,9 +264,35 @@ pub struct Interp<'h> {
     /// `connect` で開いたホスト名（gethostname）
     host_name: String,
     started: Instant,
+    control: Arc<MacroControl>,
+}
+
+/// 実行中のマクロを外から見て、止めておく（Tera Term のマクロウィンドウの「中断」「続行」）。
+#[derive(Debug, Default)]
+pub struct MacroControl {
+    /// 中断中（次の行へ進まず、wait なども待たせる）
+    pub paused: AtomicBool,
+    /// 今実行している行（1 から）
+    pub line: std::sync::atomic::AtomicU32,
 }
 
 impl<'h> Interp<'h> {
+    /// 中断・続行と、今の行を UI と分け合う。
+    pub fn set_control(&mut self, control: Arc<MacroControl>) {
+        self.control = control;
+    }
+
+    /// 中断中なら、続行か停止まで待つ。止められたら Err。
+    fn hold_while_paused(&self) -> R<()> {
+        while self.control.paused.load(Ordering::SeqCst) {
+            if self.stop.load(Ordering::SeqCst) {
+                return Err(Fail::Stopped);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        Ok(())
+    }
+
     /// `session` は既に開いている接続（UI のウィンドウから実行するとき）。cli では None から `connect` する。
     pub fn new(
         host: &'h mut dyn Host,
@@ -298,6 +324,7 @@ impl<'h> Interp<'h> {
             rng: seed,
             exit_code: 0,
             host_name: String::new(),
+            control: Arc::default(),
             started: Instant::now(),
         };
         for (k, v) in [
@@ -406,6 +433,10 @@ impl<'h> Interp<'h> {
             let prog = Rc::clone(&frame.prog);
             let pc = frame.pc;
             let line = &prog.lines[pc];
+            self.control.line.store(line.no as u32, Ordering::SeqCst);
+            if self.hold_while_paused().is_err() {
+                return Ok(Outcome::Stopped);
+            }
             let flow = match self.exec(&prog, pc, &line.stmt) {
                 Ok(f) => f,
                 Err(Fail::Stopped) => return Ok(Outcome::Stopped),
@@ -807,6 +838,7 @@ impl<'h> Interp<'h> {
             if self.stop.load(Ordering::SeqCst) {
                 return Err(Fail::Stopped);
             }
+            self.hold_while_paused()?;
             // 相手が切れたら、時間切れと同じく result = 0 で抜ける（無期限の wait が終わらなくならないように）
             if self
                 .session

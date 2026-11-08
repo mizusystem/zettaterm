@@ -82,7 +82,7 @@
 - [x] **リモートタイトルリセット (`MENU_CONTROL_RESETTITLE`)**: OSC 0/2 で変更されたタイトルを初期タイトルに戻す
 - [x] **ポートのリセット (`MENU_CONTROL_RESETPORT`)**: シリアル通信バッファのクリアとポート再初期化
 - [x] **AYT 送信 (`MENU_CONTROL_AREYOUTHERE`)** (`Alt+T`): Telnet の `IAC AYT` 送信
-- [ ] **マクロウィンドウの表示 (`MENU_CONTROL_SHOW_MACRO`)**: 実行中マクロの詳細・ポーズ制御
+- [x] **マクロウィンドウの表示 (`MENU_CONTROL_SHOW_MACRO`)**（※実行中はウィンドウの右上にいつも出す：ファイル名・今の行・中断 / 続行・停止）: 実行中マクロの詳細・ポーズ制御
 - [-] **TEK ウィンドウを開く / 閉じる (`MENU_CONTROL_OPENTEK` / `CLOSETEK`)**（※作らない。2026-11-08 決定）
 
 ### 1-5. 「転送 (Transfer)」メニュー (`MENU_TRANS`)

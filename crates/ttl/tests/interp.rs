@@ -857,3 +857,33 @@ fn waitevent_times_out_or_sees_a_disconnect() {
     t.join().unwrap();
     assert_eq!(out, ["4"]);
 }
+
+#[test]
+fn pause_holds_the_macro_until_resumed() {
+    use mt_ttl::MacroControl;
+    let control = Arc::new(MacroControl::default());
+    control
+        .paused
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let c = Arc::clone(&control);
+    let worker = std::thread::spawn(move || {
+        let mut host = TestHost::default();
+        let stop = Arc::new(AtomicBool::new(false));
+        let mut it = Interp::new(&mut host, None, stop);
+        it.set_control(c);
+        it.run_source("x = 1\nmessagebox 'done' 't'\n", Path::new("."))
+            .unwrap();
+        drop(it);
+        host.out.lock().unwrap().clone()
+    });
+    std::thread::sleep(Duration::from_millis(200));
+    // 中断中は 1 行目で止まっている
+    assert_eq!(control.line.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(!worker.is_finished());
+    control
+        .paused
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    let out = worker.join().unwrap();
+    assert_eq!(out.len(), 1);
+    assert_eq!(control.line.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
