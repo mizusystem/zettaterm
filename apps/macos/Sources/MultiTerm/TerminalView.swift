@@ -97,6 +97,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
 
     init() {
         (font, boldFont, italicFont, geometry, ascent) = Self.metrics(AppearanceConfig.saved)
+        boldColor = AppearanceConfig.saved.boldColor
+        urlColor = AppearanceConfig.saved.urlColor
         super.init(frame: .zero)
         registerForDraggedTypes([.fileURL])
 
@@ -131,10 +133,17 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     // MARK: 見た目
 
     /// 「設定 > ウィンドウ / フォント」を変えたとき。フォントが変われば行数・桁数も変わる。
+    /// 太字と URL の色（nil なら色を変えない）
+    private var boldColor: UInt32?
+    private var urlColor: UInt32?
+
     private func applyAppearance() {
         let config = AppearanceConfig.saved
         (font, boldFont, italicFont, geometry, ascent) = Self.metrics(config)
         textSession?.setAppearance(appearance: config.appearance)
+        session?.setScrollback(lines: UInt32(clamping: config.scrollback))
+        boldColor = config.boldColor
+        urlColor = config.urlColor
         urlCache = nil
         gridSize = (0, 0)
         setFrameSize(frame.size)
@@ -293,6 +302,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         self.bridge = bridge
         session = opened
         opened.setAppearance(appearance: AppearanceConfig.saved.appearance)
+        opened.setScrollback(lines: UInt32(clamping: AppearanceConfig.saved.scrollback))
         opened.setKeyboard(keyboard: KeyboardConfig.saved)
         opened.setAnswerback(text: answerback)
         opened.setTerminalId(id: terminalId)
@@ -508,6 +518,13 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         if let sel = marks.selection, sel.contains(line: line, col: col) { return (cell.bg, cell.fg) }
         if let cur = marks.current, cur.contains(line: line, col: col) { return Self.currentColors }
         if marks.matches.contains(where: { $0.contains(line: line, col: col) }) { return Self.matchColors }
+        // 「設定 > ウィンドウ」の URL と太字の色（太字は既定の文字色のときだけ）
+        if let urlColor, marks.urls.contains(where: { $0.contains(line: line, col: col) }) {
+            return (urlColor, cell.bg)
+        }
+        if let boldColor, cell.fg == screen.defaultFg, CellFlags(rawValue: cell.flags).contains(.bold) {
+            return (boldColor, cell.bg)
+        }
         return (cell.fg, cell.bg)
     }
 

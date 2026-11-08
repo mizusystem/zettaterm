@@ -68,6 +68,9 @@ struct State {
     cell_w: f64,
     cell_h: f64,
     ascent: f64,
+    /// 太字と URL の色（None なら色を変えない）
+    bold_color: Option<u32>,
+    url_color: Option<u32>,
     /// 行間の余白の上半分（文字をセルの中で下げる量）
     text_dy: f64,
     selection: Option<Selection>,
@@ -184,6 +187,8 @@ impl TermView {
             cell_w: 8.0,
             cell_h: 16.0,
             ascent: 12.0,
+            bold_color: None,
+            url_color: None,
             text_dy: 0.0,
             selection: None,
             unit: Unit::Cell,
@@ -269,6 +274,12 @@ impl TermView {
             menu,
             state,
         };
+        {
+            let look = Settings::load().look;
+            let mut st = view.state.borrow_mut();
+            st.bold_color = look.bold_color;
+            st.url_color = look.url_color;
+        }
         view.measure();
         view.install();
         view.install_search(prev, next, close);
@@ -354,7 +365,9 @@ impl TermView {
         st.current = None;
         st.urls = None;
         st.closed = None;
-        session.set_appearance(&Settings::load().look.appearance());
+        let look = Settings::load().look;
+        session.set_appearance(&look.appearance());
+        session.set_scrollback(look.scrollback);
         st.session = Some(session);
         st.dirty.store(true, Ordering::SeqCst);
     }
@@ -362,7 +375,15 @@ impl TermView {
     /// 「設定 > ウィンドウ / フォント」を変えたとき。フォントが変われば行数・桁数も変わる。
     pub fn apply_look(&self) {
         let look = Settings::load().look;
-        self.state.borrow_mut().font = pango::FontDescription::from_string(&look.font);
+        {
+            let mut st = self.state.borrow_mut();
+            st.font = pango::FontDescription::from_string(&look.font);
+            st.bold_color = look.bold_color;
+            st.url_color = look.url_color;
+        }
+        if let Some(s) = self.session() {
+            s.set_scrollback(look.scrollback);
+        }
         self.measure();
         if let Some(s) = self.text_session() {
             s.set_appearance(&look.appearance());
@@ -1385,6 +1406,17 @@ impl TermView {
                 CURRENT_COLORS
             } else if marks.matches.iter().any(|s| s.contains(line, col)) {
                 MATCH_COLORS
+            } else if let Some(c) = st
+                .url_color
+                .filter(|_| marks.urls.iter().any(|u| u.contains(line, col)))
+            {
+                // 「設定 > ウィンドウ」の URL と太字の色（太字は既定の文字色のときだけ）
+                (c, cell.bg)
+            } else if let Some(c) = st
+                .bold_color
+                .filter(|_| cell.flags & CellFlags::BOLD != 0 && cell.fg == sc.default_fg)
+            {
+                (c, cell.bg)
             } else {
                 (cell.fg, cell.bg)
             }

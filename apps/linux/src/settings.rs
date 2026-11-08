@@ -121,6 +121,13 @@ pub struct Look {
     pub cursor_blink: bool,
     /// Pango のフォント指定（"Monospace 12" など）
     pub font: String,
+    /// 太字（既定の文字色のとき）と URL を別の色で出す（VTBoldColor / URLColor。None で出さない）
+    pub bold_color: Option<u32>,
+    pub url_color: Option<u32>,
+    /// スクロールバッファの行数（ScrollBuffSize。0 で持たない）
+    pub scrollback: usize,
+    /// ウィンドウのタイトル（Title。空なら Multi-Term）
+    pub title: String,
     /// 行間と文字間に足す余白（ピクセル。Tera Term の「フォント」の文字間隔）
     pub line_spacing: u8,
     pub char_spacing: u8,
@@ -141,6 +148,10 @@ impl Default for Look {
             font: "Monospace 12".to_owned(),
             line_spacing: 0,
             char_spacing: 0,
+            bold_color: None,
+            url_color: None,
+            scrollback: mt_core::session::DEFAULT_SCROLLBACK,
+            title: String::new(),
             ansi: Vec::new(),
         }
     }
@@ -1589,6 +1600,46 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
         1,
     );
     grid.attach(&ansi_grid, 1, 6, 1, 1);
+    // 太字・URL を別の色で
+    let optional = |c: Option<u32>, fallback: u32| {
+        let on = gtk::CheckButton::with_label(&l("別の色で出す"));
+        on.set_active(c.is_some());
+        let b = color_button(c.unwrap_or(fallback));
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        row.append(&on);
+        row.append(&b);
+        (row, on, b)
+    };
+    let (bold_row, bold_on, bold_c) = optional(current.bold_color, 0xFFFF00);
+    let (url_row, url_on, url_c) = optional(current.url_color, 0x00FFFF);
+    grid.attach(
+        &label(format!("{}:", tt("DLG_WIN_BOLD", "太字"))),
+        0,
+        7,
+        1,
+        1,
+    );
+    grid.attach(&bold_row, 1, 7, 1, 1);
+    grid.attach(&label(format!("{}:", tt("DLG_WIN_URL", "URL"))), 0, 8, 1, 1);
+    grid.attach(&url_row, 1, 8, 1, 1);
+    let scroll = gtk::SpinButton::with_range(0.0, 1_000_000.0, 1000.0);
+    scroll.set_value(current.scrollback as f64);
+    let scroll_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    scroll_row.append(&scroll);
+    scroll_row.append(&gtk::Label::new(Some(&tt("DLG_WIN_SCROLL3", "行"))));
+    grid.attach(
+        &label(tt("DLG_WIN_SCROLL1", "スクロールバッファ:")),
+        0,
+        9,
+        1,
+        1,
+    );
+    grid.attach(&scroll_row, 1, 9, 1, 1);
+    let title = gtk::Entry::new();
+    title.set_placeholder_text(Some("Multi-Term"));
+    title.set_text(&current.title);
+    grid.attach(&label(tt("DLG_WIN_TITLELABEL", "タイトル:")), 0, 10, 1, 1);
+    grid.attach(&title, 1, 10, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
@@ -1606,6 +1657,10 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             .unwrap_or("block")
             .to_owned();
         s.look.cursor_blink = blink.is_active();
+        s.look.bold_color = bold_on.is_active().then(|| from_rgba(&bold_c.rgba()));
+        s.look.url_color = url_on.is_active().then(|| from_rgba(&url_c.rgba()));
+        s.look.scrollback = scroll.value() as usize;
+        s.look.title = title.text().trim().to_owned();
         // 配色と同じなら覚えない（配色を変えたときに付いていく）
         let chosen: Vec<u32> = ansi.iter().map(|b| from_rgba(&b.rgba())).collect();
         s.look.ansi = if chosen[..] == Look::theme_ansi(&s.look.theme)[..] {

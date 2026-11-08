@@ -103,5 +103,6 @@
   "シリアルを抜いたら自動で再接続する": "Reconnect automatically when the serial device is unplugged",
   "ミリ秒ごと": "ms interval",
   "曖昧な幅の文字（○ ※ ■ など）を 2 セルにする": "Show ambiguous-width characters (○ ※ ■ etc.) in two cells",
-  "{} 行目": "line {}"
+  "{} 行目": "line {}",
+  "別の色で出す": "Use a separate color"
 }

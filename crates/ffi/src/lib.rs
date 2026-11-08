@@ -1186,6 +1186,11 @@ impl Session {
         Ok(self.inner.reset_port()?)
     }
 
+    /// スクロールバッファの行数（0 で持たない。既定 10000）。
+    pub fn set_scrollback(&self, lines: u32) {
+        self.inner.set_scrollback(lines as usize);
+    }
+
     /// 曖昧な幅の文字（○ ※ ■ など）を 2 セルで扱うか。これから届く文字に効く。
     pub fn set_ambiguous_wide(&self, wide: bool) {
         self.inner.set_ambiguous_wide(wide);

@@ -106,8 +106,10 @@ final class TerminalController: ObservableObject {
     var connectionLabel: String { target?.label ?? "" }
 
     var windowTitle: String {
+        let custom = AppearanceConfig.saved.title
         var base = macroTitle ?? OtherConfig.saved.title(remote: remoteTitle, base: connectionLabel)
-        if base.isEmpty { base = "Multi-Term" }
+        // 「設定 > ウィンドウ」のタイトルは前に付ける（空なら Multi-Term）
+        if base.isEmpty { base = custom.isEmpty ? "Multi-Term" : custom } else if !custom.isEmpty { base = "\(custom) - \(base)" }
         switch status {
         case .connected: return base
         case .connecting: return L("%@ [接続中]", connectionLabel)

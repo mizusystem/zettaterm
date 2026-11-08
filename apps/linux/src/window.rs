@@ -838,8 +838,16 @@ impl TermWindow {
             .borrow()
             .clone()
             .unwrap_or_else(|| Settings::load().other.title(&remote, &label));
+        // 「設定 > ウィンドウ」のタイトルは前に付ける（空なら Multi-Term）
+        let custom = Settings::load().look.title;
         if base.is_empty() {
-            base = "Multi-Term".into();
+            base = if custom.is_empty() {
+                "Multi-Term".into()
+            } else {
+                custom
+            };
+        } else if !custom.is_empty() {
+            base = format!("{custom} - {base}");
         }
         let title = match self.status.get() {
             Status::Connected => base,

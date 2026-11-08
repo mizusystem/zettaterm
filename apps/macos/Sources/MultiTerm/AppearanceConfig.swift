@@ -13,6 +13,13 @@ struct AppearanceConfig: Equatable {
     var cursorBlink = false
     var fontName = "Menlo"
     var fontSize: Double = 14
+    /// 太字（既定の文字色のとき）と URL を別の色で出す（Tera Term の VTBoldColor / URLColor。nil で出さない）
+    var boldColor: UInt32?
+    var urlColor: UInt32?
+    /// スクロールバッファの行数（ScrollBuffSize。0 で持たない）
+    var scrollback = 10_000
+    /// ウィンドウのタイトル（Title。空なら Multi-Term）
+    var title = ""
     /// 行間と文字間に足す余白（ポイント。Tera Term の「フォント」の文字間隔）
     var lineSpacing: Double = 0
     var charSpacing: Double = 0
@@ -63,6 +70,10 @@ struct AppearanceConfig: Equatable {
         static let font = "appearance.fontName"
         static let size = "appearance.fontSize"
         static let ansi = "appearance.ansi"
+        static let boldColor = "appearance.boldColor"
+        static let urlColor = "appearance.urlColor"
+        static let scrollback = "appearance.scrollback"
+        static let title = "appearance.title"
         static let lineSpacing = "appearance.lineSpacing"
         static let charSpacing = "appearance.charSpacing"
     }
@@ -82,6 +93,10 @@ struct AppearanceConfig: Equatable {
         c.cursorBlink = d.bool(forKey: Key.blink)
         if let f = d.string(forKey: Key.font), NSFont(name: f, size: 12) != nil { c.fontName = f }
         if d.object(forKey: Key.size) != nil { c.fontSize = min(72, max(6, d.double(forKey: Key.size))) }
+        if d.object(forKey: Key.boldColor) != nil { c.boldColor = UInt32(truncatingIfNeeded: d.integer(forKey: Key.boldColor)) }
+        if d.object(forKey: Key.urlColor) != nil { c.urlColor = UInt32(truncatingIfNeeded: d.integer(forKey: Key.urlColor)) }
+        if d.object(forKey: Key.scrollback) != nil { c.scrollback = max(0, min(1_000_000, d.integer(forKey: Key.scrollback))) }
+        c.title = d.string(forKey: Key.title) ?? ""
         c.lineSpacing = min(20, max(0, d.double(forKey: Key.lineSpacing)))
         c.charSpacing = min(20, max(0, d.double(forKey: Key.charSpacing)))
         if let a = d.array(forKey: Key.ansi) as? [Int], a.count == 16 {
@@ -100,6 +115,11 @@ struct AppearanceConfig: Equatable {
         d.set(cursorBlink, forKey: Key.blink)
         d.set(fontName, forKey: Key.font)
         d.set(fontSize, forKey: Key.size)
+        for (value, key) in [(boldColor, Key.boldColor), (urlColor, Key.urlColor)] {
+            if let value { d.set(Int(value), forKey: key) } else { d.removeObject(forKey: key) }
+        }
+        d.set(scrollback, forKey: Key.scrollback)
+        d.set(title, forKey: Key.title)
         d.set(lineSpacing, forKey: Key.lineSpacing)
         d.set(charSpacing, forKey: Key.charSpacing)
         // 配色と同じなら覚えない（配色を変えたときに付いていく）
@@ -178,6 +198,25 @@ struct WindowSettingsView: View {
                     Color.clear.frame(width: 1, height: 1)
                     Toggle(L("カーソルを点滅させる"), isOn: $config.cursorBlink)
                 }
+                GridRow {
+                    Text(TT.text("DLG_WIN_BOLD", "太字") + ":")
+                    optionalColor(\.boldColor, default: 0xFFFF00)
+                }
+                GridRow {
+                    Text(TT.text("DLG_WIN_URL", "URL") + ":")
+                    optionalColor(\.urlColor, default: 0x00FFFF)
+                }
+                GridRow {
+                    Text(TT.text("DLG_WIN_SCROLL1", "スクロールバッファ:"))
+                    HStack {
+                        TextField("", value: $config.scrollback, format: .number.grouping(.never)).frame(width: 80)
+                        Text(TT.text("DLG_WIN_SCROLL3", "行"))
+                    }
+                }
+                GridRow {
+                    Text(TT.text("DLG_WIN_TITLELABEL", "タイトル:"))
+                    TextField("Multi-Term", text: $config.title).frame(width: 200)
+                }
             }
 
             preview
@@ -223,6 +262,20 @@ struct WindowSettingsView: View {
             p[i] = $0.rgb
             config.ansi = p
         })
+    }
+
+    /// 「別の色で出す」のチェックと色。
+    private func optionalColor(_ key: WritableKeyPath<AppearanceConfig, UInt32?>, default fallback: UInt32) -> some View {
+        HStack {
+            Toggle(L("別の色で出す"), isOn: Binding(
+                get: { config[keyPath: key] != nil },
+                set: { config[keyPath: key] = $0 ? (config[keyPath: key] ?? fallback) : nil }))
+            if config[keyPath: key] != nil {
+                ColorPicker("", selection: Binding(
+                    get: { Color(rgb: config[keyPath: key] ?? fallback) },
+                    set: { config[keyPath: key] = $0.rgb }), supportsOpacity: false).labelsHidden()
+            }
+        }
     }
 
     private func color(_ key: WritableKeyPath<AppearanceConfig, UInt32>) -> Binding<Color> {

@@ -466,6 +466,11 @@ impl Session {
         }
     }
 
+    /// スクロールバッファの行数（Tera Term の ScrollBuffSize。0 で持たない）。
+    pub fn set_scrollback(&self, lines: usize) {
+        self.inner.vt().set_scrollback(lines.min(1_000_000));
+    }
+
     /// 曖昧な幅の文字を 2 セルで扱うか（Tera Term の UnicodeAmbiguousWidth=2）。これから届く文字に効く。
     pub fn set_ambiguous_wide(&self, wide: bool) {
         self.inner.vt().set_ambiguous_wide(wide);

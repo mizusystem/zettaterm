@@ -150,6 +150,15 @@ impl Terminal {
         self.update_config();
     }
 
+    /// スクロールバッファの行数（Tera Term の ScrollBuffSize。0 で持たない）。減らしたら古い行から捨てる。
+    pub fn set_scrollback(&mut self, lines: usize) {
+        self.scrollback_limit = lines;
+        self.config.scrolling_history = lines;
+        self.update_config();
+        self.generation += 1;
+        self.resize_gen = self.generation;
+    }
+
     /// 曖昧な幅の文字（○ ※ ■ など）を 2 セルで扱うか（Tera Term の UnicodeAmbiguousWidth=2）。
     /// これから届く文字に効く（今の画面はそのまま）。
     pub fn set_ambiguous_wide(&mut self, wide: bool) {
@@ -648,6 +657,19 @@ mod tests {
         assert_eq!(row.cells[0].fg, 0xCD0000);
         assert_eq!(row.cells[1].fg, palette::DEFAULT_BG);
         assert_eq!(row.cells[1].bg, palette::DEFAULT_FG);
+    }
+
+    #[test]
+    fn scrollback_can_be_resized() {
+        let mut t = Terminal::new(10, 2, 100);
+        for i in 0..20 {
+            t.feed(format!("{i}\r\n").as_bytes());
+        }
+        assert!(t.snapshot(0).history >= 18);
+        t.set_scrollback(5);
+        assert_eq!(t.snapshot(0).history, 5);
+        t.set_scrollback(0);
+        assert_eq!(t.snapshot(0).history, 0);
     }
 
     #[test]
