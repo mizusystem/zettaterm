@@ -785,6 +785,20 @@ fn paste_waits_between_lines() {
     session.close();
 }
 
+/// 自動再接続を切っているとき、抜かれたら送信口も手放す（シリアルの名前を空ける。Tera Term も閉じる）。
+#[test]
+fn unplugged_without_auto_reconnect_releases_the_port() {
+    let (transport, remote) = MockTransport::exclusive();
+    let rec = Arc::new(Recorder::default());
+    let session = open(transport, &rec);
+    session.set_auto_reconnect(false);
+    assert_eq!(remote.open_writers(), 1);
+    remote.unplug();
+    assert!(wait_until(|| session.state() == SessionState::Closed));
+    assert!(wait_until(|| remote.open_writers() == 0));
+    session.close();
+}
+
 /// 「ポートのリセット」はシリアルのように排他で開くポートでも開き直せる（前の送信口を手放す）。
 #[test]
 fn reset_port_reopens_an_exclusive_port() {

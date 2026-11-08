@@ -21,7 +21,7 @@ apps/macos/scripts/build-core.sh && apps/macos/scripts/make-app.sh && open apps/
 - [x] `scpsend` / `scprecv`：内蔵 SSH の接続で送受信できる（192.0.2.1 など）（GTK で確認：一時 sshd との間で送受信し、中身が一致）
 - [x] `sendbroadcast` / `sendmulticast` + `setmulticastname`：複数のウィンドウに届く（GTK で確認：broadcast は 2 つのタブに、multicast は名前を付けたタブだけに届く）
 - [x] `getpassword`：初回に尋ねられ、2 回目からは尋ねられない（GTK で確認）
-- [ ] `setbaud` / `getmodemstatus`：実機のシリアルで（ESP32 は DTR / RTS でリセットされることがあるので注意）
+- [x] `setbaud` / `getmodemstatus`：実機のシリアルで（ESP32 は DTR / RTS でリセットされることがあるので注意）（GTK で確認：QX-S4148GT-4G に CH340 で。strace でポートの速度が 19200 → 9600 と変わり、その後もプロンプトが返る。getmodemstatus は 0 で、信号線の表示（CTS・DSR・CD・RI がオフ）と合う）
 
 確認用のマクロの例：
 
@@ -62,14 +62,14 @@ messagebox inputstr 'filenamebox'
 - [x] 「設定 > キーボード...」：BackSpace / Delete で送るもの、Option をメタキーにするか（GTK で確認：BS → \b、Delete → DEL、Alt メタをオフで ESC なし。Option は Mac で未確認）
 - [x] 「設定 > 端末...」の応答（アンサーバック）と、増えた文字コード（EUC-KR、GBK、Big5、KOI8-R など）（GTK で確認：応答 MTANS、EUC-KR の「가한」）
 - [x] 「コントロール > リモートタイトルリセット」「常に最前面に表示」（Mac のみ）（Mac で確認：OSC 0 で変えたタイトルが元に戻る。最前面はウィンドウのレベルが 3 になり、もう一度で 0 に戻る）
-- [ ] 「設定 > シリアルポート」の「ブレークの長さ」（既定 1000 ミリ秒）で「ブレーク送信」の長さが変わる（ESP32 には送らない）
+- [x] 「設定 > シリアルポート」の「ブレークの長さ」（既定 1000 ミリ秒）で「ブレーク送信」の長さが変わる（ESP32 には送らない）（GTK で確認：strace で TIOCSBRK から TIOCCBRK まで、既定で 1.0006 秒、300 にして 0.3005 秒）
 - [x] Telnet で「コントロール > AYT送信」：相手（Cisco など）が `[Yes]` を返す（GTK で確認：AYT に [Yes] と返す相手役のサーバーに IAC AYT が届き、[Yes] が出る。実機では未確認）
 
 ## 2026-11-08 の追加
 
 - [x] 「転送 > Kermit > 取得...」と「終了」：相手で `kermit -x`（サーバー）にしてからファイル名を入れる → ダウンロードフォルダに届き、「終了」で相手のサーバーが終わる（GTK で確認：相手の C-Kermit から受け取りのフォルダに届き、「終了」で C-Kermit server done）
 - [x] 「設定 > キーボード」の「Option キーをメタキーとして使う」をオンにして、Option+b / Option+f が bash で単語移動になる（既定はオフ。オフなら Option+¥ で \ が打てる）（Mac で確認：オフで Option+b は「∫」、オンで ESC b。Option+¥ は未確認）
-- [ ] Cmd+クリックで、全角で終わる URL の右半分も反応する。`file://` は開かない
+- [x] Cmd+クリックで、全角で終わる URL の右半分も反応する。`file://` は開かない（Mac で確認：`https://example.com/テスト` の「ト」の右半分で Chrome に開く。`file:///System/Applications/Calculator.app` は開かない）
 - [x] 「Multi-Term について」：版とコミット、Tera Term のライセンス表示が出る（GTK で確認。git の無い機械でビルドするとコミットは出ない）
 - [x] 「ウィンドウ」の重ねて表示・左右・上下・元に戻す・すべて最小化・すべて復元（Mac）。GTK はウィンドウのリスト・最小化・復元（GTK のウィンドウのリストは出る。最小化と復元は WM の無い Xvfb では確かめられない）（Mac で確認。重ねて表示で画面からはみ出していたので、入りきらなければ縮めるよう直した）
 - [x] 「ファイル > 全終了」ですべてのウィンドウが閉じる。GTK の「終了」はこのウィンドウだけ（GTK で確認）
@@ -88,7 +88,7 @@ messagebox inputstr 'filenamebox'
 - [x] 文字コード JIS で「設定 > 端末」の漢字イン・漢字アウト・半角カナ 7bit を変えると、送る切り替えのシーケンスが変わる（`cat -v` で確かめる）（GTK で確認：漢字イン ^[$@ で「日」が ESC $ @ F | ESC ( B）
 - [ ] （対応する機器があれば）7 ビット + mark / space、8 ビット + mark で通信できる。DSR/DTR フロー制御が macOS の USB シリアルで効く
 - [x] 「設定 > フォント」の行間・文字間で、文字の間隔が広がる（選択やカーソルの位置もずれない）（GTK で確認）
-- [ ] 「その他の設定」で自動再接続を切ると、USB シリアルを抜いたままになる。間隔を変えると再接続の速さが変わる
+- [x] 「その他の設定」で自動再接続を切ると、USB シリアルを抜いたままになる。間隔を変えると再接続の速さが変わる（GTK で確認：切ると挿し直しても [未接続] のまま。そのとき抜けたデバイスのハンドルを持ったままで、挿し直したものが ttyUSB1 になっていた（Mac も同じ）→ 手放すよう直した。3000 ミリ秒にすると約 3.3 秒おきに探し、挿し直すとつながる）
 - [x] 「設定 > 端末」の曖昧な幅を 2 セルにすると、`echo ○※■a` の a が 2 セルずつずれた位置に出る（これから届く文字に効く）
 - [x] vim の `:set mouse=a`、tmux の `set -g mouse on`、htop でクリック・ドラッグ・ホイールが効く。Shift を押していれば選択になる。less でホイールが上下に効く（GTK で確認：htop は行のクリック・ホイール・F10Quit のクリック、Shift+ドラッグで選択）
 - [x] 「新しい接続」のホスト欄に `/tmp/x.sock` を書いて UNIX ドメインソケットにつながる（例：`socat UNIX-LISTEN:/tmp/x.sock -` か、QEMU の `-serial unix:/tmp/x.sock,server`）

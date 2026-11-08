@@ -133,6 +133,11 @@ impl MockRemote {
         lock(&self.shared).present = true;
     }
 
+    /// Session がまだ持っている送信口の数（切断の後に手放したかを確かめる）。
+    pub fn open_writers(&self) -> usize {
+        Arc::strong_count(&lock(&self.shared).writers) - 1
+    }
+
     /// つなぎ直しが成功した回数。
     pub fn reconnects(&self) -> usize {
         lock(&self.shared).reconnects

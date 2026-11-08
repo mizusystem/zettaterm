@@ -1111,6 +1111,12 @@ impl Inner {
             drop(reader);
             next = self.wait_for_reconnect();
         }
+        // つなぎ直さないなら、送信口と Transport のハンドルも手放す（Tera Term も閉じる）。抜かれた
+        // シリアルのハンドルを持ったままだと、Linux は ttyUSB0 を空けられず挿し直したものが ttyUSB1 になる
+        let _ = self.tx.send(WriterMsg::Replace(Box::new(io::sink())));
+        if let Ok(mut t) = self.transport() {
+            let _ = t.close();
+        }
         self.set_state(SessionState::Closed);
     }
 
