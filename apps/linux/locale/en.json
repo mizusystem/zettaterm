@@ -38,7 +38,7 @@
   "フォルダ...": "Folder...",
   "ZMODEM の自動受信": "Receive ZMODEM Automatically",
   "相手が ZMODEM でファイルを送ろうとしています": "The remote side wants to send files with ZMODEM",
-  "ダウンロードフォルダに受け取りますか？": "Receive them into the Downloads folder?",
+  "%s に受け取りますか？": "Receive them into %s?",
   "{} 行を貼り付けます。改行の位置でそれぞれ実行されます。": "Pasting {} lines. Each line runs when its newline is sent.",
   "危険な語が含まれています: {}": "Contains dangerous words: {}",
   "中クリックで貼り付ける": "Paste with the middle button",

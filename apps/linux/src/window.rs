@@ -1999,7 +1999,11 @@ impl TermWindow {
                     dialogs::yes_no(
                         &self.parent(),
                         &l("相手が ZMODEM でファイルを送ろうとしています"),
-                        &l("ダウンロードフォルダに受け取りますか？"),
+                        &l("%s に受け取りますか？").replacen(
+                            "%s",
+                            &transfer::downloads_dir().to_string_lossy(),
+                            1,
+                        ),
                         move |yes| {
                             if yes {
                                 start();
@@ -2120,6 +2124,11 @@ impl TermWindow {
         let Some(stop) = self.macro_stop.borrow().clone() else {
             return;
         };
+        // 確かめている間はマクロを進めない（Tera Term も確認の間は止まっている）
+        let control = self.macro_control.borrow().clone();
+        let was_paused = control
+            .as_ref()
+            .is_some_and(|c| c.paused.swap(true, Ordering::SeqCst));
         dialogs::yes_no(
             &self.parent(),
             &tt("MSG_MACRO_CONF", "確認"),
@@ -2130,6 +2139,8 @@ impl TermWindow {
             move |yes| {
                 if yes {
                     stop.store(true, Ordering::SeqCst);
+                } else if let Some(c) = control {
+                    c.paused.store(was_paused, Ordering::SeqCst);
                 }
             },
         );

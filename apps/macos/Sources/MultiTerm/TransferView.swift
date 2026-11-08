@@ -280,12 +280,12 @@ extension TerminalController {
         }
         switch request {
         case .zmodemReceive:
-            // 既定は Tera Term と同じく、尋ねずにダウンロードフォルダへ受け取る。
+            // 既定は Tera Term と同じく、尋ねずに受け取りのフォルダ（「ディレクトリを変更」）へ受け取る。
             // 「転送 > ZMODEM の自動受信」を切ると、受け取る前に確かめる
             if !Self.autoZmodemReceive {
                 let alert = NSAlert()
                 alert.messageText = L("相手が ZMODEM でファイルを送ろうとしています")
-                alert.informativeText = L("ダウンロードフォルダに受け取りますか？")
+                alert.informativeText = L("%@ に受け取りますか？", Self.downloads.path)
                 alert.addButton(withTitle: L("受け取る"))
                 alert.addButton(withTitle: TT.text("BTN_CANCEL", "キャンセル"))
                 guard alert.runModal() == .alertFirstButtonReturn else {

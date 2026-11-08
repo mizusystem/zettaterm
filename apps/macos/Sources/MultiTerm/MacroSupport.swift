@@ -48,8 +48,13 @@ extension TerminalController {
         alert.informativeText = TT.text("MSG_MACRO_HALT_SCRIPT", "本当にこのマクロスクリプトを停止しますか？")
         alert.addButton(withTitle: TT.text("BTN_YES", "はい"))
         alert.addButton(withTitle: TT.text("BTN_NO", "いいえ"))
+        // 確かめている間はマクロを進めない（Tera Term も確認の間は止まっている）
+        let wasPaused = m.run.isPaused()
+        m.run.setPaused(paused: true)
         if alert.runModal() == .alertFirstButtonReturn {
             m.run.stop()
+        } else {
+            m.run.setPaused(paused: wasPaused)
         }
     }
 
