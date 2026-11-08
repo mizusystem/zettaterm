@@ -68,8 +68,14 @@ pub fn downloads_dir() -> PathBuf {
     if !chosen.is_empty() && std::path::Path::new(&chosen).is_dir() {
         return PathBuf::from(chosen);
     }
-    glib::user_special_dir(glib::UserDirectory::Downloads)
-        .unwrap_or_else(|| glib::home_dir().join("Downloads"))
+    let dir = glib::user_special_dir(glib::UserDirectory::Downloads)
+        .unwrap_or_else(|| glib::home_dir().join("Downloads"));
+    // xdg-user-dirs の無い機械ではダウンロードのフォルダが無いことがある。作れなければホーム
+    if dir.is_dir() || std::fs::create_dir_all(&dir).is_ok() {
+        dir
+    } else {
+        glib::home_dir()
+    }
 }
 
 type Shared = Arc<Mutex<Box<dyn Transfer>>>;
