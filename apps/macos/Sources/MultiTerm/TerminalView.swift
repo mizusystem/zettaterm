@@ -99,6 +99,9 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         (font, boldFont, italicFont, geometry, ascent) = Self.metrics(AppearanceConfig.saved)
         boldColor = AppearanceConfig.saved.boldColor
         urlColor = AppearanceConfig.saved.urlColor
+        let bgPath = AppearanceConfig.saved.backgroundImage
+        backgroundImage = bgPath.isEmpty ? nil : NSImage(contentsOfFile: bgPath)
+        backgroundAlpha = CGFloat(AppearanceConfig.saved.backgroundAlpha)
         super.init(frame: .zero)
         registerForDraggedTypes([.fileURL])
 
@@ -136,6 +139,9 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     /// 太字と URL の色（nil なら色を変えない）
     private var boldColor: UInt32?
     private var urlColor: UInt32?
+    /// 背景画像とその濃さ
+    private var backgroundImage: NSImage?
+    private var backgroundAlpha: CGFloat = 0.25
 
     private func applyAppearance() {
         let config = AppearanceConfig.saved
@@ -144,6 +150,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         session?.setScrollback(lines: UInt32(clamping: config.scrollback))
         boldColor = config.boldColor
         urlColor = config.urlColor
+        backgroundImage = config.backgroundImage.isEmpty ? nil : NSImage(contentsOfFile: config.backgroundImage)
+        backgroundAlpha = CGFloat(config.backgroundAlpha)
         urlCache = nil
         gridSize = (0, 0)
         setFrameSize(frame.size)
@@ -408,6 +416,17 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.setFillColor(color(screen.defaultBg))
         ctx.fill(dirtyRect)
+        // 背景画像（「設定 > ウィンドウ」）。縦横比を保って全体を覆い、背景色の上に薄く重ねる
+        if let image = backgroundImage {
+            let size = image.size
+            if size.width > 0 && size.height > 0 {
+                let scale = max(bounds.width / size.width, bounds.height / size.height)
+                let w = size.width * scale, h = size.height * scale
+                let rect = NSRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
+                image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: backgroundAlpha,
+                           respectFlipped: true, hints: nil)
+            }
+        }
 
         let rows: [Row]
         if screen.scrollOffset > 0, let session = textSession {

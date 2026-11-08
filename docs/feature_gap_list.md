@@ -145,7 +145,7 @@
    - [x] ダブルクリック選択時の単語区切り文字 (`DelimList`) 設定
 4. **表示 / テーマ (`DLG_TAB_VISUAL` / `DLG_THEME_*`)**:
    - [x] ウィンドウ不透明度（アクティブ時 / 非アクティブ時） (`AlphaBlendActive`, `AlphaBlend`)
-   - [ ] 背景画像・背景透過テーマの読み込みとプレビュー (`BGThemeFile`)
+   - [x] 背景画像・背景透過テーマの読み込みとプレビュー (`BGThemeFile`)（※「設定 > ウィンドウ」で画像 1 枚と濃さ。Tera Term のテーマファイル（.ini）は読まない）
    - [x] URL の自動検出・色分け・下線表示 (`EnableClickableUrl`, `URLColor`, `URLUnderline`)（※下線のみ。色の設定は未実装）
    - [x] ANSI 16色カラーパレットの RGB カスタマイズ (`ANSIColor`)（※「設定 > ウィンドウ」。TERATERM.INI からも読む）
 5. **ログ (`DLG_TAB_LOG`)**:

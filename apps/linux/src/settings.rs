@@ -154,6 +154,9 @@ pub struct Look {
     pub scrollback: usize,
     /// ウィンドウのタイトル（Title。空なら Multi-Term）
     pub title: String,
+    /// 背景画像（空なら無し）と、その濃さ（パーセント）
+    pub background_image: String,
+    pub background_alpha: u8,
     /// 行間と文字間に足す余白（ピクセル。Tera Term の「フォント」の文字間隔）
     pub line_spacing: u8,
     pub char_spacing: u8,
@@ -178,6 +181,8 @@ impl Default for Look {
             url_color: None,
             scrollback: mt_core::session::DEFAULT_SCROLLBACK,
             title: String::new(),
+            background_image: String::new(),
+            background_alpha: 25,
             ansi: Vec::new(),
         }
     }
@@ -1782,6 +1787,32 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     title.set_text(&current.title);
     grid.attach(&label(tt("DLG_WIN_TITLELABEL", "タイトル:")), 0, 10, 1, 1);
     grid.attach(&title, 1, 10, 1, 1);
+    // 背景画像とその濃さ
+    let bg_path = gtk::Entry::new();
+    bg_path.set_placeholder_text(Some(&l("なし")));
+    bg_path.set_text(&current.background_image);
+    bg_path.set_hexpand(true);
+    let bg_choose = gtk::Button::with_label("…");
+    {
+        let (entry, parent) = (bg_path.clone(), win.clone());
+        bg_choose.connect_clicked(move |_| {
+            let e = entry.clone();
+            gtk::FileDialog::new().open(Some(&parent), None::<&gtk::gio::Cancellable>, move |r| {
+                if let Some(p) = r.ok().and_then(|f| f.path()) {
+                    e.set_text(&p.display().to_string());
+                }
+            });
+        });
+    }
+    let bg_alpha = gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.05, 1.0, 0.05);
+    bg_alpha.set_value(f64::from(current.background_alpha) / 100.0);
+    bg_alpha.set_size_request(100, -1);
+    let bg_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    bg_row.append(&bg_path);
+    bg_row.append(&bg_choose);
+    bg_row.append(&bg_alpha);
+    grid.attach(&label(l("背景画像:")), 0, 11, 1, 1);
+    grid.attach(&bg_row, 1, 11, 1, 1);
     content.append(&grid);
 
     buttons(&win, &row, &tt("BTN_OK", "OK"), move || {
@@ -1803,6 +1834,8 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
         s.look.url_color = url_on.is_active().then(|| from_rgba(&url_c.rgba()));
         s.look.scrollback = scroll.value() as usize;
         s.look.title = title.text().trim().to_owned();
+        s.look.background_image = bg_path.text().trim().to_owned();
+        s.look.background_alpha = (bg_alpha.value() * 100.0).round() as u8;
         // 配色と同じなら覚えない（配色を変えたときに付いていく）
         let chosen: Vec<u32> = ansi.iter().map(|b| from_rgba(&b.rgba())).collect();
         s.look.ansi = if chosen[..] == Look::theme_ansi(&s.look.theme)[..] {

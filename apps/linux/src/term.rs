@@ -71,6 +71,8 @@ struct State {
     /// 太字と URL の色（None なら色を変えない）
     bold_color: Option<u32>,
     url_color: Option<u32>,
+    /// 背景画像（「設定 > ウィンドウ」）とその濃さ
+    background: Option<(gtk::cairo::ImageSurface, f64)>,
     /// 行間の余白の上半分（文字をセルの中で下げる量）
     text_dy: f64,
     selection: Option<Selection>,
@@ -189,6 +191,7 @@ impl TermView {
             ascent: 12.0,
             bold_color: None,
             url_color: None,
+            background: None,
             text_dy: 0.0,
             selection: None,
             unit: Unit::Cell,
@@ -279,6 +282,10 @@ impl TermView {
             let mut st = view.state.borrow_mut();
             st.bold_color = look.bold_color;
             st.url_color = look.url_color;
+            st.background = load_background(
+                &look.background_image,
+                f64::from(look.background_alpha) / 100.0,
+            );
         }
         view.measure();
         view.install();
@@ -380,7 +387,12 @@ impl TermView {
             st.font = pango::FontDescription::from_string(&look.font);
             st.bold_color = look.bold_color;
             st.url_color = look.url_color;
+            st.background = load_background(
+                &look.background_image,
+                f64::from(look.background_alpha) / 100.0,
+            );
         }
+        self.area.queue_draw();
         if let Some(s) = self.session() {
             s.set_scrollback(look.scrollback);
         }
@@ -1389,6 +1401,19 @@ impl TermView {
         cr.set_source_rgb(r, g, b);
         cr.rectangle(0.0, 0.0, w as f64, h as f64);
         let _ = cr.fill();
+        // 背景画像：縦横比を保って全体を覆い、背景色の上に薄く重ねる
+        if let Some((img, alpha)) = &st.background {
+            let (iw, ih) = (f64::from(img.width()), f64::from(img.height()));
+            if iw > 0.0 && ih > 0.0 {
+                let scale = (w as f64 / iw).max(h as f64 / ih);
+                let _ = cr.save();
+                cr.translate((w as f64 - iw * scale) / 2.0, (h as f64 - ih * scale) / 2.0);
+                cr.scale(scale, scale);
+                let _ = cr.set_source_surface(img, 0.0, 0.0);
+                let _ = cr.paint_with_alpha(*alpha);
+                let _ = cr.restore();
+            }
+        }
 
         // 表示する行（スクロールバックを見ているときはコアから取る）
         let rows: Vec<Row> = if sc.scroll_offset > 0 {
@@ -1541,4 +1566,20 @@ fn pangocairo_layout(cr: &gtk::cairo::Context, font: &pango::FontDescription) ->
     let layout = pangocairo::functions::create_layout(cr);
     layout.set_font_description(Some(font));
     layout
+}
+
+/// 背景画像を読む（読めなければ None）。cairo の ARGB32 はメモリ上 BGRA（乗算済み）なので、その形で取り出す。
+fn load_background(path: &str, alpha: f64) -> Option<(gtk::cairo::ImageSurface, f64)> {
+    if path.is_empty() {
+        return None;
+    }
+    let texture = gdk::Texture::from_filename(path).ok()?;
+    let (w, h) = (texture.width(), texture.height());
+    let stride = gtk::cairo::Format::ARgb32.stride_for_width(w as u32).ok()?;
+    let mut data = vec![0u8; stride as usize * h as usize];
+    texture.download(&mut data, stride as usize);
+    let surface =
+        gtk::cairo::ImageSurface::create_for_data(data, gtk::cairo::Format::ARgb32, w, h, stride)
+            .ok()?;
+    Some((surface, alpha.clamp(0.0, 1.0)))
 }

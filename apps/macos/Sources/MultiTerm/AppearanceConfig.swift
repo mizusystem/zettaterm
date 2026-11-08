@@ -20,6 +20,9 @@ struct AppearanceConfig: Equatable {
     var scrollback = 10_000
     /// ウィンドウのタイトル（Title。空なら Multi-Term）
     var title = ""
+    /// 背景画像（空なら無し）と、その濃さ（0〜1）
+    var backgroundImage = ""
+    var backgroundAlpha: Double = 0.25
     /// 行間と文字間に足す余白（ポイント。Tera Term の「フォント」の文字間隔）
     var lineSpacing: Double = 0
     var charSpacing: Double = 0
@@ -74,6 +77,8 @@ struct AppearanceConfig: Equatable {
         static let urlColor = "appearance.urlColor"
         static let scrollback = "appearance.scrollback"
         static let title = "appearance.title"
+        static let backgroundImage = "appearance.backgroundImage"
+        static let backgroundAlpha = "appearance.backgroundAlpha"
         static let lineSpacing = "appearance.lineSpacing"
         static let charSpacing = "appearance.charSpacing"
     }
@@ -97,6 +102,8 @@ struct AppearanceConfig: Equatable {
         if d.object(forKey: Key.urlColor) != nil { c.urlColor = UInt32(truncatingIfNeeded: d.integer(forKey: Key.urlColor)) }
         if d.object(forKey: Key.scrollback) != nil { c.scrollback = max(0, min(1_000_000, d.integer(forKey: Key.scrollback))) }
         c.title = d.string(forKey: Key.title) ?? ""
+        c.backgroundImage = d.string(forKey: Key.backgroundImage) ?? ""
+        if d.object(forKey: Key.backgroundAlpha) != nil { c.backgroundAlpha = min(1, max(0, d.double(forKey: Key.backgroundAlpha))) }
         c.lineSpacing = min(20, max(0, d.double(forKey: Key.lineSpacing)))
         c.charSpacing = min(20, max(0, d.double(forKey: Key.charSpacing)))
         if let a = d.array(forKey: Key.ansi) as? [Int], a.count == 16 {
@@ -120,6 +127,8 @@ struct AppearanceConfig: Equatable {
         }
         d.set(scrollback, forKey: Key.scrollback)
         d.set(title, forKey: Key.title)
+        d.set(backgroundImage, forKey: Key.backgroundImage)
+        d.set(backgroundAlpha, forKey: Key.backgroundAlpha)
         d.set(lineSpacing, forKey: Key.lineSpacing)
         d.set(charSpacing, forKey: Key.charSpacing)
         // 配色と同じなら覚えない（配色を変えたときに付いていく）
@@ -216,6 +225,22 @@ struct WindowSettingsView: View {
                 GridRow {
                     Text(TT.text("DLG_WIN_TITLELABEL", "タイトル:"))
                     TextField("Multi-Term", text: $config.title).frame(width: 200)
+                }
+                GridRow {
+                    Text(L("背景画像:"))
+                    HStack {
+                        Text(config.backgroundImage.isEmpty ? L("なし") : (config.backgroundImage as NSString).lastPathComponent)
+                            .lineLimit(1).truncationMode(.middle).frame(maxWidth: 160, alignment: .leading)
+                        Button("…") {
+                            let panel = NSOpenPanel()
+                            panel.allowedContentTypes = [.image]
+                            if panel.runModal() == .OK, let url = panel.url { config.backgroundImage = url.path }
+                        }
+                        if !config.backgroundImage.isEmpty {
+                            Button(L("外す")) { config.backgroundImage = "" }
+                            Slider(value: $config.backgroundAlpha, in: 0.05...1).frame(width: 100)
+                        }
+                    }
                 }
             }
 
