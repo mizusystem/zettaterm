@@ -216,16 +216,22 @@ pub(crate) async fn start(
                 port,
                 host,
                 host_port,
-            } => listen(bind, *port).await.map(|l| {
-                tokio::spawn(accept_loop(
-                    l,
-                    Arc::clone(&handle),
-                    Target::Fixed(host.clone(), *host_port),
-                ));
+            } => listen(bind, *port).await.and_then(|(listeners, busy)| {
+                let target = Arc::new(Target::Fixed(host.clone(), *host_port));
+                for l in listeners {
+                    tokio::spawn(accept_loop(l, Arc::clone(&handle), Arc::clone(&target)));
+                }
+                busy.map_or(Ok(()), Err)
             }),
-            Forward::Dynamic { bind, port } => listen(bind, *port).await.map(|l| {
-                tokio::spawn(accept_loop(l, Arc::clone(&handle), Target::Socks));
-            }),
+            Forward::Dynamic { bind, port } => {
+                listen(bind, *port).await.and_then(|(listeners, busy)| {
+                    let target = Arc::new(Target::Socks);
+                    for l in listeners {
+                        tokio::spawn(accept_loop(l, Arc::clone(&handle), Arc::clone(&target)));
+                    }
+                    busy.map_or(Ok(()), Err)
+                })
+            }
             Forward::Remote {
                 bind,
                 port,
@@ -260,8 +266,39 @@ pub(crate) async fn start(
     warnings
 }
 
-async fn listen(bind: &str, port: u16) -> io::Result<TcpListener> {
-    TcpListener::bind((bind, port)).await
+/// `bind` の指すアドレスすべてで待ち受ける（`localhost` なら 127.0.0.1 と ::1。OpenSSH と同じ）。
+/// 一つも開けなければ失敗。開けたものがあっても、使用中で開けなかったアドレスがあればそれも返す
+/// （転送は開けた側で続ける）。
+async fn listen(bind: &str, port: u16) -> io::Result<(Vec<TcpListener>, Option<io::Error>)> {
+    let mut addrs: Vec<std::net::SocketAddr> = Vec::new();
+    for a in tokio::net::lookup_host((bind, port)).await? {
+        if !addrs.contains(&a) {
+            addrs.push(a);
+        }
+    }
+    let mut listeners = Vec::new();
+    let mut busy = None;
+    let mut last = None;
+    for a in addrs {
+        match TcpListener::bind(a).await {
+            Ok(l) => listeners.push(l),
+            Err(e) => {
+                if e.kind() == io::ErrorKind::AddrInUse && busy.is_none() {
+                    busy = Some(io::Error::new(e.kind(), format!("{a}: {e}")));
+                }
+                last = Some(e);
+            }
+        }
+    }
+    if listeners.is_empty() {
+        return Err(busy.or(last).unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::AddrNotAvailable,
+                format!("{bind}: no address"),
+            )
+        }));
+    }
+    Ok((listeners, busy))
 }
 
 enum Target {
@@ -272,8 +309,7 @@ enum Target {
 /// 接続が切れたかを見る間隔。切れたら待ち受けをやめてポートを空ける
 const CLOSED_POLL: std::time::Duration = std::time::Duration::from_millis(500);
 
-async fn accept_loop(listener: TcpListener, handle: Arc<Handle<Client>>, target: Target) {
-    let target = Arc::new(target);
+async fn accept_loop(listener: TcpListener, handle: Arc<Handle<Client>>, target: Arc<Target>) {
     loop {
         if handle.is_closed() {
             return;
@@ -483,6 +519,33 @@ async fn socks_reply(s: &mut TcpStream, v: Socks, ok: bool) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn listens_on_every_loopback_address_and_reports_a_busy_one() {
+        // 127.0.0.1 だけを先に使っておく
+        let taken = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = taken.local_addr().unwrap().port();
+        let has_v6 = std::net::TcpListener::bind(("::1", 0)).is_ok();
+        match listen("localhost", port).await {
+            // ::1 で開けたなら転送は続け、127.0.0.1 が使用中なことも知らせる
+            Ok((listeners, busy)) => {
+                assert!(has_v6);
+                assert!(listeners.iter().all(|l| l.local_addr().unwrap().is_ipv6()));
+                assert_eq!(busy.unwrap().kind(), io::ErrorKind::AddrInUse);
+            }
+            Err(e) => {
+                assert!(!has_v6);
+                assert_eq!(e.kind(), io::ErrorKind::AddrInUse);
+            }
+        }
+        // 空いていれば、名前の指すアドレスすべてで待ち受ける
+        let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = free.local_addr().unwrap().port();
+        drop(free);
+        let (listeners, busy) = listen("localhost", port).await.unwrap();
+        assert!(busy.is_none());
+        assert!(!listeners.is_empty());
+    }
 
     #[test]
     fn remote_targets_are_told_apart_by_address() {

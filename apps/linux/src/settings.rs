@@ -2056,7 +2056,17 @@ pub fn ssh_dialog(parent: &gtk::Window) {
         s.ssh.kex = split(&kex);
         s.ssh.mac = split(&mac);
         s.ssh.compression = compress.is_active();
-        s.ssh.apply_algorithms();
+        // 知らない名前があれば保存せず、前の設定に戻して直してもらう（Mac と同じ）
+        let unknown = s.ssh.apply_algorithms();
+        if !unknown.is_empty() {
+            Settings::load().ssh.apply_algorithms();
+            error.set_text(&crate::strings::lf(
+                "読めない行があります: {}",
+                &[&unknown.join(", ")],
+            ));
+            error.set_visible(true);
+            return;
+        }
         s.ssh.default_user = user.text().trim().to_owned();
         let k = key.text().trim().to_owned();
         // ~ を展開して覚える
