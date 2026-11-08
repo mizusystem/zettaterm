@@ -1504,7 +1504,10 @@ impl TermView {
                         ((cw - tw as f64) / 2.0)
                             .max(0.0)
                             .min(if width == 2 { cw } else { 0.0 });
-                    cr.move_to(x + dx, y + st.text_dy);
+                    // 上端ではなく基準線で揃える（日本語ロケールでは英字と記号が別のフォントになり、
+                    // フォントごとに上端から基準線までの高さが違う）
+                    let baseline = f64::from(layout.baseline()) / f64::from(pango::SCALE);
+                    cr.move_to(x + dx, y + st.ascent - baseline);
                     pangocairo::functions::show_layout(cr, &layout);
                 }
                 if marks.urls.iter().any(|u| u.contains(line, col as u16)) {
