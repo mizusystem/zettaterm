@@ -379,9 +379,17 @@ impl TermView {
         st.dirty.store(true, Ordering::SeqCst);
     }
 
-    /// 「設定 > ウィンドウ / フォント」を変えたとき。フォントが変われば行数・桁数も変わる。
+    /// 「設定 > ウィンドウ / フォント」を変えたとき。フォント・行間・文字間が変わっても桁数と行数は
+    /// そのままにして、ウィンドウの大きさを変える（Tera Term の「設定 > フォント」と同じ）。
     pub fn apply_look(&self) {
         let look = Settings::load().look;
+        let shown = self.area.width() > 1 && self.area.height() > 1;
+        let keep = self.grid_size();
+        let before_cell = {
+            let st = self.state.borrow();
+            (st.cell_w, st.cell_h)
+        };
+        let before_px = self.pixel_size(keep.0, keep.1);
         {
             let mut st = self.state.borrow_mut();
             st.font = pango::FontDescription::from_string(&look.font);
@@ -399,6 +407,25 @@ impl TermView {
         self.measure();
         if let Some(s) = self.text_session() {
             s.set_appearance(&look.appearance());
+        }
+        let cell = {
+            let st = self.state.borrow();
+            (st.cell_w, st.cell_h)
+        };
+        if shown
+            && cell != before_cell
+            && let Some(win) = self.area.root().and_downcast::<gtk::Window>()
+            && !win.is_maximized()
+            && !win.is_fullscreen()
+        {
+            let (want_w, want_h) = self.pixel_size(keep.0, keep.1);
+            let w = win.width() + want_w - before_px.0;
+            let h = win.height() + want_h - before_px.1;
+            win.set_default_size(w.max(200), h.max(100));
+            // 端末の大きさは、ウィンドウが変わったときに知らせる
+            self.state.borrow_mut().urls = None;
+            self.area.queue_draw();
+            return;
         }
         let (cols, rows) = self.grid_size();
         if let Some(s) = self.session() {
@@ -1053,6 +1080,34 @@ impl TermView {
     }
 
     /// 画面に出た後で寸法を測り直してから `f` を呼ぶ（表示前は解像度が違うことがある）。
+    /// 最初に大きさが決まったとき一度だけ、端末が `cols` × `rows` になるようにウィンドウを直す
+    /// （メニューバーやタブの高さは、表示されるまで分からないため）。
+    pub fn fit_once(&self, cols: u16, rows: u16) {
+        let view = self.clone();
+        let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let slot = Rc::clone(&handler);
+        let id = self.area.connect_resize(move |area, w, h| {
+            if let Some(id) = slot.borrow_mut().take() {
+                area.disconnect(id);
+            }
+            if view.grid_size() == (cols, rows) {
+                return;
+            }
+            let Some(win) = area.root().and_downcast::<gtk::Window>() else {
+                return;
+            };
+            if win.is_maximized() || win.is_fullscreen() {
+                return;
+            }
+            let bar = view.scrollbar.preferred_size().1.width();
+            let (want_w, want_h) = view.pixel_size(cols, rows);
+            let width = win.width() + want_w - (w + bar);
+            let height = win.height() + want_h - h;
+            win.set_default_size(width.max(200), height.max(100));
+        });
+        *handler.borrow_mut() = Some(id);
+    }
+
     pub fn on_measured(&self, f: impl Fn(&Self) + 'static) {
         let view = self.clone();
         self.area.connect_realize(move |_| {

@@ -202,3 +202,19 @@ struct KeyboardSettingsView: View {
         .frame(width: 460)
     }
 }
+
+extension TerminalConfig {
+    /// 新しいウィンドウの端末サイズ（Tera Term の TerminalSize）。「設定 > 端末」の OK で変わる。
+    static var startupSize: (cols: Int, rows: Int) {
+        get {
+            let d = UserDefaults.standard
+            let cols = d.integer(forKey: "terminal.cols")
+            let rows = d.integer(forKey: "terminal.rows")
+            return (cols > 0 ? min(cols, 500) : 80, rows > 0 ? min(rows, 200) : 24)
+        }
+        set {
+            UserDefaults.standard.set(max(10, min(newValue.cols, 500)), forKey: "terminal.cols")
+            UserDefaults.standard.set(max(2, min(newValue.rows, 200)), forKey: "terminal.rows")
+        }
+    }
+}

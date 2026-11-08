@@ -912,6 +912,8 @@ pub struct Settings {
     pub terminal_id: String,
     /// 曖昧な幅の文字を 2 セルにする（UnicodeAmbiguousWidth=2）
     pub ambiguous_wide: bool,
+    /// 新しいウィンドウの端末サイズ（桁, 行。TerminalSize）。「設定 > 端末」で変える
+    pub terminal_size: (u16, u16),
     /// 「設定 > キーボード」
     pub keyboard: KeyboardConf,
     /// Telnet のキープアライブ（秒。0 で送らない。TelKeepAliveInterval）
@@ -957,6 +959,7 @@ impl Default for Settings {
             answerback: String::new(),
             terminal_id: "VT100".into(),
             ambiguous_wide: false,
+            terminal_size: (80, 24),
             keyboard: KeyboardConf::default(),
             raw_receive_idle: 0,
             telnet_keepalive: 0,
@@ -1204,8 +1207,10 @@ pub fn terminal_dialog(
             [(term_id.selected() as usize).min(mt_core::TerminalId::ALL.len() - 1)]
         .name()
         .into();
-        saved.save();
         let size = (cols.value() as u16, rows.value() as u16);
+        // Tera Term と同じく、次からのウィンドウもこの大きさで開く
+        saved.terminal_size = size;
+        saved.save();
         apply(
             TermConf {
                 newline_receive: rcv_vals[(rcv.selected() as usize).min(rcv_vals.len() - 1)],
@@ -2164,6 +2169,9 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     if let Some(id) = ini.terminal_id {
         s.terminal_id = id.name().into();
     }
+    if let Some((c, r)) = ini.terminal_size {
+        s.terminal_size = (c.clamp(10, 500), r.clamp(2, 200));
+    }
     if let Some(t) = &ini.term_type {
         s.term_type = t.clone();
         mt_net::set_term_type(Some(t.clone()));
@@ -2427,6 +2435,7 @@ pub fn export_ini(path: &std::path::Path) -> std::io::Result<()> {
         charset_send: Some(t.charset_send),
         scroll_buffer: Some(look.scrollback.min(u32::MAX as usize) as u32),
         terminal_id: mt_core::TerminalId::from_name(&s.terminal_id),
+        terminal_size: Some(s.terminal_size),
         clipboard_write: Some(s.copy_paste.remote_clipboard_write),
         notify_clipboard: Some(s.copy_paste.notify_clipboard),
         paste_delay: Some(s.other.paste_delay),
@@ -2480,7 +2489,6 @@ pub fn export_ini(path: &std::path::Path) -> std::io::Result<()> {
             .iter()
             .filter_map(host_line)
             .collect(),
-        ..Default::default()
     };
     std::fs::write(path, mt_core::ini::write_ini(&ini))
 }

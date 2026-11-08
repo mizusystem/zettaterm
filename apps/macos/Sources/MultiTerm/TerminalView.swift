@@ -44,6 +44,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private var screen = ScreenBuffer()
     private var displayLink: CADisplayLink?
     private var gridSize: (cols: UInt16, rows: UInt16) = (0, 0)
+    /// 最初にウィンドウに入ったとき、端末サイズの設定に合わせたか
+    private var fittedStartupSize = false
     /// 今の端末の桁数と行数（まだ決まっていなければウィンドウの大きさから）
     var terminalSize: (cols: UInt16, rows: UInt16) {
         gridSize.cols > 0 ? gridSize : geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
@@ -148,7 +150,15 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
 
     private func applyAppearance() {
         let config = AppearanceConfig.saved
+        let before = geometry
+        let keep = gridSize
         (font, boldFont, italicFont, geometry, ascent) = Self.metrics(config)
+        // フォント・行間・文字間が変わっても、桁数と行数はそのままにしてウィンドウの大きさを変える
+        // （Tera Term の「設定 > フォント」と同じ）
+        if geometry != before, keep.cols > 0, keep.rows > 0,
+           let window, !window.styleMask.contains(.fullScreen) {
+            fitWindow(cols: Int(keep.cols), rows: Int(keep.rows))
+        }
         textSession?.setAppearance(appearance: config.appearance)
         session?.setScrollback(lines: UInt32(clamping: config.scrollback))
         boldColor = config.boldColor
@@ -227,6 +237,16 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
             NotificationCenter.default.addObserver(self, selector: #selector(keyChanged), name: name, object: window)
         }
         applyAlpha()
+        // 新しいウィンドウは「設定 > 端末」の端末サイズで開く（並べた後で合わせる）
+        if !fittedStartupSize {
+            fittedStartupSize = true
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window = self.window, !window.styleMask.contains(.fullScreen),
+                      window.tabbedWindows?.count ?? 1 <= 1 else { return }
+                let size = TerminalConfig.startupSize
+                self.fitWindow(cols: size.cols, rows: size.rows)
+            }
+        }
         if displayLink == nil {
             let link = displayLink(target: self, selector: #selector(tick))
             link.add(to: .main, forMode: .common)

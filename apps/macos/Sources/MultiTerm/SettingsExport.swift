@@ -52,6 +52,8 @@ enum SettingsExport {
             localEcho: term.localEcho,
             charsetReceive: term.charsetReceive,
             charsetSend: term.charsetSend,
+            terminalCols: UInt16(TerminalConfig.startupSize.cols),
+            terminalRows: UInt16(TerminalConfig.startupSize.rows),
             terminalId: tc.terminalId,
             clipboardWrite: cp.remoteClipboardWrite,
             notifyClipboard: cp.notifyClipboard,

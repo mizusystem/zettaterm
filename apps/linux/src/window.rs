@@ -749,14 +749,17 @@ impl TermWindow {
         let win = tabs.win.clone();
         let view = TermView::new();
         if first {
-            let (w, h) = view.pixel_size(80, 24);
+            // 「設定 > 端末」の端末サイズで開く（最初のタブだけ）
+            let (cols, rows) = Settings::load().terminal_size;
+            let (w, h) = view.pixel_size(cols, rows);
             win.set_default_size(w, h);
-            // 表示後のフォントの寸法で、80 桁 24 行に合わせ直す（最初のタブだけ）
+            // 表示後のフォントの寸法で合わせ直し、表示されたらメニューバーの分も足す
             let win = win.clone();
             view.on_measured(move |v| {
-                let (w, h) = v.pixel_size(80, 24);
+                let (w, h) = v.pixel_size(cols, rows);
                 win.set_default_size(w, h);
             });
+            view.fit_once(cols, rows);
         }
 
         // マクロ実行中の表示（右上）

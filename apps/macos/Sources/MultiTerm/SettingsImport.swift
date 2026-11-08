@@ -32,6 +32,9 @@ enum SettingsImport {
         }
 
         if let ms = ini.sendBreakMs, ms > 0 { SerialConfig.breakMs = ms }
+        if let c = ini.terminalCols, let r = ini.terminalRows {
+            TerminalConfig.startupSize = (Int(c), Int(r))
+        }
 
         // 端末（Tera Term ではシリアルとそれ以外で共通なので両方に）
         for scope in [TerminalConfig.Scope.serial, .other] {

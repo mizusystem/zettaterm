@@ -120,6 +120,8 @@ struct TerminalSettingsView: View {
                     for c in SessionRegistry.shared.controllers { c.view.session?.setAmbiguousWide(wide: ambiguousWide) }
                     // 端末サイズを変えたら、その大きさになるようにウィンドウを変える
                     let size = (max(10, min(cols, 500)), max(2, min(rows, 200)))
+                    // Tera Term と同じく、次からのウィンドウもこの大きさで開く
+                    TerminalConfig.startupSize = size
                     if size != startSize { controller.view.fitWindow(cols: size.0, rows: size.1) }
                 }
                 .keyboardShortcut(.defaultAction)
