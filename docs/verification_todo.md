@@ -102,6 +102,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「設定 > SSH...」の既定のユーザー名と秘密鍵ファイル：ユーザー名を書かずにつなぐとその名前で、鍵はそのファイルを最初に試す
 - [ ] 「設定 > SSH...」のアルゴリズムの優先順位：暗号に aes128-ctr を書くと、`ssh -v` 相当でそれが選ばれる（相手の sshd のログか `ss`）。知らない名前は保存されずに示される。圧縮のオン・オフ
 - [ ] 「設定 > ウィンドウ」の背景画像：選んだ画像が背景に薄く出て、濃さで変わり、「外す」で消える。文字は読める
+- [ ] 「設定 > キーマップ読み込み」：`[User keys]` に `User1=64,0,show run^M` を書いた KEYBOARD.CNF を読むと、F6 で `show run` と Enter が送られる
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

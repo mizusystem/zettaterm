@@ -149,5 +149,7 @@
   "カンマで区切って、前に置きたいものから書きます。書かなかったものは既定の順で後ろに並びます（空なら既定のまま）。": "Comma-separated, most preferred first. Algorithms you leave out follow in the default order (empty keeps the default).",
   "背景画像:": "Background image:",
   "外す": "Remove",
-  "なし": "None"
+  "なし": "None",
+  "Tera Term のキーボード設定ファイル（KEYBOARD.CNF）を選んでください。": "Choose a Tera Term keyboard file (KEYBOARD.CNF).",
+  "キーマップを読み込みました（%@ 個のキー）": "Loaded the keymap (%@ keys)"
 }

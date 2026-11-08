@@ -8,6 +8,7 @@ pub mod auth;
 pub mod broadcast;
 pub mod charset;
 pub mod ini;
+pub mod keymap;
 pub mod log;
 pub mod mock;
 pub mod newline;
@@ -31,7 +32,7 @@ pub use mt_vt::select::{DEFAULT_DELIMITERS, table_to_tsv};
 pub use mt_vt::{
     Appearance, Cell, CellFlags, Cursor, CursorShape, GridSnapshot, Key, KeyboardOptions,
     Modifiers, MouseAction, MouseButton, MouseEvent, MouseMode, Point, RemoteControl, Row,
-    SearchQuery, Selection, TerminalId, UrlMatch, themes,
+    SearchQuery, Selection, TerminalId, UrlMatch, from_pc_key_code, themes,
 };
 pub use newline::{NewlineReceive, NewlineSend};
 pub use paste::{PasteCheck, check_paste, default_dangerous_words};

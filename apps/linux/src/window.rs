@@ -458,6 +458,38 @@ impl Tabs {
             }),
         );
         add(
+            "load-keymap",
+            Box::new(|t, _| {
+                let parent: gtk::Window = t.win.clone().upcast();
+                let p = parent.clone();
+                gtk::FileDialog::new().open(Some(&parent), None::<&gio::Cancellable>, move |r| {
+                    let Some(path) = r.ok().and_then(|f| f.path()) else {
+                        return;
+                    };
+                    let text = match std::fs::read(&path) {
+                        Ok(b) => {
+                            let keys =
+                                mt_core::keymap::parse_keyboard_cnf(&String::from_utf8_lossy(&b)).0;
+                            let n = keys.len();
+                            ALL.with(|all| {
+                                for pane in all.borrow().iter().filter_map(|w| w.upgrade()) {
+                                    if let Some(s) = pane.view.session() {
+                                        s.set_user_keys(keys.clone());
+                                    }
+                                }
+                            });
+                            let mut s = Settings::load();
+                            s.keymap_path = path.display().to_string();
+                            s.save();
+                            lf("キーマップを読み込みました（{} 個のキー）", &[&n])
+                        }
+                        Err(e) => e.to_string(),
+                    };
+                    dialogs::message(&p, "Multi-Term", &text, || {});
+                });
+            }),
+        );
+        add(
             "save-setup",
             Box::new(|t, _| {
                 let dialog = gtk::FileDialog::builder()
@@ -985,6 +1017,10 @@ impl TermWindow {
                     );
                     session.set_clipboard_write(saved.copy_paste.remote_clipboard_write);
                     session.set_ambiguous_wide(saved.ambiguous_wide);
+                    if let Ok(text) = std::fs::read(&saved.keymap_path) {
+                        let text = String::from_utf8_lossy(&text);
+                        session.set_user_keys(mt_core::keymap::parse_keyboard_cnf(&text).0);
+                    }
                     saved.other.apply(&session);
                     session.set_jis_options(saved.terminal_for(Some(&profile)).jis());
                     // つなぎ直しても、閲覧専用と繰り返し送信はそのまま

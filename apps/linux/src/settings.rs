@@ -939,6 +939,8 @@ pub struct Settings {
     pub transfer_dir: String,
     /// 相手に名乗る端末の種類（TermType。空なら既定）
     pub term_type: String,
+    /// キーマップ（KEYBOARD.CNF。空なら無し）
+    pub keymap_path: String,
 }
 
 impl Default for Settings {
@@ -973,6 +975,7 @@ impl Default for Settings {
             proxy: ProxyConf::default(),
             transfer_dir: String::new(),
             term_type: String::new(),
+            keymap_path: String::new(),
         }
     }
 }

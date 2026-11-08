@@ -12,7 +12,7 @@ mod terminal;
 mod types;
 
 pub use filter::RemoteControl;
-pub use keys::{Key, KeyboardOptions, Modifiers};
+pub use keys::{Key, KeyboardOptions, Modifiers, from_pc_key_code};
 pub use mouse::{MouseAction, MouseButton, MouseEvent, MouseMode};
 pub use palette::themes;
 pub use select::{Point, SearchQuery, Selection, UrlMatch};

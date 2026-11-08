@@ -1252,6 +1252,21 @@ impl Session {
         self.inner.set_scrollback(lines as usize);
     }
 
+    /// キーマップ（Tera Term の KEYBOARD.CNF の `[User keys]`）を読んで使う。空のパスで外す。
+    /// 読めたキーの数を返す。
+    pub fn set_keymap(&self, path: String) -> Result<u32, MtError> {
+        if path.is_empty() {
+            self.inner.set_user_keys(Vec::new());
+            return Ok(0);
+        }
+        let bytes = std::fs::read(&path)?;
+        let text = String::from_utf8_lossy(&bytes);
+        let (keys, _) = core::keymap::parse_keyboard_cnf(&text);
+        let n = keys.len() as u32;
+        self.inner.set_user_keys(keys);
+        Ok(n)
+    }
+
     /// 曖昧な幅の文字（○ ※ ■ など）を 2 セルで扱うか。これから届く文字に効く。
     pub fn set_ambiguous_wide(&self, wide: bool) {
         self.inner.set_ambiguous_wide(wide);

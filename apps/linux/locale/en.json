@@ -114,5 +114,6 @@
   "アルゴリズムの優先順位": "Algorithm order",
   "圧縮する（zlib）": "Compress (zlib)",
   "背景画像:": "Background image:",
-  "なし": "None"
+  "なし": "None",
+  "キーマップを読み込みました（{} 個のキー）": "Loaded the keymap ({} keys)"
 }

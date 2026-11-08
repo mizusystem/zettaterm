@@ -272,6 +272,21 @@ final class TerminalController: ObservableObject {
         disconnect()
     }
 
+    /// 「設定 > キーマップ読み込み」：KEYBOARD.CNF の [User keys] を、開いている接続とこれからの接続に使う。
+    func loadKeymap() {
+        let panel = NSOpenPanel()
+        panel.message = L("Tera Term のキーボード設定ファイル（KEYBOARD.CNF）を選んでください。")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        UserDefaults.standard.set(url.path, forKey: "keymap.path")
+        var count: UInt32 = 0
+        for c in SessionRegistry.shared.controllers {
+            if let n = try? c.view.session?.setKeymap(path: url.path) { count = n }
+        }
+        if let probe = try? Data(contentsOf: url), !probe.isEmpty {
+            showNotice(L("キーマップを読み込みました（%@ 個のキー）", String(count)))
+        }
+    }
+
     /// 「コントロール > ポートのリセット」：シリアルポートを閉じて開き直す。
     func resetPort() {
         guard isSerialConnected, let session = view.session else { return }

@@ -316,6 +316,7 @@ struct TerminalCommands: Commands {
                 SettingsImport.chooseAndImport(controller)
             }
             Button(TT.text("MENU_SETUP_SAVE", "設定の保存...")) { SettingsExport.chooseAndExport(controller) }
+            Button(TT.text("MENU_SETUP_LOADKEYMAP", "キーマップ読み込み...")) { controller?.loadKeymap() }
             Button(TT.text("MENU_SETUP_OPENSETUP", "設定フォルダ...")) { TerminalController.openSettingsFolder() }
             Divider()
             // TTSSH の「SSH...」と「SSH 転送...」をまとめたもの

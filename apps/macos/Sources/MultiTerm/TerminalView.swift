@@ -314,6 +314,9 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
         opened.setKeyboard(keyboard: KeyboardConfig.saved)
         opened.setAnswerback(text: answerback)
         opened.setTerminalId(id: terminalId)
+        if let keymap = UserDefaults.standard.string(forKey: "keymap.path"), !keymap.isEmpty {
+            _ = try? opened.setKeymap(path: keymap)
+        }
         opened.setAmbiguousWide(wide: UserDefaults.standard.bool(forKey: "terminal.ambiguousWide"))
         opened.setJisOptions(kanjiIn: jis.0, kanjiOut: jis.1, kana7bit: jis.2)
         opened.setClipboardWrite(allow: CopyPasteConfig.saved.remoteClipboardWrite)

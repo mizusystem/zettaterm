@@ -270,65 +270,8 @@ pub fn parse_size(text: &str) -> Option<u64> {
 }
 
 /// Tera Term のキーコード（KEYCODE.EXE が出す PC のキーコード）を、押したキーに直す（TTL の sendkcode）。
-/// 下位 9 ビットがキー（256 以上は拡張キー）、512 が Shift、1024 が Ctrl、2048 が Alt。
-/// 文字のキーは US 配列として扱う。対応しないコードは None。
 pub fn pc_key(code: i32) -> Option<(mt_core::Key, mt_core::Modifiers)> {
-    use mt_core::Key;
-    if !(0..4096).contains(&code) {
-        return None;
-    }
-    let mods = mt_core::Modifiers {
-        shift: code & 512 != 0,
-        ctrl: code & 1024 != 0,
-        alt: code & 2048 != 0,
-    };
-    let base = code & 511;
-    let key = match base {
-        1 => Key::Escape,
-        14 => Key::Backspace,
-        15 => Key::Tab,
-        28 | 284 => Key::Enter,
-        59..=68 => Key::F((base - 58) as u8),
-        87 => Key::F(11),
-        88 => Key::F(12),
-        327 => Key::Home,
-        328 => Key::Up,
-        329 => Key::PageUp,
-        331 => Key::Left,
-        333 => Key::Right,
-        335 => Key::End,
-        336 => Key::Down,
-        337 => Key::PageDown,
-        338 => Key::Insert,
-        339 => Key::Delete,
-        309 => Key::Text("/".into()),
-        _ => {
-            // 文字のキー（US 配列）。Shift は文字に含める
-            const ROWS: [(i32, &str, &str); 7] = [
-                (2, "1234567890-=", "!@#$%^&*()_+"),
-                (16, "qwertyuiop[]", "QWERTYUIOP{}"),
-                (30, "asdfghjkl;'`", "ASDFGHJKL:\"~"),
-                (43, "\\zxcvbnm,./", "|ZXCVBNM<>?"),
-                (55, "*", "*"),
-                (57, " ", " "),
-                (71, "789-456+1230.", "789-456+1230."),
-            ];
-            let (plain, shifted) = ROWS
-                .iter()
-                .filter(|(start, _, _)| base >= *start)
-                .find_map(|(start, row, shifted)| {
-                    let i = usize::try_from(base - start).ok()?;
-                    Some((row.chars().nth(i)?, shifted.chars().nth(i)?))
-                })?;
-            let ch = if mods.shift { shifted } else { plain };
-            let mods = mt_core::Modifiers {
-                shift: false,
-                ..mods
-            };
-            return Some((Key::Text(ch.to_string()), mods));
-        }
-    };
-    Some((key, mods))
+    mt_core::from_pc_key_code(code)
 }
 
 #[cfg(test)]

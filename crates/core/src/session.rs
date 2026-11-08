@@ -138,6 +138,8 @@ struct Inner {
     paste_delay_ms: std::sync::atomic::AtomicU32,
     jis: Mutex<charset::JisOptions>,
     bells: Mutex<BellLimiter>,
+    /// キーマップの文字列を送るキー
+    user_keys: Mutex<Vec<crate::keymap::UserKey>>,
     /// 自動再接続を試す間隔（ミリ秒）
     reconnect_ms: std::sync::atomic::AtomicU64,
     /// 繰り返し送信の世代（変えると前のスレッドが止まる）
@@ -335,6 +337,7 @@ impl Session {
             paste_delay_ms: std::sync::atomic::AtomicU32::new(DEFAULT_PASTE_DELAY_MS),
             jis: Mutex::new(charset::JisOptions::default()),
             bells: Mutex::new(BellLimiter::default()),
+            user_keys: Mutex::new(Vec::new()),
             reconnect_ms: std::sync::atomic::AtomicU64::new(RECONNECT_INTERVAL.as_millis() as u64),
             recurring_gen: std::sync::atomic::AtomicU64::new(0),
             taps: Mutex::new(Taps::default()),
@@ -365,7 +368,30 @@ impl Session {
 
     /// キー入力を送る。カーソルキーなどは端末モードに合わせて変換する。
     /// Enter は「送信」の改行コードで送る。
+    /// キーマップ（KEYBOARD.CNF の `[User keys]`）。押したらその文字列を送るキー。空にすると無くなる。
+    pub fn set_user_keys(&self, keys: Vec<crate::keymap::UserKey>) {
+        *self
+            .inner
+            .user_keys
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = keys;
+    }
+
     pub fn key(&self, key: Key, mods: Modifiers) {
+        let user = self
+            .inner
+            .user_keys
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .find(|u| u.key == key && u.mods == mods)
+            .map(|u| u.bytes.clone());
+        if let Some(bytes) = user {
+            if !self.inner.view_only.load(Ordering::SeqCst) {
+                self.write(bytes);
+            }
+            return;
+        }
         if self.inner.view_only.load(Ordering::SeqCst) {
             return;
         }

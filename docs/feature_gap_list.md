@@ -70,7 +70,7 @@
 - [x] **TCP/IP (`MENU_SETUP_TCPIP`)**（※ホストリストの並べ替え・削除（追加は接続すると足される）、端末タイプ、Telnet Keep-Alive。履歴に足すかは「新しい接続」のチェック。自動で閉じるのはローカルシェルだけ）: ホストリストの追加・並べ替え・削除、履歴表示有無、自動ウィンドウクローズ、デフォルトポート、Telnet Keep-Alive、端末タイプ (`TermType`) (`DLG_TCPIP_TITLE`)
 - [x] **全般 (`MENU_SETUP_GENERAL`)**（※「その他の設定」の全般に UI 言語（OS に合わせる / 日本語 / English。起動し直すと効く）。新しい接続の既定は、前回選んだ種類（TCP/IP / シリアル）を覚えている）
 - [x] **その他の設定 (`MENU_SETUP_ADDITION`)**（※全般・制御シーケンス・貼り付け・不透明度の項目。コピーと貼り付け・ログは別の設定画面）: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
-- [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)** / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**（※保存・読み込み・設定フォルダは実装済み：保存は TERATERM.INI の形で、読み込める項目だけ。残りはキーマップ）
+- [x] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)** / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**（※保存は TERATERM.INI の形で、読み込める項目だけ。キーマップは KEYBOARD.CNF の [User keys] の文字列を送るものだけ：VT のキー配置の変更・マクロ・メニューは読まない）
 - [x] **TTSSH 追加設定ダイアログ**:
   - [x] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**（※暗号・鍵交換・MAC の優先順位（前に置きたいものを書く。書かなかったものは既定の順で後ろ。使わないようにはできない）、圧縮のオン・オフ、Keepalive。ホスト鍵・署名の順と書き込みバッファは持たない）
   - [x] **SSH 認証... (`MENU_SSH_AUTH` / `DLG_AUTHSETUP_TITLE`)**（※「設定 > SSH...」に既定のユーザー名と最初に試す秘密鍵ファイル。エージェントはいつも使う。認証方式はサーバーの求めに合わせて順に試す）
