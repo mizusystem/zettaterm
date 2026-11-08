@@ -68,6 +68,8 @@ final class TerminalController: ObservableObject {
     @Published var errorMessage: String?
     /// しばらく右上に出す短い知らせ（相手がクリップボードに書いたときなど）
     @Published var notice: String?
+    /// 「ログ記録中ダイアログを表示」
+    @Published var showLogPanel = false
     private var noticeGen = 0
 
     func showNotice(_ text: String) {

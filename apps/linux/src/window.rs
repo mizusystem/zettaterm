@@ -428,6 +428,7 @@ impl Tabs {
             Box::new(|t, _| settings::keygen_dialog(&t.win.clone().upcast())),
         );
         add("log-view", Box::new(|_, me| me.view_log()));
+        add("log-dialog", Box::new(|_, me| me.log_dialog()));
         add("recv-file", Box::new(|_, me| me.begin_raw_receive()));
         add(
             "change-dir",
@@ -1129,6 +1130,114 @@ impl TermWindow {
             Ok(()) => self.logging.set(true),
             Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),
         }
+    }
+
+    /// 「ファイル > ログ記録中ダイアログを表示」：ファイル名・大きさと、一時停止・終了のボタン。
+    /// 閉じても記録は続く。1 秒ごとに取り直し、記録が終わったら閉じる。
+    fn log_dialog(self: &Rc<Self>) {
+        if self.view.session().and_then(|s| s.log_status()).is_none() {
+            return;
+        }
+        let win = gtk::Window::builder()
+            .title(tt("FILEDLG_TRANS_TITLE_LOG", "ログ記録中"))
+            .transient_for(&self.parent())
+            .resizable(false)
+            .default_width(320)
+            .build();
+        let body = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        for m in [
+            gtk::Widget::set_margin_top,
+            gtk::Widget::set_margin_bottom,
+            gtk::Widget::set_margin_start,
+            gtk::Widget::set_margin_end,
+        ] {
+            m(body.upcast_ref(), 12);
+        }
+        let name = gtk::Label::new(None);
+        name.set_xalign(0.0);
+        name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        let size = gtk::Label::new(None);
+        size.set_xalign(0.0);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let pause = gtk::Button::with_label(&tt("DLG_FILETRANS_PAUSE", "一時停止"));
+        let stop = gtk::Button::with_label(&tt("MENU_FILE_STOPLOG", "ログを終了"));
+        let close = gtk::Button::with_label(&tt("DLG_FILETRANS_CLOSE", "閉じる"));
+        row.append(&pause);
+        row.append(&stop);
+        row.append(&close);
+        body.append(&name);
+        body.append(&size);
+        body.append(&row);
+        win.set_child(Some(&body));
+        let me = Rc::downgrade(self);
+        let refresh = {
+            let (win, name, size, pause) = (win.clone(), name.clone(), size.clone(), pause.clone());
+            move || -> bool {
+                let status = me
+                    .upgrade()
+                    .and_then(|m| m.view.session())
+                    .and_then(|s| s.log_status());
+                let Some(st) = status else {
+                    win.close();
+                    return false;
+                };
+                name.set_text(&format!(
+                    "{} {}",
+                    tt("DLG_FILETRANS_FILENAME", "ファイル名:"),
+                    std::path::Path::new(&st.path)
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                ));
+                name.set_tooltip_text(Some(&st.path.display().to_string()));
+                size.set_text(&format!(
+                    "{} {}",
+                    tt("DLG_FILETRANS_TRNAS", "転送済容量:"),
+                    glib::format_size(st.bytes)
+                ));
+                pause.set_label(&if st.paused {
+                    tt("DLG_FILETRANS_START", "再開")
+                } else {
+                    tt("DLG_FILETRANS_PAUSE", "一時停止")
+                });
+                true
+            }
+        };
+        refresh();
+        {
+            let (me, refresh) = (Rc::clone(self), refresh.clone());
+            pause.connect_clicked(move |_| {
+                me.toggle_log_pause();
+                refresh();
+            });
+        }
+        {
+            let (me, w) = (Rc::clone(self), win.clone());
+            stop.connect_clicked(move |_| {
+                me.stop_log();
+                w.close();
+            });
+        }
+        {
+            let w = win.clone();
+            close.connect_clicked(move |_| w.close());
+        }
+        let alive = Rc::new(Cell::new(true));
+        {
+            let alive = Rc::clone(&alive);
+            win.connect_close_request(move |_| {
+                alive.set(false);
+                glib::Propagation::Proceed
+            });
+        }
+        glib::timeout_add_seconds_local(1, move || {
+            if alive.get() && refresh() {
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+        win.present();
     }
 
     pub fn stop_log(&self) {

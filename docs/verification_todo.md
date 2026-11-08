@@ -92,6 +92,7 @@ messagebox inputstr 'filenamebox'
 - [ ] 「設定 > 端末」の曖昧な幅を 2 セルにすると、`echo ○※■a` の a が 2 セルずつずれた位置に出る（これから届く文字に効く）
 - [ ] vim の `:set mouse=a`、tmux の `set -g mouse on`、htop でクリック・ドラッグ・ホイールが効く。Shift を押していれば選択になる。less でホイールが上下に効く
 - [ ] 「新しい接続」のホスト欄に `/tmp/x.sock` を書いて UNIX ドメインソケットにつながる（例：`socat UNIX-LISTEN:/tmp/x.sock -` か、QEMU の `-serial unix:/tmp/x.sock,server`）
+- [ ] 「ファイル > ログ記録中ダイアログを表示」：ファイル名と大きさが 1 秒ごとに増え、一時停止・再開・ログを終了が効く
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

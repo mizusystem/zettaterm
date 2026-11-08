@@ -55,6 +55,13 @@ fn menu() -> gio::Menu {
         Some("win.log-view"),
     );
     file.append(
+        Some(&tt(
+            "MENU_FILE_SHOWLOGDIALOG",
+            "ログ記録中ダイアログを表示...",
+        )),
+        Some("win.log-dialog"),
+    );
+    file.append(
         Some(&tt("MENU_FILE_REPLAYLOG", "ログを再生...")),
         Some("win.log-replay"),
     );

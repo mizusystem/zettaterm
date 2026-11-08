@@ -64,6 +64,11 @@ struct TerminalWindow: View {
                 // スクロールバーにかからないように
                 .padding(.trailing, NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy))
             }
+            .overlay(alignment: .bottomLeading) {
+                if controller.showLogPanel && controller.isLogging {
+                    LogPanel(controller: controller)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if let lines = controller.modemLines {
                     SerialLinesBar(lines: lines, controller: controller)
@@ -210,6 +215,8 @@ struct TerminalCommands: Commands {
             Button(TT.text("MENU_FILE_COMMENTLOG", "ログにコメントを付加...")) { controller?.sheet = .logComment }
                 .disabled(controller?.isLogging != true)
             Button(TT.text("MENU_FILE_VIEWLOG", "ログを表示")) { controller?.viewLog() }
+                .disabled(controller?.isLogging != true)
+            Button(TT.text("MENU_FILE_SHOWLOGDIALOG", "ログ記録中ダイアログを表示...")) { controller?.showLogPanel = true }
                 .disabled(controller?.isLogging != true)
             Button(TT.text("MENU_FILE_REPLAYLOG", "ログを再生...")) {
                 if let path = TerminalController.chooseReplayFile() {
