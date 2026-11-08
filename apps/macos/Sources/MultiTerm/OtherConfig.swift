@@ -100,6 +100,8 @@ struct OtherConfig: Equatable {
 struct OtherSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var c = OtherConfig.saved
+    /// UI 言語（AppleLanguages。空なら OS の優先言語）
+    @State private var uiLanguage = (UserDefaults.standard.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "")?["AppleLanguages"] as? [String])?.first.map { $0.hasPrefix("ja") ? "ja" : "en" } ?? ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -111,6 +113,16 @@ struct OtherSettingsView: View {
                     Toggle(L("接続時・切断時にビープ音を鳴らす"), isOn: $c.beepOnConnect)
                     Toggle(L("切断したら画面をクリアする"), isOn: $c.clearOnClose)
                     Toggle(L("接続断の前に確認する"), isOn: $c.confirmDisconnect)
+                    HStack {
+                        Text(TT.text("DLG_GEN_LANG_UI", "UI言語:"))
+                        Picker("", selection: $uiLanguage) {
+                            Text(L("OS に合わせる")).tag("")
+                            Text("日本語").tag("ja")
+                            Text("English").tag("en")
+                        }
+                        .labelsHidden().fixedSize()
+                        Text(L("（起動し直すと変わります）")).font(.callout).foregroundStyle(.secondary)
+                    }
                     HStack {
                         Toggle(L("シリアルを抜いたら自動で再接続する"), isOn: $c.autoReconnect)
                         TextField("", value: $c.reconnectMs, format: .number.grouping(.never)).frame(width: 60)
@@ -190,6 +202,12 @@ struct OtherSettingsView: View {
                     c.reconnectMs = max(100, min(c.reconnectMs, 60_000))
                     c.save()
                     c.applyEverywhere()
+                    // アプリだけの言語（起動し直すと効く）
+                    if uiLanguage.isEmpty {
+                        UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+                    } else {
+                        UserDefaults.standard.set([uiLanguage], forKey: "AppleLanguages")
+                    }
                     dismiss()
                 }
                 .keyboardShortcut(.defaultAction)

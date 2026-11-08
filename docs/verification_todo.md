@@ -97,6 +97,8 @@ messagebox inputstr 'filenamebox'
 - [ ] 「ファイル > 印刷」（Mac は Cmd+P、GTK は Ctrl+Shift+P）：選んだ文字か画面が印刷のダイアログに出て、PDF に保存できる
 - [ ] 「設定 > ウィンドウ」：太字・URL を別の色で出す、スクロールバッファの行数（0 でスクロールバックが無くなる）、タイトル（ウィンドウのタイトルの前に付く）
 - [ ] 「設定 > TCP/IP」：ホストリストの上へ・下へ・削除が「新しい接続」の候補に反映される。端末タイプ（例 vt100）が相手の `echo $TERM` に出る
+- [ ] 「その他の設定」の UI 言語を English にして起動し直すと、メニューやダイアログが英語になる。「OS に合わせる」で戻る
+- [ ] 「設定 > 設定の保存」で書いた TERATERM.INI を「設定の読み込み」で読み直すと同じ設定になる（Windows の Tera Term でも読める）
 - [ ] TTL：`getipv4addr` `getttpos` `restoresetup` `sendkcode 336 3`（下矢印 3 回）
 
 ## Linux（GTK）版

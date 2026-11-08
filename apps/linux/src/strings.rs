@@ -3,7 +3,8 @@
 //! - Tera Term 由来の文言（`tt` / `ssh`）は `spec/lang/*.json`（tools/extract-tt-ui が生成）をキーで引く。13 言語すべてを埋め込む
 //! - アプリ独自の文言（`l` / `lf`）は日本語の文をそのままキーにして、`locale/<言語>.json` の訳を引く
 //!
-//! 表示言語は LC_ALL / LC_MESSAGES / LANG で決まる。アプリ独自の文言の訳が無い言語は英語にする。
+//! 表示言語は「その他の設定」の UI 言語（`ui_language`）、無ければ LC_ALL / LC_MESSAGES / LANG で決まる。
+//! アプリ独自の文言の訳が無い言語は英語にする。
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -14,11 +15,16 @@ type Sections = HashMap<String, HashMap<String, String>>;
 pub fn lang() -> &'static str {
     static L: OnceLock<String> = OnceLock::new();
     L.get_or_init(|| {
-        let raw = ["LC_ALL", "LC_MESSAGES", "LANG"]
-            .iter()
-            .filter_map(|k| std::env::var(k).ok())
-            .find(|v| !v.is_empty())
-            .unwrap_or_default();
+        let chosen = crate::settings::Settings::load().other.ui_language;
+        let raw = if chosen.is_empty() {
+            ["LC_ALL", "LC_MESSAGES", "LANG"]
+                .iter()
+                .filter_map(|k| std::env::var(k).ok())
+                .find(|v| !v.is_empty())
+                .unwrap_or_default()
+        } else {
+            chosen
+        };
         let base = raw.split(['.', '@']).next().unwrap_or("");
         let code = base.split('_').next().unwrap_or("");
         let file = match (code, base) {

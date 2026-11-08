@@ -68,9 +68,9 @@
 - [x] **フォント (`MENU_SETUP_FONT`)**（※フォント・大きさ・行間と文字間。描画品質は OS に任せる）: フォントファミリ、フォントサイズ、文字スタイル、文字間隔（上下左右余白）、描画品質
 - [x] **キーボード (`MENU_SETUP_KEYBOARD`)**（※メタキーの左右の区別とアプリケーションキーパッドの無効化は未実装）: BS キー（`BS` / `DEL`）、Del キー（`DEL` / `CSI 3 ~`）、メタキー送信（off / on / left / right）、アプリケーションキーパッド／カーソル無効化 (`DLG_KEYB_TITLE`)
 - [x] **TCP/IP (`MENU_SETUP_TCPIP`)**（※ホストリストの並べ替え・削除（追加は接続すると足される）、端末タイプ、Telnet Keep-Alive。履歴に足すかは「新しい接続」のチェック。自動で閉じるのはローカルシェルだけ）: ホストリストの追加・並べ替え・削除、履歴表示有無、自動ウィンドウクローズ、デフォルトポート、Telnet Keep-Alive、端末タイプ (`TermType`) (`DLG_TCPIP_TITLE`)
-- [ ] **全般 (`MENU_SETUP_GENERAL`)**: UI 表示言語の切り替え、デフォルト接続ポート（TCP/IP または シリアル） (`DLG_GEN_TITLE`)
+- [x] **全般 (`MENU_SETUP_GENERAL`)**（※「その他の設定」の全般に UI 言語（OS に合わせる / 日本語 / English。起動し直すと効く）。新しい接続の既定は、前回選んだ種類（TCP/IP / シリアル）を覚えている）
 - [x] **その他の設定 (`MENU_SETUP_ADDITION`)**（※全般・制御シーケンス・貼り付け・不透明度の項目。コピーと貼り付け・ログは別の設定画面）: 7 タブ構成の詳細設定ダイアログ (`DLG_TABSHEET_TITLE` — 詳細は第 2 章)
-- [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)**（※読み込みは TERATERM.INI のインポートとして実装済み） / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**
+- [ ] **設定の保存 (`MENU_SETUP_SAVE`)** / **設定の読み込み (`MENU_SETUP_RESTORE`)** / **設定フォルダを開く (`MENU_SETUP_OPENSETUP`)** / **キーマップ読み込み (`MENU_SETUP_LOADKEYMAP`)**（※保存・読み込み・設定フォルダは実装済み：保存は TERATERM.INI の形で、読み込める項目だけ。残りはキーマップ）
 - [ ] **TTSSH 追加設定ダイアログ**:
   - [ ] **SSH... (`MENU_SSH` / `DLG_SSHSETUP_TITLE`)**: 暗号・KEX・MAC・ホスト鍵・署名アルゴリズムの優先順位リスト、圧縮レベル、HeartBeat（キープアライブ）、書き込みバッファサイズ
   - [ ] **SSH 認証... (`MENU_SSH_AUTH` / `DLG_AUTHSETUP_TITLE`)**: デフォルトユーザー名、デフォルト認証方式、秘密鍵ファイル指定、Pageant / `ssh-agent` 連携、エージェント転送確認

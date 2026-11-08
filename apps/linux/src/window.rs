@@ -458,6 +458,26 @@ impl Tabs {
             }),
         );
         add(
+            "save-setup",
+            Box::new(|t, _| {
+                let dialog = gtk::FileDialog::builder()
+                    .title(tt("MENU_SETUP_SAVE", "設定の保存"))
+                    .initial_name("TERATERM.INI")
+                    .build();
+                let parent: gtk::Window = t.win.clone().upcast();
+                let p = parent.clone();
+                dialog.save(Some(&parent), None::<&gio::Cancellable>, move |r| {
+                    if let Some(path) = r.ok().and_then(|f| f.path()) {
+                        let text = match settings::export_ini(&path) {
+                            Ok(()) => lf("{} に保存しました", &[&path.display()]),
+                            Err(e) => e.to_string(),
+                        };
+                        dialogs::message(&p, "Multi-Term", &text, || {});
+                    }
+                });
+            }),
+        );
+        add(
             "open-setup",
             Box::new(|_, _| {
                 let dir = crate::connect::history_path()

@@ -137,5 +137,9 @@
   "曖昧な幅の文字（○ ※ ■ など）を 2 セルにする": "Show ambiguous-width characters (○ ※ ■ etc.) in two cells",
   "%@ 行目": "line %@",
   "別の色で出す": "Use a separate color",
-  "既定（Telnet は xterm、SSH は xterm-256color）": "Default (xterm for Telnet, xterm-256color for SSH)"
+  "既定（Telnet は xterm、SSH は xterm-256color）": "Default (xterm for Telnet, xterm-256color for SSH)",
+  "OS に合わせる": "Follow the system",
+  "（起動し直すと変わります）": "(takes effect after restarting)",
+  "Tera Term の形で設定を保存します。": "Save the settings in the Tera Term format.",
+  "%@ に保存しました": "Saved to %@"
 }

@@ -533,6 +533,8 @@ pub struct OtherConf {
     pub mouse_tracking: bool,
     /// Ctrl を押している間も送らない（DisableMouseTrackingByCtrl）
     pub mouse_ctrl_bypass: bool,
+    /// UI 言語（"ja" / "en"。空なら環境変数の言語。起動し直すと効く）
+    pub ui_language: String,
 }
 
 impl Default for OtherConf {
@@ -552,6 +554,7 @@ impl Default for OtherConf {
             reconnect_ms: 500,
             mouse_tracking: true,
             mouse_ctrl_bypass: true,
+            ui_language: String::new(),
         }
     }
 }
@@ -617,6 +620,14 @@ pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     rrow.append(&interval);
     rrow.append(&gtk::Label::new(Some(&l("ミリ秒ごと"))));
     content.append(&rrow);
+    let langs = ["", "ja", "en"];
+    let lang = gtk::DropDown::from_strings(&[&l("OS に合わせる"), "日本語", "English"]);
+    lang.set_selected(langs.iter().position(|x| *x == c.ui_language).unwrap_or(0) as u32);
+    let lrow = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    lrow.append(&gtk::Label::new(Some(&tt("DLG_GEN_LANG_UI", "UI言語:"))));
+    lrow.append(&lang);
+    lrow.append(&gtk::Label::new(Some(&l("（起動し直すと変わります）"))));
+    content.append(&lrow);
 
     content.append(&heading(tt(
         "DLG_TABSHEET_TITLE_SEQUENCE",
@@ -762,6 +773,7 @@ pub fn other_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
             reconnect_ms: interval.value() as u32,
             mouse_tracking: mouse.is_active(),
             mouse_ctrl_bypass: mouse_ctrl.is_active(),
+            ui_language: langs[(lang.selected() as usize).min(2)].into(),
         };
         s.save();
         applied();
@@ -2222,4 +2234,112 @@ pub fn keygen_dialog(parent: &gtk::Window) {
     });
     win.set_default_widget(Some(&generate));
     win.present();
+}
+
+/// [Hosts] の 1 行（ttermpro の起動引数の形）。
+fn host_line(p: &ConnectionProfile) -> Option<String> {
+    Some(match p {
+        ConnectionProfile::Serial { port, settings, .. } => {
+            format!(
+                "/C={} /BAUD={}",
+                port.strip_prefix("COM").unwrap_or(port),
+                settings.baud
+            )
+        }
+        ConnectionProfile::Telnet { host, port: None } => host.clone(),
+        ConnectionProfile::Telnet {
+            host,
+            port: Some(p),
+        } => format!("{host}:{p} /telnet"),
+        ConnectionProfile::Tcp { host, port } => format!("{host}:{port} /nossh"),
+        ConnectionProfile::Ssh {
+            host, port, user, ..
+        } => {
+            let mut line = match port {
+                Some(p) if *p != 22 => format!("{host}:{p} /ssh"),
+                _ => format!("{host} /ssh"),
+            };
+            if let Some(u) = user {
+                line.push_str(&format!(" /user={u}"));
+            }
+            line
+        }
+        _ => return None,
+    })
+}
+
+/// 「設定 > 設定の保存」：今の設定を TERATERM.INI の形で書く（パスワードは書かない）。
+pub fn export_ini(path: &std::path::Path) -> std::io::Result<()> {
+    let s = Settings::load();
+    let t = s.terminal;
+    let look = &s.look;
+    let font = gtk::pango::FontDescription::from_string(&look.font);
+    let px = (f64::from(font.size()) / f64::from(gtk::pango::SCALE) * 96.0 / 72.0).round() as u32;
+    let ini = mt_core::ini::IniSettings {
+        com_port: s.serial_port.clone(),
+        serial: Some(s.serial),
+        delay: Some(s.delay),
+        newline_receive: Some(t.newline_receive),
+        newline_send: Some(t.newline_send),
+        local_echo: Some(t.local_echo),
+        charset_receive: Some(t.charset_receive),
+        charset_send: Some(t.charset_send),
+        scroll_buffer: Some(look.scrollback.min(u32::MAX as usize) as u32),
+        terminal_id: mt_core::TerminalId::from_name(&s.terminal_id),
+        clipboard_write: Some(s.copy_paste.remote_clipboard_write),
+        notify_clipboard: Some(s.copy_paste.notify_clipboard),
+        paste_delay: Some(s.other.paste_delay),
+        remote_clear_scrollback: Some(s.other.remote_clear_scrollback),
+        remote_cursor_style: Some(s.other.remote_cursor_style),
+        bell: Some(s.other.bell.clone()),
+        beep_on_connect: Some(s.other.beep_on_connect),
+        clear_on_close: Some(s.other.clear_on_close),
+        confirm_disconnect: Some(s.other.confirm_disconnect),
+        accept_title: Some(s.other.title_change.clone()),
+        alpha: Some(s.other.alpha_active),
+        term_type: (!s.term_type.is_empty()).then(|| s.term_type.clone()),
+        ambiguous_wide: Some(s.ambiguous_wide),
+        mouse_tracking: Some(s.other.mouse_tracking),
+        mouse_ctrl_bypass: Some(s.other.mouse_ctrl_bypass),
+        serial_reconnect: Some(s.other.auto_reconnect),
+        serial_reconnect_ms: Some(s.other.reconnect_ms),
+        jis: Some(t.jis()),
+        foreground: Some(look.foreground),
+        background: Some(look.background),
+        ansi: look.palette().map(Some),
+        font: font.family().map(|f| (f.to_string(), px)),
+        cursor_shape: Some(
+            match look.cursor_shape.as_str() {
+                "beam" => "vertical",
+                "underline" => "horizontal",
+                _ => "block",
+            }
+            .into(),
+        ),
+        log_default_name: Some(s.log.name.clone()),
+        log_default_path: Some(s.log.folder.clone()),
+        log_auto_start: Some(s.log.auto_start),
+        log_binary: Some(s.log.binary),
+        log_append: Some(s.log.append),
+        log_timestamp: Some(s.log.timestamp),
+        log_timestamp_utc: Some(s.log.utc),
+        auto_text_copy: Some(s.copy_paste.auto_copy),
+        confirm_change_paste: Some(s.copy_paste.confirm_paste),
+        delim_list: Some(s.copy_paste.delimiters.clone()),
+        clickable_url: Some(s.copy_paste.clickable_url),
+        trim_trailing_nl: Some(s.copy_paste.trim_trailing_newline),
+        right_click_paste: Some(s.copy_paste.right_click_paste),
+        middle_click_paste: Some(s.copy_paste.middle_click_paste),
+        ssh_keepalive: Some(s.ssh.keepalive),
+        telnet_keepalive: Some(s.telnet_keepalive),
+        send_break_ms: Some(s.break_ms),
+        ssh_forwards: s.ssh.forwards.clone(),
+        hosts: crate::connect::load_history()
+            .recent
+            .iter()
+            .filter_map(host_line)
+            .collect(),
+        ..Default::default()
+    };
+    std::fs::write(path, mt_core::ini::write_ini(&ini))
 }

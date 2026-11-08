@@ -391,6 +391,272 @@ pub fn parse_ini(text: &str) -> IniSettings {
     s
 }
 
+/// TERATERM.INI の形に書く（「設定 > 設定の保存」）。`None` の項目は書かない。
+/// `parse_ini` で読み直すと、書いた項目は同じ値になる。
+pub fn write_ini(s: &IniSettings) -> String {
+    let mut tt: Vec<(String, String)> = Vec::new();
+    let mut put = |k: &str, v: String| tt.push((k.to_owned(), v));
+    let onoff = |b: bool| if b { "on" } else { "off" }.to_owned();
+    let rgb3 = |c: u32| format!("{},{},{}", (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
+    if let Some(p) = &s.com_port {
+        put("ComPort", p.strip_prefix("COM").unwrap_or(p).to_owned());
+    }
+    if let Some(x) = &s.serial {
+        put("BaudRate", x.baud.to_string());
+        put("DataBit", x.data_bits.to_string());
+        put(
+            "Parity",
+            match x.parity {
+                Parity::None => "none",
+                Parity::Odd => "odd",
+                Parity::Even => "even",
+                Parity::Mark => "mark",
+                Parity::Space => "space",
+            }
+            .into(),
+        );
+        put(
+            "StopBit",
+            match x.stop_bits {
+                StopBits::One => "1",
+                StopBits::Two => "2",
+            }
+            .into(),
+        );
+        put(
+            "FlowCtrl",
+            match x.flow {
+                FlowControl::None => "none",
+                FlowControl::XonXoff => "x",
+                FlowControl::RtsCts => "hard",
+                FlowControl::DsrDtr => "dsrdtr",
+            }
+            .into(),
+        );
+    }
+    if let Some(d) = &s.delay {
+        put("DelayPerChar", d.per_char_ms.to_string());
+        put("DelayPerLine", d.per_line_ms.to_string());
+    }
+    if let Some(n) = s.newline_receive {
+        put(
+            "CRReceive",
+            match n {
+                NewlineReceive::Cr => "CR",
+                NewlineReceive::CrLf => "CRLF",
+                NewlineReceive::Lf => "LF",
+                NewlineReceive::Auto => "AUTO",
+            }
+            .into(),
+        );
+    }
+    if let Some(n) = s.newline_send {
+        put(
+            "CRSend",
+            match n {
+                NewlineSend::Cr => "CR",
+                NewlineSend::CrLf => "CRLF",
+                NewlineSend::Lf => "LF",
+            }
+            .into(),
+        );
+    }
+    let charset_name = |c: Charset| match c {
+        Charset::Utf8 => "UTF-8",
+        Charset::ShiftJis => "SJIS",
+        Charset::EucJp => "EUC",
+        Charset::Jis => "JIS",
+        Charset::EucKr => "KS5601",
+        Charset::Gbk => "GB2312",
+        Charset::Big5 => "BIG5",
+        Charset::Koi8R => "KOI8-R",
+        Charset::Windows1251 => "CP1251",
+        Charset::Ibm866 => "CP866",
+        Charset::Windows1252 => "ISO8859-1",
+        Charset::Iso8859_2 => "ISO8859-2",
+        Charset::Iso8859_15 => "ISO8859-15",
+    };
+    if let Some(v) = s.local_echo {
+        put("LocalEcho", onoff(v));
+    }
+    if let Some(c) = s.charset_receive {
+        put("KanjiReceive", charset_name(c).into());
+    }
+    if let Some(c) = s.charset_send {
+        put("KanjiSend", charset_name(c).into());
+    }
+    if let Some((c, r)) = s.terminal_size {
+        put("TerminalSize", format!("{c},{r}"));
+    }
+    if let Some(n) = s.scroll_buffer {
+        put("ScrollBuffSize", n.to_string());
+    }
+    if let Some(id) = s.terminal_id {
+        put("TerminalID", id.name().into());
+    }
+    if let Some(v) = s.clipboard_write {
+        put(
+            "ClipboardAccessFromRemote",
+            if v { "write" } else { "off" }.into(),
+        );
+    }
+    if let Some(v) = s.notify_clipboard {
+        put("NotifyClipboardAccess", onoff(v));
+    }
+    if let Some(v) = s.paste_delay {
+        put("PasteDelayPerLine", v.to_string());
+    }
+    if let Some(v) = s.remote_clear_scrollback {
+        put("ClearScrollBufferFromRemote", onoff(v));
+    }
+    if let Some(v) = s.remote_cursor_style {
+        put("CursorCtrlSequence", onoff(v));
+    }
+    if let Some(v) = &s.bell {
+        put("Beep", v.clone());
+    }
+    if let Some(v) = s.beep_on_connect {
+        put("BeepOnConnect", onoff(v));
+    }
+    if let Some(v) = s.clear_on_close {
+        put("ClearScreenOnCloseConnection", onoff(v));
+    }
+    if let Some(v) = s.confirm_disconnect {
+        put("ConfirmDisconnect", onoff(v));
+    }
+    if let Some(v) = &s.accept_title {
+        put("AcceptTitleChangeRequest", v.clone());
+    }
+    if let Some(v) = s.alpha {
+        put("AlphaBlendActive", v.to_string());
+    }
+    if let Some(v) = &s.term_type {
+        put("TermType", v.clone());
+    }
+    if let Some(v) = s.ambiguous_wide {
+        put("UnicodeAmbiguousWidth", if v { "2" } else { "1" }.into());
+    }
+    if let Some(v) = s.mouse_tracking {
+        put("MouseEventTracking", onoff(v));
+    }
+    if let Some(v) = s.mouse_ctrl_bypass {
+        put("DisableMouseTrackingByCtrl", onoff(v));
+    }
+    if let Some(v) = s.serial_reconnect {
+        put("AutoComPortReconnect", onoff(v));
+    }
+    if let Some(v) = s.serial_reconnect_ms {
+        put("AutoComPortReconnectRetryInterval", v.to_string());
+    }
+    if let Some(j) = s.jis {
+        put("KanjiIn", (j.kanji_in as char).to_string());
+        put("KanjiOut", (j.kanji_out as char).to_string());
+        put("KatakanaSend", if j.kana_7bit { "7" } else { "8" }.into());
+    }
+    if let Some(v) = s.telnet_keepalive {
+        put("TelKeepAliveInterval", v.to_string());
+    }
+    if let Some(v) = s.send_break_ms {
+        put("SendBreakTime", v.to_string());
+    }
+    if let (Some(fg), Some(bg)) = (s.foreground, s.background) {
+        put("VTColor", format!("{},{}", rgb3(fg), rgb3(bg)));
+    }
+    let ansi: Vec<String> = s
+        .ansi
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| c.map(|c| format!("{i},{}", rgb3(c))))
+        .collect();
+    if !ansi.is_empty() {
+        put("ANSIColor", ansi.join(", "));
+    }
+    if let Some((name, px)) = &s.font {
+        put("VTFont", format!("{name},0,-{px},128"));
+    }
+    if let Some(v) = &s.cursor_shape {
+        put("CursorShape", v.clone());
+    }
+    if let Some(v) = &s.log_default_name {
+        put("LogDefaultName", v.clone());
+    }
+    if let Some(v) = &s.log_default_path {
+        put("LogDefaultPath", v.clone());
+    }
+    for (k, v) in [
+        ("LogAutoStart", s.log_auto_start),
+        ("LogBinary", s.log_binary),
+        ("LogAppend", s.log_append),
+        ("LogTimestamp", s.log_timestamp),
+        ("AutoTextCopy", s.auto_text_copy),
+        ("ConfirmChangePaste", s.confirm_change_paste),
+        ("EnableClickableUrl", s.clickable_url),
+        ("TrimTrailingNLonPaste", s.trim_trailing_nl),
+    ] {
+        if let Some(v) = v {
+            put(k, onoff(v));
+        }
+    }
+    if let Some(v) = s.log_timestamp_utc {
+        put("LogTimestampType", if v { "UTC" } else { "Local" }.into());
+    }
+    if let Some(v) = &s.delim_list {
+        // 空白・; や $ などは $20 の形にする
+        let escaped: String = v
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || (c.is_ascii_punctuation() && !"$;\"".contains(c)) {
+                    c.to_string()
+                } else if (c as u32) < 0x100 {
+                    format!("${:02X}", c as u32)
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect();
+        put("DelimList", escaped);
+    }
+    if let Some(v) = s.right_click_paste {
+        put("DisablePasteMouseRButton", onoff(!v));
+    }
+    if let Some(v) = s.middle_click_paste {
+        put("DisablePasteMouseMButton", onoff(!v));
+    }
+
+    let mut out = String::from(
+        "; Multi-Term が書いた TERATERM.INI（この形で読める項目だけ）\r\n[Tera Term]\r\n",
+    );
+    for (k, v) in tt {
+        out.push_str(&format!("{k}={v}\r\n"));
+    }
+    let mut ssh = Vec::new();
+    if let Some(v) = s.ssh_keepalive {
+        ssh.push(format!("HeartBeat={v}"));
+    }
+    if !s.ssh_forwards.is_empty() {
+        let list: Vec<String> = s
+            .ssh_forwards
+            .iter()
+            .map(|f| f.replacen(' ', "", 1))
+            .collect();
+        ssh.push(format!("DefaultForwarding={}", list.join(";")));
+    }
+    if !ssh.is_empty() {
+        out.push_str("\r\n[TTSSH]\r\n");
+        for line in ssh {
+            out.push_str(&line);
+            out.push_str("\r\n");
+        }
+    }
+    if !s.hosts.is_empty() {
+        out.push_str("\r\n[Hosts]\r\n");
+        for (i, h) in s.hosts.iter().enumerate() {
+            out.push_str(&format!("Host{}={h}\r\n", i + 1));
+        }
+    }
+    out
+}
+
 /// ファイルから読む。UTF-8 でなければ Shift_JIS として読む。
 pub fn read_ini(path: &Path) -> std::io::Result<IniSettings> {
     let bytes = std::fs::read(path)?;
@@ -495,5 +761,14 @@ Host10=/C=1 ;serial port
         std::fs::write(&path, bytes).unwrap();
         let s = read_ini(&path).unwrap();
         assert_eq!(s.log_default_name.as_deref(), Some("ログ.log"));
+    }
+
+    #[test]
+    fn written_ini_reads_back_the_same() {
+        let read = parse_ini(SAMPLE);
+        let again = parse_ini(&write_ini(&read));
+        assert_eq!(again, read);
+        // 何も無ければ見出しだけ
+        assert!(write_ini(&IniSettings::default()).contains("[Tera Term]"));
     }
 }

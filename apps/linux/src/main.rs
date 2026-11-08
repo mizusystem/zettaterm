@@ -167,6 +167,10 @@ fn menu() -> gio::Menu {
         Some("win.setup-other"),
     );
     setup.append(
+        Some(&tt("MENU_SETUP_SAVE", "設定の保存...")),
+        Some("win.save-setup"),
+    );
+    setup.append(
         Some(&tt("MENU_SETUP_OPENSETUP", "設定フォルダ...")),
         Some("win.open-setup"),
     );
