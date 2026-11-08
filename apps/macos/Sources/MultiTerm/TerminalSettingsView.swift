@@ -99,7 +99,7 @@ struct TerminalSettingsView: View {
             }
 
             HStack {
-                Text(TT.text("DLG_TERM_ANSWERBACK", "応答:"))
+                Text(TT.text("DLG_TERM_ANSBACK", "応答:"))
                 TextField(L("ENQ を受けたときに返す文字列（空なら返さない）"), text: $config.answerback)
             }
 

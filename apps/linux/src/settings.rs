@@ -1140,7 +1140,7 @@ pub fn terminal_dialog(
     let answerback = gtk::Entry::new();
     answerback.set_placeholder_text(Some(&l("ENQ を受けたときに返す文字列（空なら返さない）")));
     answerback.set_text(&Settings::load().answerback);
-    grid.attach(&label(tt("DLG_TERM_ANSWERBACK", "応答:")), 0, 6, 1, 1);
+    grid.attach(&label(tt("DLG_TERM_ANSBACK", "応答:")), 0, 6, 1, 1);
     grid.attach(&answerback, 1, 6, 1, 1);
     let ids: Vec<String> = mt_core::TerminalId::ALL
         .iter()

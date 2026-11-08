@@ -12,7 +12,7 @@ use mt_core::{AuthPrompter, SendDelay, Transport, WindowSize};
 use mt_net::{IpVersion, LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
 use mt_serial::SerialTransport;
 
-use crate::strings::{l, tt};
+use crate::strings::{l, ssh, tt};
 
 /// 接続先の履歴（`~/.config/multiterm/hosts.toml`）。
 pub fn history_path() -> PathBuf {
@@ -174,13 +174,12 @@ pub fn show_dialog(
         host.append_text(&p.label());
     }
     host.set_hexpand(true);
-    let add_history =
-        gtk::CheckButton::with_label(&tt("DLG_HOST_TCPIP_HISTORY", "ホストリストへ追加"));
+    let add_history = gtk::CheckButton::with_label(&l("ホストリストへ追加"));
     add_history.set_active(true);
 
     let svc_ssh = gtk::CheckButton::with_label("SSH");
     let svc_telnet = gtk::CheckButton::with_label("Telnet");
-    let svc_other = gtk::CheckButton::with_label(&tt("DLG_HOST_TCPIP_OTHER", "その他"));
+    let svc_other = gtk::CheckButton::with_label(&l("その他"));
     svc_telnet.set_group(Some(&svc_ssh));
     svc_other.set_group(Some(&svc_ssh));
     svc_ssh.set_active(true);
@@ -239,16 +238,10 @@ pub fn show_dialog(
         l
     };
     grid.attach(&tcp, 0, 0, 3, 1);
-    grid.attach(&label(tt("DLG_HOST_TCPIP_HOST", "ホスト:")), 0, 1, 1, 1);
+    grid.attach(&label(tt("DLG_HOST_TCPIPHOST", "ホスト:")), 0, 1, 1, 1);
     grid.attach(&host, 1, 1, 2, 1);
     grid.attach(&add_history, 1, 2, 2, 1);
-    grid.attach(
-        &label(tt("DLG_HOST_TCPIP_SERVICE", "サービス:")),
-        0,
-        3,
-        1,
-        1,
-    );
+    grid.attach(&label(l("サービス:")), 0, 3, 1, 1);
     let svc = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     svc.append(&svc_ssh);
     svc.append(&svc_telnet);
@@ -256,12 +249,12 @@ pub fn show_dialog(
     grid.attach(&svc, 1, 3, 1, 1);
     let port_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     port_box.append(&gtk::Label::new(Some(&tt(
-        "DLG_HOST_TCPIP_PORT",
+        "DLG_HOST_TCPIPPORT",
         "TCPポート#:",
     ))));
     port_box.append(&port);
     grid.attach(&port_box, 2, 3, 1, 1);
-    let user_label = label(tt("DLG_AUTH_USERNAME", "ユーザ名:"));
+    let user_label = label(ssh("DLG_AUTH_USERNAME", "ユーザ名:"));
     let user_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     user_box.append(&user_label);
     user_box.append(&user_entry);
@@ -277,7 +270,7 @@ pub fn show_dialog(
         1,
     );
     grid.attach(&serial, 0, 6, 3, 1);
-    grid.attach(&label(tt("DLG_HOST_SERIAL_PORT", "ポート:")), 0, 7, 1, 1);
+    grid.attach(&label(tt("DLG_HOST_SERIALPORT", "ポート:")), 0, 7, 1, 1);
     grid.attach(&ports, 1, 7, 1, 1);
     let baud_box = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     baud_box.append(&gtk::Label::new(Some(&tt("DLG_SERIAL_BAUD", "スピード:"))));

@@ -116,5 +116,8 @@
   "背景画像:": "Background image:",
   "なし": "None",
   "キーマップを読み込みました（{} 個のキー）": "Loaded the keymap ({} keys)",
-  "新しいパスワードは受け付けられませんでした。": "The new password was not accepted."
+  "新しいパスワードは受け付けられませんでした。": "The new password was not accepted.",
+  "ホストリストへ追加": "Add to host list",
+  "その他": "Other",
+  "サービス:": "Service:"
 }
