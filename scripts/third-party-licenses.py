@@ -18,6 +18,8 @@ NAMES = ("license", "licence", "copying", "notice", "unlicense", "copyright")
 
 
 def main() -> int:
+    # Windows では標準出力が UTF-8 でないことがある（ライセンス文の © などで止まる）
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")
     if len(sys.argv) < 2:
         print(__doc__, file=sys.stderr)
         return 2
