@@ -1,10 +1,10 @@
-//! Multi-Term の Linux 版（GTK4）。コアと同じ Rust なので FFI を通らず直接リンクする。
+//! ZettaTerm の Linux 版（GTK4）。コアと同じ Rust なので FFI を通らず直接リンクする。
 //!
 //! ```text
-//! multiterm                          「新しい接続」ダイアログから始める
-//! multiterm host /ssh /W=router      Tera Term（ttermpro）と同じ書き方でつなぐ
-//! multiterm /C=/dev/ttyUSB0 /BAUD=115200 /L=console.log
-//! multiterm /M=x.ttl                 起動してすぐマクロを実行する（--macro x.ttl も可）
+//! zettaterm                          「新しい接続」ダイアログから始める
+//! zettaterm host /ssh /W=router      Tera Term（ttermpro）と同じ書き方でつなぐ
+//! zettaterm /C=/dev/ttyUSB0 /BAUD=115200 /L=console.log
+//! zettaterm /M=x.ttl                 起動してすぐマクロを実行する（--macro x.ttl も可）
 //! ```
 
 mod bridge;
@@ -90,7 +90,7 @@ fn menu() -> gio::Menu {
         Some("win.close-window"),
     );
     file.append(
-        Some(&tt("MENU_FILE_EXITALL", "全終了").replace("Tera Term", "Multi-Term")),
+        Some(&tt("MENU_FILE_EXITALL", "全終了").replace("Tera Term", "ZettaTerm")),
         Some("app.quit"),
     );
     bar.append_submenu(Some(&tt("MENU_FILE", "ファイル")), &file);
@@ -338,7 +338,7 @@ fn menu() -> gio::Menu {
 
     let help = gio::Menu::new();
     help.append(
-        Some(&tt("MENU_HELP_ABOUT", "Multi-Term について...").replace("Tera Term", "Multi-Term")),
+        Some(&tt("MENU_HELP_ABOUT", "ZettaTerm について...").replace("Tera Term", "ZettaTerm")),
         Some("app.about"),
     );
     bar.append_submenu(Some(&tt("MENU_HELP", "ヘルプ")), &help);
@@ -359,26 +359,26 @@ fn main() -> glib::ExitCode {
     let launch = if args.is_empty() {
         None
     } else {
-        match mt_ttl::parse_args(&args) {
+        match zetta_ttl::parse_args(&args) {
             Ok(l) => Some(l),
             Err(e) => {
-                eprintln!("multiterm: {e}");
+                eprintln!("zettaterm: {e}");
                 return glib::ExitCode::FAILURE;
             }
         }
     };
     if let Some(ini) = launch.as_ref().and_then(|l| l.ini.clone()) {
-        match mt_core::ini::read_ini(std::path::Path::new(&ini)) {
+        match zetta_core::ini::read_ini(std::path::Path::new(&ini)) {
             Ok(i) => {
                 settings::apply_ini(&i);
             }
-            Err(e) => eprintln!("multiterm: {ini}: {e}"),
+            Err(e) => eprintln!("zettaterm: {ini}: {e}"),
         }
     }
     let args = vec![program];
 
     let app = gtk::Application::builder()
-        .application_id("dev.multiterm.MultiTerm")
+        .application_id("com.mizusystem.ZettaTerm")
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_startup(|app| {
@@ -386,7 +386,7 @@ fn main() -> glib::ExitCode {
         let saved = settings::Settings::load();
         saved.proxy.apply();
         saved.ssh.apply_algorithms();
-        mt_net::set_term_type(Some(saved.term_type.clone()));
+        zetta_net::set_term_type(Some(saved.term_type.clone()));
         let quit = gio::SimpleAction::new("quit", None);
         let a = app.clone();
         quit.connect_activate(move |_, _| a.quit());

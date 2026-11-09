@@ -6,7 +6,7 @@ model: sonnet
 ---
 
 担当は apps/linux のみ。他のパスは編集しない。
-mt-core を直接リンクする（FFI は通らない）。
+zetta-core を直接リンクする（FFI は通らない）。
 
 守ること
 - GTK の frame clock で snapshot を取り、変更行だけ Pango で描き直す

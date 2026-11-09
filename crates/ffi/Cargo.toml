@@ -1,5 +1,5 @@
 [package]
-name = "mt-ffi"
+name = "zetta-ffi"
 description = "UniFFI による公開 API と Swift バインディング生成"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "mt_ffi"
+name = "zetta_ffi"
 crate-type = ["lib", "staticlib"]
 
 [[bin]]
@@ -21,12 +21,12 @@ required-features = ["bindgen"]
 bindgen = ["uniffi/cli"]
 
 [dependencies]
-mt-core.workspace = true
-mt-serial.workspace = true
-mt-net.workspace = true
+zetta-core.workspace = true
+zetta-serial.workspace = true
+zetta-net.workspace = true
 uniffi = "0.32.2"
-mt-xfer.workspace = true
-mt-ttl.workspace = true
+zetta-xfer.workspace = true
+zetta-ttl.workspace = true
 
 [lints]
 workspace = true

@@ -2,8 +2,8 @@
 
 use std::io::{self, Read, Write};
 
-use mt_core::{Transport, WindowSize};
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
+use zetta_core::{Transport, WindowSize};
 
 /// PTY で起動するコマンド。
 #[derive(Clone, Debug, Default)]
@@ -124,7 +124,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
-    use mt_core::{Session, SessionListener, SessionOptions, SessionState};
+    use zetta_core::{Session, SessionListener, SessionOptions, SessionState};
 
     struct Quiet;
     impl SessionListener for Quiet {

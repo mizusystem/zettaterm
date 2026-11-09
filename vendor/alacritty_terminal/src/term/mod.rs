@@ -1,4 +1,4 @@
-// Modified for Multi-Term (2026): see PATCHES.md in this crate's directory.
+// Modified for ZettaTerm (2026): see PATCHES.md in this crate's directory.
 //! Exports the `Term` type which is a high-level API for the Grid.
 
 use std::ops::{Index, IndexMut, Range};
@@ -353,7 +353,7 @@ pub struct Config {
     /// OSC52 support mode.
     pub osc52: Osc52,
 
-    /// Multi-Term: East Asian Ambiguous の文字を 2 セル幅で扱う。
+    /// ZettaTerm: East Asian Ambiguous の文字を 2 セル幅で扱う。
     pub ambiguous_wide: bool,
 }
 
@@ -1070,7 +1070,7 @@ impl<T: EventListener> Handler for Term<T> {
             Some(width) => width,
             None => return,
         };
-        // Multi-Term: East Asian Ambiguous の文字を 2 セルにする（Tera Term の UnicodeAmbiguousWidth=2）
+        // ZettaTerm: East Asian Ambiguous の文字を 2 セルにする（Tera Term の UnicodeAmbiguousWidth=2）
         let width = if width == 1 && self.config.ambiguous_wide {
             c.width_cjk().unwrap_or(width)
         } else {

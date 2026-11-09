@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mt_vt::{
+use zetta_vt::{
     GridSnapshot, Key, Modifiers, Point, Row, SearchQuery, Selection, Terminal, UrlMatch, VtEvent,
 };
 
@@ -458,7 +458,7 @@ impl Session {
 
     /// 相手からのスクロールバッファの消去（ClearScrollBufferFromRemote）と、カーソルの形・点滅の変更
     /// （CursorCtrlSequence）を受け付けるか。既定は Tera Term と同じく、どちらも断る。
-    pub fn set_remote_control(&self, allow: mt_vt::RemoteControl) {
+    pub fn set_remote_control(&self, allow: zetta_vt::RemoteControl) {
         self.inner.vt().set_remote_control(allow);
     }
 
@@ -473,12 +473,12 @@ impl Session {
     }
 
     /// 相手が求めているマウスの通知。UI は `tracking()` なら選択の代わりに `mouse` で送る。
-    pub fn mouse_mode(&self) -> mt_vt::MouseMode {
+    pub fn mouse_mode(&self) -> zetta_vt::MouseMode {
         self.inner.vt().mouse_mode()
     }
 
     /// マウスの出来事を送る。相手が求めていなければ送らずに false。閲覧専用でも送らない。
-    pub fn mouse(&self, event: &mt_vt::MouseEvent) -> bool {
+    pub fn mouse(&self, event: &zetta_vt::MouseEvent) -> bool {
         if self.inner.view_only.load(Ordering::SeqCst) {
             return false;
         }
@@ -503,7 +503,7 @@ impl Session {
     }
 
     /// 端末 ID（Tera Term の TerminalID）。`ESC [ c` への応答が変わる。
-    pub fn set_terminal_id(&self, id: mt_vt::TerminalId) {
+    pub fn set_terminal_id(&self, id: zetta_vt::TerminalId) {
         self.inner.vt().set_terminal_id(id);
     }
 
@@ -514,7 +514,7 @@ impl Session {
     }
 
     /// 「設定 > キーボード」（BS / Delete キーと Meta）。
-    pub fn set_keyboard(&self, options: mt_vt::KeyboardOptions) {
+    pub fn set_keyboard(&self, options: zetta_vt::KeyboardOptions) {
         self.inner.vt().set_keyboard(options);
     }
 
@@ -762,7 +762,7 @@ impl Session {
     }
 
     /// 色とカーソル形状の既定を変える（「設定 > ウィンドウ」）。
-    pub fn set_appearance(&self, appearance: &mt_vt::Appearance) {
+    pub fn set_appearance(&self, appearance: &zetta_vt::Appearance) {
         self.inner.vt().set_appearance(appearance);
         self.inner.notify_damage();
     }

@@ -5,7 +5,7 @@
 //!
 //! Transport は「バイトの通り道」だけを表す。VT 解釈・文字コード・ログは Session 側が持つ。
 //! 読み書きはブロッキングの `Read` / `Write` で渡し、Session が専用スレッドで回す。
-//! シリアル（`mt-serial`）、PTY・SSH・Telnet（`mt-net`）がこれを実装する。
+//! シリアル（`zetta-serial`）、PTY・SSH・Telnet（`zetta-net`）がこれを実装する。
 
 use std::io::{self, Read, Write};
 

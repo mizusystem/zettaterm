@@ -5,8 +5,8 @@
 apps/macos/build/
 apps/macos/.build/
 apps/macos/**/xcuserdata/
-apps/macos/Sources/MTCore/Generated/
-apps/macos/Sources/MultiTerm/Resources/
+apps/macos/Sources/ZettaCore/Generated/
+apps/macos/Sources/ZettaTerm/Resources/
 
 # Linux app
 apps/linux/target/

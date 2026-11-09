@@ -253,7 +253,7 @@ mod tests {
             fn connect(
                 &mut self,
                 _: &crate::ConnectSpec,
-            ) -> Result<std::sync::Arc<mt_core::Session>, String> {
+            ) -> Result<std::sync::Arc<zetta_core::Session>, String> {
                 Err("no".into())
             }
         }

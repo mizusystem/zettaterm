@@ -6,8 +6,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use mt_core::{FlowControl, ModemLines, Parity, SerialDevice, SerialSettings, StopBits, Transport};
 use serialport::SerialPort;
+use zetta_core::{
+    FlowControl, ModemLines, Parity, SerialDevice, SerialSettings, StopBits, Transport,
+};
 
 use crate::devices::list_devices;
 
@@ -456,7 +458,7 @@ mod pty_tests {
     use std::sync::Mutex;
     use std::time::Instant;
 
-    use mt_core::{Session, SessionListener, SessionOptions, SessionState, WindowSize};
+    use zetta_core::{Session, SessionListener, SessionOptions, SessionState, WindowSize};
 
     /// 擬似端末の対を作り、(master, slave のパス) を返す。slave 側をシリアルポートとして開く。
     fn pty_pair() -> (File, String) {
@@ -626,14 +628,14 @@ mod tests {
     }
 }
 
-/// 実機テスト。`MT_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p mt-serial -- --ignored --nocapture`
+/// 実機テスト。`ZETTA_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p zetta-serial -- --ignored --nocapture`
 #[cfg(test)]
 mod hardware_tests {
     use super::*;
     use std::sync::Mutex;
     use std::time::Instant;
 
-    use mt_core::{Session, SessionListener, SessionOptions, SessionState};
+    use zetta_core::{Session, SessionListener, SessionOptions, SessionState};
 
     #[derive(Default)]
     struct States(Mutex<Vec<SessionState>>);
@@ -651,7 +653,7 @@ mod hardware_tests {
     #[test]
     #[ignore]
     fn hardware_unplug_and_replug() {
-        let path = std::env::var("MT_SERIAL_PORT").expect("set MT_SERIAL_PORT");
+        let path = std::env::var("ZETTA_SERIAL_PORT").expect("set ZETTA_SERIAL_PORT");
         let transport = SerialTransport::open(&path, SerialSettings::default()).unwrap();
         let states = Arc::new(States::default());
         let session = Session::open(

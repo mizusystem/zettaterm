@@ -1,8 +1,8 @@
 //! ヘッドレス端末と TTL 実行。コアと同じ Rust なので FFI を通らず直接リンクする。
 //!
 //! ```text
-//! mt run [--quiet] <macro.ttl> [param2 ...]   TTL マクロを実行する（受信は標準出力へ）
-//! mt ports                                    シリアルポートの一覧
+//! zetta run [--quiet] <macro.ttl> [param2 ...]   TTL マクロを実行する（受信は標準出力へ）
+//! zetta ports                                    シリアルポートの一覧
 //! ```
 
 use std::io::{self, BufRead, Write};
@@ -12,26 +12,26 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
-use mt_core::{
+use zetta_core::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
     HostKeyStatus, KeyboardPrompt, PasswordChange, PasswordChangeRequest, SerialSettings, Session,
     SessionListener, SessionOptions, SessionState, Transport, WindowSize,
 };
-use mt_net::{IpVersion, SshOptions, SshTransport, TcpTransport};
-use mt_serial::SerialTransport;
-use mt_ttl::{ConnectSpec, Host, Interp, Outcome, SshSpec};
+use zetta_net::{IpVersion, SshOptions, SshTransport, TcpTransport};
+use zetta_serial::SerialTransport;
+use zetta_ttl::{ConnectSpec, Host, Interp, Outcome, SshSpec};
 
 const USAGE: &str = "usage:
-  mt run [--quiet] <macro.ttl> [param2 ...]   run a TTL macro (received text goes to stdout)
-  mt ports                                    list serial ports
-  mt --version";
+  zetta run [--quiet] <macro.ttl> [param2 ...]   run a TTL macro (received text goes to stdout)
+  zetta ports                                    list serial ports
+  zetta --version";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("run") => run(&args[1..]),
         Some("ports") => {
-            for d in mt_serial::list_devices() {
+            for d in zetta_serial::list_devices() {
                 let desc: Vec<&str> = [d.manufacturer.as_deref(), d.product.as_deref()]
                     .into_iter()
                     .flatten()
@@ -41,7 +41,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("--version" | "-V") => {
-            println!("mt {}", env!("CARGO_PKG_VERSION"));
+            println!("zetta {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS
         }
         _ => {
@@ -97,7 +97,7 @@ impl SessionListener for Quiet {
 struct CliHost {
     quiet: bool,
     /// 内蔵 SSH で接続したとき（scpsend / scprecv に使う）
-    files: Option<mt_net::SshFiles>,
+    files: Option<zetta_net::SshFiles>,
 }
 
 fn prompt(text: &str) -> Option<String> {
@@ -247,7 +247,7 @@ impl Host for CliHost {
     }
 
     fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
-        mt_net::local_addresses().ok()
+        zetta_net::local_addresses().ok()
     }
 
     fn dir_name_box(&mut self, title: &str, dir: &Path) -> Option<String> {

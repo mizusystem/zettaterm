@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use mt_core as core;
+use zetta_core as core;
 
 use crate::{IpVersion, MtError, Profile, SerialSettings};
 
@@ -143,5 +143,5 @@ impl HostHistory {
 /// 利用者の `~/.ssh/config` にある Host 名（ワイルドカードを除く）。
 #[uniffi::export]
 pub fn ssh_config_hosts() -> Vec<String> {
-    mt_net::ssh_config_hosts()
+    zetta_net::ssh_config_hosts()
 }

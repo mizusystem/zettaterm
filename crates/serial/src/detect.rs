@@ -10,8 +10,8 @@ use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use mt_core::SerialSettings;
 use serialport::ClearBuffer;
+use zetta_core::SerialSettings;
 
 /// 試す順（よく使うものから。74880 は ESP8266 / ESP32 の起動ログ）。
 pub const CANDIDATES: &[u32] = &[

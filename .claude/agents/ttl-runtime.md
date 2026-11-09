@@ -9,7 +9,7 @@ model: sonnet
 
 守ること
 - 本家（teraterm/ttpmacro）のソースは参照のみ。コードは持ってこない
-- DDE は使わず、mt-core の Session API を直接呼ぶ
+- DDE は使わず、zetta-core の Session API を直接呼ぶ
 - 対象は頻出サブセット。実装状況は spec/ の TTL コマンド表と突き合わせる
 - このクレートに cfg(target_os) を書かない
 

@@ -4,7 +4,7 @@
 //! PC のキーコード（512 が Shift、1024 が Ctrl、2048 が Alt）。文字列の `^X` は Ctrl+X（`^[` は ESC）、`^^` は `^`。
 //! マクロの実行（種類 2）やメニュー（種類 3）などは読まない。
 
-use mt_vt::{Key, Modifiers};
+use zetta_vt::{Key, Modifiers};
 
 /// 押したら文字列を送るキー。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -60,7 +60,7 @@ pub fn parse_keyboard_cnf(text: &str) -> (Vec<UserKey>, usize) {
         let code = parts.next().and_then(|c| c.trim().parse::<i32>().ok());
         let kind = parts.next().map(str::trim);
         let string = parts.next().unwrap_or("");
-        match (code.and_then(mt_vt::from_pc_key_code), kind) {
+        match (code.and_then(zetta_vt::from_pc_key_code), kind) {
             (Some((key, mods)), Some("0")) => keys.push(UserKey {
                 key,
                 mods,

@@ -4,7 +4,7 @@
 //! 本家と違い DDE は使わず、コア API を直接呼ぶ。このクレートに `cfg(target_os)` を書かない。
 //!
 //! 接続（`connect`）やダイアログは [`Host`] として呼び出し側（cli、各 OS の UI）が実装する。
-//! ファイル転送は mt-xfer をそのまま使う。
+//! ファイル転送は zetta-xfer をそのまま使う。
 
 mod connect;
 mod format;

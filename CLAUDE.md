@@ -1,4 +1,4 @@
-# Multi-Term（仮称）
+# ZettaTerm
 
 Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ UI で macOS・Linux・Windows に再現する端末アプリ。
 最初のターゲットは Apple Silicon の macOS。設計の全体は [docs/design.md](docs/design.md) を参照。
@@ -7,26 +7,26 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 
 | パス | パッケージ名 | 責務 |
 | --- | --- | --- |
-| `crates/core` | `mt-core` | Session、Transport の抽象、文字コード・改行変換、ログ、プロファイル、TERATERM.INI のインポート |
-| `crates/vt` | `mt-vt` | VT エミュレーション、画面グリッド、変更行の追跡、スクロールバック |
-| `crates/serial` | `mt-serial` | ポート制御、任意ボーレート、デバイス列挙とホットプラグ、自動再接続 |
-| `crates/net` | `mt-net` | SSH（外部 ssh を PTY 起動 → 後で russh）、Telnet、ローカル PTY |
-| `crates/xfer` | `mt-xfer` | XMODEM / YMODEM / ZMODEM / Kermit |
-| `crates/ttl` | `mt-ttl` | TTL パーサとインタプリタ |
-| `crates/ffi` | `mt-ffi` | UniFFI による公開 API、Swift バインディング生成 |
-| `crates/cli` | `mt-cli`（bin: `mt`） | ヘッドレス端末と TTL 実行 |
+| `crates/core` | `zetta-core` | Session、Transport の抽象、文字コード・改行変換、ログ、プロファイル、TERATERM.INI のインポート |
+| `crates/vt` | `zetta-vt` | VT エミュレーション、画面グリッド、変更行の追跡、スクロールバック |
+| `crates/serial` | `zetta-serial` | ポート制御、任意ボーレート、デバイス列挙とホットプラグ、自動再接続 |
+| `crates/net` | `zetta-net` | SSH（外部 ssh を PTY 起動 → 後で russh）、Telnet、ローカル PTY |
+| `crates/xfer` | `zetta-xfer` | XMODEM / YMODEM / ZMODEM / Kermit |
+| `crates/ttl` | `zetta-ttl` | TTL パーサとインタプリタ |
+| `crates/ffi` | `zetta-ffi` | UniFFI による公開 API、Swift バインディング生成 |
+| `crates/cli` | `zetta-cli`（bin: `zetta`） | ヘッドレス端末と TTL 実行 |
 | `apps/macos` | — | SwiftUI + AppKit |
 | `apps/linux` | — | GTK4（ワークスペース外） |
-| `apps/windows` | — | 必要になるまで作らない（GTK 版と `mt` で代用。docs/design.md） |
+| `apps/windows` | — | 必要になるまで作らない（GTK 版と `zetta` で代用。docs/design.md） |
 | `tools/extract-tt-ui`, `spec/` | — | Tera Term の `.rc` / `.lng` / INI から JSON と文言カタログを生成 |
 | `vendor/alacritty_terminal` | — | alacritty_terminal 0.26.0 の写しに、曖昧な幅を 2 セルにする変更を当てたもの（`PATCHES.md`。`[patch.crates-io]` で使う） |
 | `vendor/russh` | — | russh 0.65.1 の写しに、パスワード変更（メッセージ 60）を扱う変更を当てたもの（`PATCHES.md`。`[patch.crates-io]` で使う） |
 
-パッケージ名の `mt-` は仮。`core` は Rust 組み込みの `core` クレートと衝突するため、ディレクトリ名とは別に接頭辞を付けている。アプリ名が決まったら置き換える。
+パッケージ名は `zetta-`（`core` は Rust 組み込みの `core` クレートと衝突するため、ディレクトリ名とは別に接頭辞を付けている）。アプリ名は 2026-11-10 に Multi-Term（仮称）から ZettaTerm に決めた。
 
 依存の向き: `vt` ← `core` ← `serial` / `net` / `ttl` ← `ffi` / `cli`。`xfer` は何にも依存しない（`ttl` と `ffi` が使う）。`core` は `serial` / `net` に依存しない（Transport は `ffi` / `cli` 側で注入する）。
 
-スレッドモデル: Session ごとに受信スレッドと送信スレッドを 1 本ずつ持つ（tokio は未使用）。Transport はブロッキングの `Read` / `Write` を返す。`on_damage` は UI が `snapshot` を呼ぶまで再通知しない。相手が消えたら Session が `Transport::reconnect` を 0.5 秒ごとに試す（自動再接続）。送信遅延は送信スレッド、ログは受信スレッドで扱う。UI 開発とテストには `mt_core::mock::MockTransport` を使う。
+スレッドモデル: Session ごとに受信スレッドと送信スレッドを 1 本ずつ持つ（tokio は未使用）。Transport はブロッキングの `Read` / `Write` を返す。`on_damage` は UI が `snapshot` を呼ぶまで再通知しない。相手が消えたら Session が `Transport::reconnect` を 0.5 秒ごとに試す（自動再接続）。送信遅延は送信スレッド、ログは受信スレッドで扱う。UI 開発とテストには `zetta_core::mock::MockTransport` を使う。
 
 シリアルデバイスの抜き差しは 1 秒ごとの列挙と差分比較で検出している（全 OS 共通）。IOKit / udev / SetupAPI の通知への置き換えは TODO。
 
@@ -35,7 +35,7 @@ Tera Term の操作感を、Rust の共通コアと OS ごとのネイティブ 
 - UI に依存するコードは `crates/` に入れない
 - OS 固有コード（`cfg(target_os)`）は `crates/serial` と `crates/net` の中に閉じる。他のクレートには書かない
 - `crates/` 配下は macOS・Linux・Windows の 3 環境で `cargo test` を通す。Linux と Windows は GitHub Actions（`.github/workflows/ci.yml`）、macOS はこの Mac で `scripts/ci-macos.sh`（push 前に回す。GitHub で回すときは `macos.yml` を手動実行）
-- 設定ファイルは TOML。`TERATERM.INI` は `mt_core::ini` で読み、各 UI が自分の設定に移す（「設定 > 設定の読み込み」と起動引数 `/F=`）
+- 設定ファイルは TOML。`TERATERM.INI` は `zetta_core::ini` で読み、各 UI が自分の設定に移す（「設定 > 設定の読み込み」と起動引数 `/F=`）
 - Tera Term のコードは持ってこない。仕様・UI 文言・設定キーは参照してよい（BSD-3-Clause、`THIRD_PARTY.md` に表示）
 
 ## API 契約（メインセッションの持ち物）
@@ -82,14 +82,14 @@ cargo build --workspace
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
-cargo run -p mt-cli
+cargo run -p zetta-cli
 
 # macOS の CI 相当（Rust + macOS アプリ）。push 前に回す
 scripts/ci-macos.sh
 
 # macOS アプリ（詳細は apps/macos/README.md）
 apps/macos/scripts/build-core.sh
-apps/macos/scripts/make-app.sh && open apps/macos/build/MultiTerm.app
+apps/macos/scripts/make-app.sh && open apps/macos/build/ZettaTerm.app
 
 # Linux 版（GTK4。ワークスペースの外。macOS でも brew install gtk4 で動く）
 cargo run --manifest-path apps/linux/Cargo.toml
@@ -98,33 +98,33 @@ cargo run --manifest-path apps/linux/Cargo.toml
 シリアルの結合テストは擬似端末の対で書く（socat は不要）。macOS の擬似端末は IOSSIOSPEED を受け付けないため、この種のテストは Linux（GitHub Actions）だけで回る。macOS では実機テストで確かめる：
 
 ```bash
-MT_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p mt-serial -- --ignored --nocapture
+ZETTA_SERIAL_PORT=/dev/cu.usbserial-XXXX cargo test -p zetta-serial -- --ignored --nocapture
 ```
 
-選択（単語・行・矩形）、検索、URL の検出、「テーブルをコピー」の変換は `mt_vt::select`、貼り付け前の確認（改行・危険な語）は `mt_core::paste` に置く。UI は選択の両端（`Point`：0 が画面の最上行、負はスクロールバック）だけを持ち、出力で行が押し出されたらずらす。本家との機能差分と実装の進み具合は [docs/feature_gap_list.md](docs/feature_gap_list.md)。
+選択（単語・行・矩形）、検索、URL の検出、「テーブルをコピー」の変換は `zetta_vt::select`、貼り付け前の確認（改行・危険な語）は `zetta_core::paste` に置く。UI は選択の両端（`Point`：0 が画面の最上行、負はスクロールバック）だけを持ち、出力で行が押し出されたらずらす。本家との機能差分と実装の進み具合は [docs/feature_gap_list.md](docs/feature_gap_list.md)。
 
-UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）からキーで引く。手で書き写さない。Mac 版のアプリ独自の文言は `L("日本語の文")` で、訳は `apps/macos/Sources/MultiTerm/Localization/<言語>.json`（詳しくは apps/macos/README.md の「表示言語」）。
+UI 文言は `spec/`（Tera Term から `tools/extract-tt-ui` で生成）からキーで引く。手で書き写さない。Mac 版のアプリ独自の文言は `L("日本語の文")` で、訳は `apps/macos/Sources/ZettaTerm/Localization/<言語>.json`（詳しくは apps/macos/README.md の「表示言語」）。
 
-SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`mt_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。
+SSH は内蔵の russh（`crates/net/src/ssh_client.rs`）で接続し、認証やホスト鍵の確認は UI のダイアログで尋ねる（`zetta_core::AuthPrompter`、TTSSH の各ダイアログに当たる）。ssh_config は `crates/net/src/ssh_config.rs` が解釈する（HostName・Port・User・IdentityFile・IdentitiesOnly・ProxyJump・ProxyCommand・ConnectTimeout・ServerAliveInterval・StrictHostKeyChecking・UserKnownHostsFile・Include）。それ以外の項目が要る接続は「システムの ssh を使う」で従来どおり外部の ssh を PTY で起動する。
 
 ポート転送（-L / -R / -D、ssh_config の LocalForward なども）は `crates/net/src/forward.rs`、設定は「設定 > SSH...」。SSH SCP（TTSSH の「ファイル > SSH SCP」）は `crates/net/src/scp.rs`。内蔵 SSH の接続に exec チャネルを足して相手の `scp -t` / `scp -f` と話すので、端末は使ったまま転送できる（フォルダは `-r` で中身ごと）。テストサーバーは本物の scp を起動して相互転送を確かめる（`tests/support/exec.rs`、test-sshd も同じ）。
 
 ```bash
-cargo test -p mt-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
-cargo run -p mt-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234、expired で変更を求める）
-cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
+cargo test -p zetta-net --test ssh_client                        # 同じプロセスにテスト用 SSH サーバーを立てる
+cargo run -p zetta-net --example test-sshd -- 2222               # 画面確認用のテスト SSH サーバー（kt / secret、コード 1234、expired で変更を求める）
+cargo test -p zetta-net --test ssh_e2e -- --ignored --nocapture  # システムの ssh と一時 sshd（sshd が必要）
 ```
 
-ファイル転送（XMODEM / YMODEM / ZMODEM / Kermit）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `mt_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。ヘッダから後ろの受信は端末に出さずにとっておき、UI が `start_transfer` で転送に渡すか `decline_transfer` で端末に出す（応じない UI のため 5 秒で端末に出る）。UI は転送を始めないときは必ず `decline_transfer` を呼ぶ。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
+ファイル転送（XMODEM / YMODEM / ZMODEM / Kermit）は `crates/xfer` の入出力を持たない状態機械で、Session は転送中だけ受信を `zetta_core::ByteDivert` に回す（ffi がつなぐ）。相手の `sz` / `rz` は受信の中の ZMODEM ヘッダで検出して `SessionListener::on_transfer_request` で知らせる。ヘッダから後ろの受信は端末に出さずにとっておき、UI が `start_transfer` で転送に渡すか `decline_transfer` で端末に出す（応じない UI のため 5 秒で端末に出る）。UI は転送を始めないときは必ず `decline_transfer` を呼ぶ。lrzsz との相互転送テストは lrzsz があるときだけ回る（`brew install lrzsz`。無ければスキップ）：
 
 ```bash
-cargo test -p mt-xfer --test lrzsz -- --nocapture
+cargo test -p zetta-xfer --test lrzsz -- --nocapture
 ```
 
-Kermit は C-Kermit（openkermit 11 系。`brew install openkermit`）と相互転送テストする（`cargo test -p mt-xfer --test kermit`）。Homebrew の c-kermit 9.0.302 は macOS でファイルを書けないので使わない。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
+Kermit は C-Kermit（openkermit 11 系。`brew install openkermit`）と相互転送テストする（`cargo test -p zetta-xfer --test kermit`）。Homebrew の c-kermit 9.0.302 は macOS でファイルを書けないので使わない。文字コード（UTF-8 / Shift_JIS / EUC-JP / JIS）は `crates/core/src/charset.rs`。
 
-`mt` コマンドの配布は `.github/workflows/release-cli.yml`（`v*` のタグで Linux / Windows / macOS 向けをビルドし、GitHub Releases に下書きで置く。手動実行はビルドだけ）。
+`zetta` コマンドの配布は `.github/workflows/release-cli.yml`（`v*` のタグで Linux / Windows / macOS 向けをビルドし、GitHub Releases に下書きで置く。手動実行はビルドだけ）。
 
-TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。起動引数（ttermpro と同じ `host /ssh /M= /L= /W= /F=`）は `connect` と同じ書き方なので `mt_ttl::parse_args` で読む。`connect` やダイアログは `mt_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `mt run macro.ttl`、macOS は「コントロール > マクロ」（ffi の `run_macro` と `MacroHost`）。`connect` 直後のプロンプトを取りこぼさないよう、マクロは `Session::tap_with_history` で直前の受信から見る。
+TTL は `crates/ttl`（対応範囲は [docs/ttl.md](docs/ttl.md)）。起動引数（ttermpro と同じ `host /ssh /M= /L= /W= /F=`）は `connect` と同じ書き方なので `zetta_ttl::parse_args` で読む。`connect` やダイアログは `zetta_ttl::Host` として cli と各 UI が実装し、`wait` は `Session::tap` で受信の写しを受け取る。cli は `zetta run macro.ttl`、macOS は「コントロール > マクロ」（ffi の `run_macro` と `MacroHost`）。`connect` 直後のプロンプトを取りこぼさないよう、マクロは `Session::tap_with_history` で直前の受信から見る。
 
-接続先の履歴は `mt_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/Multi-Term/hosts.toml`。
+接続先の履歴は `zetta_core::profile::HostHistory`（TOML）。macOS は `~/Library/Application Support/ZettaTerm/hosts.toml`。

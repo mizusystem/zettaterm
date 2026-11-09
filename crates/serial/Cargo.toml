@@ -1,5 +1,5 @@
 [package]
-name = "mt-serial"
+name = "zetta-serial"
 description = "シリアルポート制御、任意ボーレート、デバイス列挙とホットプラグ、自動再接続"
 version.workspace = true
 edition.workspace = true
@@ -8,10 +8,10 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "mt_serial"
+name = "zetta_serial"
 
 [dependencies]
-mt-core.workspace = true
+zetta-core.workspace = true
 serialport = "4.10.1"
 
 [target."cfg(unix)".dependencies]

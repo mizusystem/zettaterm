@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MultiTerm.app を組み立てる（署名なし・開発用）。先に build-core.sh を実行しておくこと。
+# ZettaTerm.app を組み立てる（署名なし・開発用）。先に build-core.sh を実行しておくこと。
 #
 #   apps/macos/scripts/make-app.sh          # debug
 #   CONFIG=release apps/macos/scripts/make-app.sh
@@ -10,21 +10,21 @@ CONFIG="${CONFIG:-debug}"
 cd "$APP_DIR"
 
 swift build -c "$CONFIG"
-BIN="$(swift build -c "$CONFIG" --show-bin-path)/MultiTerm"
+BIN="$(swift build -c "$CONFIG" --show-bin-path)/ZettaTerm"
 
-BUNDLE="$APP_DIR/build/MultiTerm.app"
+BUNDLE="$APP_DIR/build/ZettaTerm.app"
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
-cp "$BIN" "$BUNDLE/Contents/MacOS/MultiTerm"
+cp "$BIN" "$BUNDLE/Contents/MacOS/ZettaTerm"
 # SwiftPM のリソース（Tera Term の文言）
-cp -R "$(dirname "$BIN")/MultiTerm_MultiTerm.bundle" "$BUNDLE/Contents/Resources/"
+cp -R "$(dirname "$BIN")/ZettaTerm_ZettaTerm.bundle" "$BUNDLE/Contents/Resources/"
 cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>CFBundleExecutable</key>
-	<string>MultiTerm</string>
+	<string>ZettaTerm</string>
 	<!-- 対応言語。これが無いと、ファイル・編集・ウインドウなどシステムのメニューが英語のままになる -->
 	<key>CFBundleDevelopmentRegion</key>
 	<string>ja</string>
@@ -34,11 +34,11 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 		<string>en</string>
 	</array>
 	<key>CFBundleIdentifier</key>
-	<string>dev.multiterm.MultiTerm</string>
+	<string>com.mizusystem.ZettaTerm</string>
 	<key>CFBundleName</key>
-	<string>Multi-Term</string>
+	<string>ZettaTerm</string>
 	<key>CFBundleDisplayName</key>
-	<string>Multi-Term</string>
+	<string>ZettaTerm</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -59,7 +59,7 @@ PLIST
 # 言語フォルダ（中身は表示名だけ。macOS はこれを見て、システムのメニューの言語を決める）
 for lang in ja en; do
   mkdir -p "$BUNDLE/Contents/Resources/$lang.lproj"
-  printf '"CFBundleDisplayName" = "Multi-Term";\n"CFBundleName" = "Multi-Term";\n' \
+  printf '"CFBundleDisplayName" = "ZettaTerm";\n"CFBundleName" = "ZettaTerm";\n' \
     > "$BUNDLE/Contents/Resources/$lang.lproj/InfoPlist.strings"
 done
 codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || true

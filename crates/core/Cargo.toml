@@ -1,5 +1,5 @@
 [package]
-name = "mt-core"
+name = "zetta-core"
 description = "Session, Transport の抽象、文字コード・改行変換、ログ、プロファイル"
 version.workspace = true
 edition.workspace = true
@@ -8,12 +8,12 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "mt_core"
+name = "zetta_core"
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 encoding_rs = "0.8.44"
-mt-vt.workspace = true
+zetta-vt.workspace = true
 serde = { version = "1", features = ["derive"] }
 toml = "0.9"
 

@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use mt_core as core;
+use zetta_core as core;
 
 use crate::MtError;
 
@@ -134,7 +134,7 @@ impl From<core::SerialDevice> for SerialDevice {
 /// 今つながっているシリアルデバイス。
 #[uniffi::export]
 pub fn list_serial_devices() -> Vec<SerialDevice> {
-    mt_serial::list_devices()
+    zetta_serial::list_devices()
         .into_iter()
         .map(SerialDevice::from)
         .collect()
@@ -159,14 +159,14 @@ impl core::DeviceListener for DeviceAdapter {
 /// 抜き差しの監視。作った直後に現在の全件を 1 回通知する。`stop` か解放で止まる。
 #[derive(uniffi::Object)]
 pub struct DeviceWatcher {
-    inner: Mutex<Option<mt_serial::DeviceWatcher>>,
+    inner: Mutex<Option<zetta_serial::DeviceWatcher>>,
 }
 
 #[uniffi::export]
 impl DeviceWatcher {
     #[uniffi::constructor]
     pub fn new(listener: Arc<dyn DeviceListener>) -> Result<Arc<Self>, MtError> {
-        let w = mt_serial::DeviceWatcher::start(Arc::new(DeviceAdapter(listener)))?;
+        let w = zetta_serial::DeviceWatcher::start(Arc::new(DeviceAdapter(listener)))?;
         Ok(Arc::new(Self {
             inner: Mutex::new(Some(w)),
         }))
@@ -440,12 +440,12 @@ impl BaudDetector {
         poke: bool,
     ) -> Result<Option<DetectedBaud>, MtError> {
         use std::sync::atomic::Ordering;
-        let options = mt_serial::DetectOptions {
+        let options = zetta_serial::DetectOptions {
             wait: std::time::Duration::from_millis(u64::from(wait_ms.clamp(200, 20_000))),
             poke,
             candidates: Vec::new(),
         };
-        let found = mt_serial::detect(&port, &settings.port(), &options, &self.cancel, |b| {
+        let found = zetta_serial::detect(&port, &settings.port(), &options, &self.cancel, |b| {
             self.trying.store(b, Ordering::SeqCst);
         })?;
         Ok(found.map(|d| DetectedBaud {

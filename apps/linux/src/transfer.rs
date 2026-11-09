@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use gtk::glib;
-use mt_core::{ByteDivert, Session};
-use mt_xfer::{Direction, Protocol, Status, Transfer};
+use zetta_core::{ByteDivert, Session};
+use zetta_xfer::{Direction, Protocol, Status, Transfer};
 
 use crate::progress::{Snapshot, State};
 use crate::strings::{l, tt};
@@ -193,7 +193,7 @@ fn start_titled(
     direction: Direction,
 ) {
     let send = matches!(direction, Direction::Send(_));
-    match mt_xfer::new_transfer(protocol, direction) {
+    match zetta_xfer::new_transfer(protocol, direction) {
         Ok(t) => start_box(parent, session, title, send, t),
         Err(e) => crate::dialogs::message(
             parent,
@@ -207,7 +207,7 @@ fn start_titled(
 /// 「転送 > Kermit > 取得」：サーバーになっている相手から `names` を受け取り先のフォルダへ。
 pub fn start_kermit_get(parent: &gtk::Window, session: &Arc<Session>, names: &str) {
     let title = format!("{}（Kermit）", crate::strings::l("ファイル受信"));
-    match mt_xfer::kermit_get(downloads_dir(), names) {
+    match zetta_xfer::kermit_get(downloads_dir(), names) {
         Ok(t) => start_box(parent, session, title, false, t),
         Err(e) => crate::dialogs::message(
             parent,
@@ -220,7 +220,7 @@ pub fn start_kermit_get(parent: &gtk::Window, session: &Arc<Session>, names: &st
 
 /// 「転送 > Kermit > 終了」：サーバーになっている相手を終わらせる。
 pub fn start_kermit_finish(session: &Arc<Session>) {
-    let shared: Shared = Arc::new(Mutex::new(mt_xfer::kermit_finish()));
+    let shared: Shared = Arc::new(Mutex::new(zetta_xfer::kermit_finish()));
     let _ = session.start_transfer(Box::new(Divert(shared)));
 }
 
@@ -230,7 +230,7 @@ fn start_box(
     session: &Arc<Session>,
     title: String,
     send: bool,
-    transfer: Box<dyn mt_xfer::Transfer>,
+    transfer: Box<dyn zetta_xfer::Transfer>,
 ) {
     let shared: Shared = Arc::new(Mutex::new(transfer));
     if let Err(e) = session.start_transfer(Box::new(Divert(Arc::clone(&shared)))) {

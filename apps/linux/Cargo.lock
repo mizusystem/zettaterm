@@ -1484,78 +1484,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mt-core"
-version = "0.0.0"
-dependencies = [
- "chrono",
- "encoding_rs",
- "mt-vt",
- "serde",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
-name = "mt-net"
-version = "0.0.0"
-dependencies = [
- "if-addrs",
- "mt-core",
- "portable-pty",
- "rand",
- "russh",
- "ssh2-config",
- "tokio",
-]
-
-[[package]]
-name = "mt-serial"
-version = "0.0.0"
-dependencies = [
- "libc",
- "mt-core",
- "serialport",
-]
-
-[[package]]
-name = "mt-ttl"
-version = "0.0.0"
-dependencies = [
- "chrono",
- "mt-core",
- "mt-xfer",
- "regex",
-]
-
-[[package]]
-name = "mt-vt"
-version = "0.0.0"
-dependencies = [
- "alacritty_terminal",
- "regex",
-]
-
-[[package]]
-name = "mt-xfer"
-version = "0.0.0"
-
-[[package]]
-name = "multiterm-gtk"
-version = "0.0.0"
-dependencies = [
- "async-channel",
- "gtk4",
- "mt-core",
- "mt-net",
- "mt-serial",
- "mt-ttl",
- "mt-xfer",
- "pangocairo",
- "serde",
- "serde_json",
- "toml 0.9.12+spec-1.1.0",
-]
-
-[[package]]
 name = "multiversion_no_op"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3178,6 +3106,78 @@ name = "zeroize"
 version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
+
+[[package]]
+name = "zetta-core"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "encoding_rs",
+ "serde",
+ "toml 0.9.12+spec-1.1.0",
+ "zetta-vt",
+]
+
+[[package]]
+name = "zetta-net"
+version = "0.0.0"
+dependencies = [
+ "if-addrs",
+ "portable-pty",
+ "rand",
+ "russh",
+ "ssh2-config",
+ "tokio",
+ "zetta-core",
+]
+
+[[package]]
+name = "zetta-serial"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "serialport",
+ "zetta-core",
+]
+
+[[package]]
+name = "zetta-ttl"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "regex",
+ "zetta-core",
+ "zetta-xfer",
+]
+
+[[package]]
+name = "zetta-vt"
+version = "0.0.0"
+dependencies = [
+ "alacritty_terminal",
+ "regex",
+]
+
+[[package]]
+name = "zetta-xfer"
+version = "0.0.0"
+
+[[package]]
+name = "zettaterm-gtk"
+version = "0.0.0"
+dependencies = [
+ "async-channel",
+ "gtk4",
+ "pangocairo",
+ "serde",
+ "serde_json",
+ "toml 0.9.12+spec-1.1.0",
+ "zetta-core",
+ "zetta-net",
+ "zetta-serial",
+ "zetta-ttl",
+ "zetta-xfer",
+]
 
 [[package]]
 name = "zlib-rs"

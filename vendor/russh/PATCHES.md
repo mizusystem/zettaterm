@@ -1,4 +1,4 @@
-# Multi-Term による変更
+# ZettaTerm による変更
 
 crates.io の russh 0.65.1（Apache-2.0）を写し、次だけを変えている。
 写したのは `src/`、`Cargo.toml`、`README.md`。`examples/`・`tests/`・`benches/` は写していない（`Cargo.toml` の `[[example]]`・`[[test]]`・`[[bench]]` を外した）。

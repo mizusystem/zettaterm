@@ -1,11 +1,11 @@
-//! ファイル転送（mt-xfer）を Session の ByteDivert に合わせ、UI から進み具合を見られるようにする。
+//! ファイル転送（zetta-xfer）を Session の ByteDivert に合わせ、UI から進み具合を見られるようにする。
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use mt_core as core;
-use mt_xfer::{Direction, Protocol, Status, Transfer};
+use zetta_core as core;
+use zetta_xfer::{Direction, Protocol, Status, Transfer};
 
 use crate::MtError;
 
@@ -136,7 +136,7 @@ pub(crate) fn create(
         })?;
         Direction::Receive(PathBuf::from(dest))
     };
-    let transfer: Shared = Arc::new(Mutex::new(mt_xfer::new_transfer(protocol, direction)?));
+    let transfer: Shared = Arc::new(Mutex::new(zetta_xfer::new_transfer(protocol, direction)?));
     let handle = Arc::new(TransferHandle {
         transfer: Arc::clone(&transfer),
     });

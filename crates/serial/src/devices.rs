@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use mt_core::{DeviceListener, SerialDevice};
 use serialport::{SerialPortInfo, SerialPortType};
+use zetta_core::{DeviceListener, SerialDevice};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -79,7 +79,7 @@ impl DeviceWatcher {
         let stop = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&stop);
         let handle = thread::Builder::new()
-            .name("mt-serial-watch".into())
+            .name("zetta-serial-watch".into())
             .spawn(move || {
                 let mut last: Option<Vec<SerialDevice>> = None;
                 while !flag.load(Ordering::SeqCst) {

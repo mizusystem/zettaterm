@@ -7,8 +7,8 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use crate::strings::l;
-use mt_core::Session;
-use mt_ttl::{ConnectSpec, Host, Interp, Outcome};
+use zetta_core::Session;
+use zetta_ttl::{ConnectSpec, Host, Interp, Outcome};
 
 pub enum MacroReq {
     Connect(ConnectSpec, mpsc::Sender<Option<Arc<Session>>>),
@@ -54,7 +54,7 @@ pub enum MacroReq {
     /// restoresetup：TERATERM.INI を読み込む。できたら true
     RestoreSetup(PathBuf, mpsc::Sender<bool>),
     /// SCP に使う、このタブの内蔵 SSH の接続
-    Files(mpsc::Sender<Option<mt_net::SshFiles>>),
+    Files(mpsc::Sender<Option<zetta_net::SshFiles>>),
 }
 
 struct GtkHost {
@@ -260,7 +260,7 @@ impl Host for GtkHost {
     }
 
     fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
-        mt_net::local_addresses().ok()
+        zetta_net::local_addresses().ok()
     }
 
     // getttpos：GTK4 はウィンドウの位置を取れないので答えない（result = -1）
@@ -276,7 +276,7 @@ pub fn spawn(
     path: PathBuf,
     session: Option<Arc<Session>>,
     stop: Arc<AtomicBool>,
-    control: Arc<mt_ttl::MacroControl>,
+    control: Arc<zetta_ttl::MacroControl>,
     tx: async_channel::Sender<MacroReq>,
     downloads: PathBuf,
 ) {

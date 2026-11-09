@@ -1,7 +1,7 @@
 //! ファイル転送のあいだ、受信を端末ではなく転送プロトコルへ回すための契約。
 //!
-//! このファイルはメインセッションの持ち物（API 契約）。プロトコルの実装は mt-xfer にあり、
-//! ffi がそれをこの [`ByteDivert`] に合わせて Session に渡す（core は mt-xfer に依存しない）。
+//! このファイルはメインセッションの持ち物（API 契約）。プロトコルの実装は zetta-xfer にあり、
+//! ffi がそれをこの [`ByteDivert`] に合わせて Session に渡す（core は zetta-xfer に依存しない）。
 
 /// 転送中に受信を受け取る相手。メソッドはコアのスレッドから呼ばれる。
 pub trait ByteDivert: Send {

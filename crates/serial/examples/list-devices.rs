@@ -1,9 +1,9 @@
 //! つながっているシリアルデバイスを表示する。
 //!
-//!     cargo run -p mt-serial --example list-devices
+//!     cargo run -p zetta-serial --example list-devices
 
 fn main() {
-    let devices = mt_serial::list_devices();
+    let devices = zetta_serial::list_devices();
     if devices.is_empty() {
         println!("(no serial devices)");
     }

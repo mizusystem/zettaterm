@@ -6,7 +6,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
-use mt_core::WindowSize;
+use zetta_core::WindowSize;
 
 use crate::pty::{LocalPty, PtyCommand};
 

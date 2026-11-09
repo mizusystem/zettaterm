@@ -2,14 +2,14 @@
 //! C-Kermit は端末が無いと動かないので、擬似端末の上で起動する。
 //! 注意：Homebrew の c-kermit 9.0.302 は macOS ではファイルを書けない（Write access denied）ので、11 系の openkermit を使う。
 //!
-//!     cargo test -p mt-xfer --test kermit -- --nocapture
+//!     cargo test -p zetta-xfer --test kermit -- --nocapture
 
 mod common;
 
 use std::path::Path;
 
 use common::{Files, find, run_pty, sample};
-use mt_xfer::{Direction, Protocol, new_transfer};
+use zetta_xfer::{Direction, Protocol, new_transfer};
 
 fn kermit() -> Option<String> {
     let found = find(&["kermit", "ckermit"]);
@@ -57,7 +57,7 @@ fn kermit_receive_from_c_kermit() {
 
 /// Get のあと Finish をつなげて 1 つの転送にする（サーバーは Finish で終わる）。
 struct Chain {
-    steps: Vec<Box<dyn mt_xfer::Transfer>>,
+    steps: Vec<Box<dyn zetta_xfer::Transfer>>,
     at: usize,
 }
 
@@ -65,7 +65,7 @@ impl Chain {
     /// 今の段が終わったら次の段を始める。
     fn advance(&mut self, now: std::time::Instant, mut out: Vec<u8>) -> Vec<u8> {
         while self.at + 1 < self.steps.len()
-            && self.steps[self.at].status() == mt_xfer::Status::Done
+            && self.steps[self.at].status() == zetta_xfer::Status::Done
         {
             self.at += 1;
             out.extend(self.steps[self.at].start(now));
@@ -74,7 +74,7 @@ impl Chain {
     }
 }
 
-impl mt_xfer::Transfer for Chain {
+impl zetta_xfer::Transfer for Chain {
     fn start(&mut self, now: std::time::Instant) -> Vec<u8> {
         self.steps[0].start(now)
     }
@@ -89,15 +89,15 @@ impl mt_xfer::Transfer for Chain {
     fn cancel(&mut self) -> Vec<u8> {
         self.steps[self.at].cancel()
     }
-    fn status(&self) -> mt_xfer::Status {
+    fn status(&self) -> zetta_xfer::Status {
         let s = self.steps[self.at].status();
-        if s == mt_xfer::Status::Done && self.at + 1 < self.steps.len() {
-            mt_xfer::Status::Running
+        if s == zetta_xfer::Status::Done && self.at + 1 < self.steps.len() {
+            zetta_xfer::Status::Running
         } else {
             s
         }
     }
-    fn progress(&self) -> mt_xfer::Progress {
+    fn progress(&self) -> zetta_xfer::Progress {
         self.steps[self.at].progress()
     }
 }
@@ -109,8 +109,8 @@ fn kermit_get_and_finish_with_a_c_kermit_server() {
     f.input("k4.bin", &sample(30_000, 9));
     let mut t = Chain {
         steps: vec![
-            mt_xfer::kermit_get(f.out(), "k4.bin").unwrap(),
-            mt_xfer::kermit_finish(),
+            zetta_xfer::kermit_get(f.out(), "k4.bin").unwrap(),
+            zetta_xfer::kermit_finish(),
         ],
         at: 0,
     };

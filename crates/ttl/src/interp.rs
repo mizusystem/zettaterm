@@ -9,9 +9,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use mt_core::{ByteDivert, LogOptions, ReceiveTap, Session, SessionState};
-use mt_xfer::{Direction, Protocol, Transfer};
 use regex::Regex;
+use zetta_core::{ByteDivert, LogOptions, ReceiveTap, Session, SessionState};
+use zetta_xfer::{Direction, Protocol, Transfer};
 
 use crate::connect::{ConnectSpec, parse_connect};
 use crate::format::sprintf;
@@ -995,10 +995,10 @@ impl<'h> Interp<'h> {
                 } else {
                     // Tera Term の値：1 Xon/Xoff、2 RTS/CTS、3 なし、4 DSR/DTR
                     settings.flow = match v {
-                        1 => mt_core::FlowControl::XonXoff,
-                        2 => mt_core::FlowControl::RtsCts,
-                        3 => mt_core::FlowControl::None,
-                        4 => mt_core::FlowControl::DsrDtr,
+                        1 => zetta_core::FlowControl::XonXoff,
+                        2 => zetta_core::FlowControl::RtsCts,
+                        3 => zetta_core::FlowControl::None,
+                        4 => zetta_core::FlowControl::DsrDtr,
                         _ => return Err(format!("setflowctrl: {v}").into()),
                     };
                 }
@@ -1192,7 +1192,7 @@ impl<'h> Interp<'h> {
                 if let Some(a) = args.get(1)
                     && self.int(a)? != 0
                 {
-                    opts.format = mt_core::LogFormat::Binary;
+                    opts.format = zetta_core::LogFormat::Binary;
                 }
                 self.session_ref()?
                     .log_start(&opts)
@@ -1234,7 +1234,7 @@ impl<'h> Interp<'h> {
                     Some(a) => self.int(a)? != 0,
                     None => false,
                 };
-                let data = mt_core::Session::read_file_for_send(&self.path(&file))
+                let data = zetta_core::Session::read_file_for_send(&self.path(&file))
                     .map_err(|e| format!("sendfile: {file}: {e}"))?;
                 self.session_ref()?.send_file(data, binary);
             }
@@ -1408,13 +1408,13 @@ impl<'h> Interp<'h> {
                 argc(1, 1)?;
                 let names = self.str(&args[0])?;
                 let dir = self.host.download_dir();
-                let t = mt_xfer::kermit_get(dir, &names)
+                let t = zetta_xfer::kermit_get(dir, &names)
                     .map_err(|e| format!("kmtget: {names}: {e}"))?;
                 self.run_transfer(t, names, false)?;
             }
             "kmtfinish" => {
                 argc(0, 0)?;
-                self.run_transfer(mt_xfer::kermit_finish(), "finish".into(), true)?;
+                self.run_transfer(zetta_xfer::kermit_finish(), "finish".into(), true)?;
             }
 
             // ---- パス
@@ -2277,7 +2277,7 @@ impl<'h> Interp<'h> {
                             Some(p) => Some(p),
                             None => {
                                 let asked = self.host.input_box(
-                                    "Multi-Term",
+                                    "ZettaTerm",
                                     &format!("Password for {key}"),
                                     "",
                                     true,
@@ -2354,7 +2354,7 @@ impl<'h> Interp<'h> {
                 .unwrap_or_default(),
             Direction::Receive(p) => p.display().to_string(),
         };
-        let transfer = mt_xfer::new_transfer(protocol, direction)
+        let transfer = zetta_xfer::new_transfer(protocol, direction)
             .map_err(|e| format!("transfer: {label}: {e}"))?;
         self.run_transfer(transfer, label, send)
     }
@@ -2362,7 +2362,7 @@ impl<'h> Interp<'h> {
     /// 作った転送を始めて終わるまで待つ。
     fn run_transfer(
         &mut self,
-        transfer: Box<dyn mt_xfer::Transfer>,
+        transfer: Box<dyn zetta_xfer::Transfer>,
         label: String,
         send: bool,
     ) -> R<()> {
@@ -2375,7 +2375,7 @@ impl<'h> Interp<'h> {
         let ok = loop {
             let status = shared.lock().unwrap_or_else(|e| e.into_inner()).status();
             if status.is_finished() {
-                break status == mt_xfer::Status::Done;
+                break status == zetta_xfer::Status::Done;
             }
             if self.stop.load(Ordering::SeqCst) {
                 session.cancel_transfer();
@@ -2432,7 +2432,7 @@ fn int_op(op: BinOp, l: i32, r: i32) -> Result<i32, Fail> {
     })
 }
 
-/// mt-xfer の転送を Session の受信の行き先にする。
+/// zetta-xfer の転送を Session の受信の行き先にする。
 struct Divert(Arc<Mutex<Box<dyn Transfer>>>);
 
 impl Divert {

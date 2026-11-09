@@ -102,7 +102,7 @@ pub fn l(ja: &str) -> String {
 /// マクロのエラー（`ファイル:行: 文`）。本家の ttpmacro は英語で出すが、日本語の表示では日本語にする。
 pub fn macro_error_text(error: &str) -> String {
     if lang() == "ja_JP" {
-        mt_ttl::japanese_error(error)
+        zetta_ttl::japanese_error(error)
     } else {
         error.to_owned()
     }
@@ -112,7 +112,7 @@ pub fn macro_error_text(error: &str) -> String {
 /// 元の英語の文は詳しい情報として下に添える。見分けられないものはそのまま。
 /// `subject` は文に対象が無いときに入れる名前（ポートやホスト）。
 pub fn error_text(message: &str, subject: Option<&str>) -> String {
-    use mt_core::error_text::{ErrorClass as C, classify};
+    use zetta_core::error_text::{ErrorClass as C, classify};
     let info = classify(message);
     let what = info.subject.as_deref().or(subject).unwrap_or("");
     let named = |key: &str, ja: &str| tt(key, ja).replace("%s", what);

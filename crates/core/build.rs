@@ -10,7 +10,7 @@ fn main() {
         .filter(|o| o.status.success())
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
         .unwrap_or_default();
-    println!("cargo:rustc-env=MT_GIT_COMMIT={commit}");
+    println!("cargo:rustc-env=ZETTA_GIT_COMMIT={commit}");
     // コミットが変わったら作り直す（.git が無ければ見ない）
     for p in ["../../.git/HEAD", "../../.git/refs/heads"] {
         if std::path::Path::new(p).exists() {

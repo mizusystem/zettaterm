@@ -3,13 +3,13 @@
 //! このクレートの公開 API はメインセッションの持ち物（API 契約）。
 //! 受信バイトは UI に流さず、`on_damage` で通知して UI が `snapshot` を取りに来る形にする。
 //!
-//! 型は mt-core / mt-vt の型を写したもの。UniFFI の derive をコア側に持ち込まないために分けている。
+//! 型は zetta-core / zetta-vt の型を写したもの。UniFFI の derive をコア側に持ち込まないために分けている。
 
 use std::sync::Arc;
 
-use mt_core as core;
-use mt_net::{LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
-use mt_serial::SerialTransport;
+use zetta_core as core;
+use zetta_net::{LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
+use zetta_serial::SerialTransport;
 
 mod auth;
 mod history;
@@ -113,7 +113,7 @@ pub enum IpVersion {
     V6,
 }
 
-impl From<IpVersion> for mt_net::IpVersion {
+impl From<IpVersion> for zetta_net::IpVersion {
     fn from(v: IpVersion) -> Self {
         match v {
             IpVersion::Auto => Self::Auto,
@@ -240,7 +240,7 @@ impl core::SessionListener for ListenerAdapter {
 
 // ---- 画面 ----
 
-/// 1 セル。`flags` のビットは mt_vt::CellFlags と同じ
+/// 1 セル。`flags` のビットは zetta_vt::CellFlags と同じ
 /// （1 BOLD, 2 ITALIC, 4 UNDERLINE, 8 STRIKEOUT, 16 DIM, 32 WIDE, 64 WIDE_SPACER）。
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct Cell {
@@ -375,7 +375,7 @@ pub fn broadcast_realtime_diff(old: String, new: String) -> RealtimeDiff {
 /// 相手に名乗る端末の種類（Tera Term の TermType）。空なら既定（Telnet は xterm、SSH は xterm-256color）。
 #[uniffi::export]
 pub fn set_term_type(term: String) {
-    mt_net::set_term_type(Some(term));
+    zetta_net::set_term_type(Some(term));
 }
 
 /// 接続ダイアログのホスト名が UNIX ドメインソケットのパスなら、そのパス（`/` で始まるか `unix:` 付き）。
@@ -393,10 +393,10 @@ pub fn version_line() -> String {
 /// マクロのエラー（`ファイル:行: 文`）を日本語にする。日本語の表示のときに UI が呼ぶ。
 #[uniffi::export]
 pub fn macro_error_japanese(error: String) -> String {
-    mt_ttl::japanese_error(&error)
+    zetta_ttl::japanese_error(&error)
 }
 
-/// エラーの種類（UI が Tera Term の文言を選ぶため）。中身は `mt_core::error_text::ErrorClass`。
+/// エラーの種類（UI が Tera Term の文言を選ぶため）。中身は `zetta_core::error_text::ErrorClass`。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ErrorClass {
     Refused,
@@ -564,10 +564,10 @@ pub fn set_telnet_keepalive(secs: u32) {
 }
 
 /// 内蔵 SSH の接続に使う設定（TTSSH の「SSH」「SSH 転送」）。全ウィンドウで共通。
-static SSH_DEFAULTS: std::sync::Mutex<(Vec<mt_net::Forward>, u64, bool)> =
+static SSH_DEFAULTS: std::sync::Mutex<(Vec<zetta_net::Forward>, u64, bool)> =
     std::sync::Mutex::new((Vec::new(), 0, false));
 
-fn ssh_defaults() -> (Vec<mt_net::Forward>, u64, bool) {
+fn ssh_defaults() -> (Vec<zetta_net::Forward>, u64, bool) {
     SSH_DEFAULTS
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -583,7 +583,7 @@ pub fn set_ssh_defaults(
     keepalive_secs: u32,
     forward_agent: bool,
 ) -> Vec<String> {
-    let (parsed, bad) = mt_net::forward::parse_list(&forwards);
+    let (parsed, bad) = zetta_net::forward::parse_list(&forwards);
     *SSH_DEFAULTS.lock().unwrap_or_else(|e| e.into_inner()) =
         (parsed, u64::from(keepalive_secs), forward_agent);
     bad
@@ -601,7 +601,7 @@ pub struct SshAlgorithms {
 /// 既定の優先順位（設定画面に出す）。
 #[uniffi::export]
 pub fn ssh_default_algorithms() -> SshAlgorithms {
-    let d = mt_net::algorithms::defaults();
+    let d = zetta_net::algorithms::defaults();
     SshAlgorithms {
         kex: d.kex,
         cipher: d.cipher,
@@ -614,7 +614,7 @@ pub fn ssh_default_algorithms() -> SshAlgorithms {
 /// 知らない名前を返す。
 #[uniffi::export]
 pub fn set_ssh_algorithms(algorithms: SshAlgorithms) -> Vec<String> {
-    mt_net::algorithms::set(Some(mt_net::algorithms::AlgorithmPrefs {
+    zetta_net::algorithms::set(Some(zetta_net::algorithms::AlgorithmPrefs {
         kex: algorithms.kex,
         cipher: algorithms.cipher,
         mac: algorithms.mac,
@@ -664,14 +664,14 @@ pub struct ProxySetting {
 /// ssh_config の ProxyCommand / ProxyJump があればそちらを使う。
 #[uniffi::export]
 pub fn set_proxy(proxy: Option<ProxySetting>) {
-    mt_net::proxy::set(
+    zetta_net::proxy::set(
         proxy
             .filter(|p| !p.host.trim().is_empty())
-            .map(|p| mt_net::Proxy {
+            .map(|p| zetta_net::Proxy {
                 kind: match p.kind {
-                    ProxyKind::Http => mt_net::ProxyKind::Http,
-                    ProxyKind::Socks4 => mt_net::ProxyKind::Socks4,
-                    ProxyKind::Socks5 => mt_net::ProxyKind::Socks5,
+                    ProxyKind::Http => zetta_net::ProxyKind::Http,
+                    ProxyKind::Socks4 => zetta_net::ProxyKind::Socks4,
+                    ProxyKind::Socks5 => zetta_net::ProxyKind::Socks5,
                 },
                 host: p.host.trim().to_owned(),
                 port: p.port,
@@ -710,7 +710,7 @@ pub fn generate_ssh_key(
     passphrase: String,
     path: String,
 ) -> Result<GeneratedSshKey, MtError> {
-    use mt_net::keygen::{self, KeyKind};
+    use zetta_net::keygen::{self, KeyKind};
     let kind = match kind {
         SshKeyKind::Ed25519 => KeyKind::Ed25519,
         SshKeyKind::EcdsaP256 => KeyKind::EcdsaP256,
@@ -894,7 +894,7 @@ pub struct MouseMode {
 pub struct Session {
     inner: Arc<core::Session>,
     /// 内蔵 SSH のときだけ。SSH SCP に使う
-    files: Option<mt_net::SshFiles>,
+    files: Option<zetta_net::SshFiles>,
     /// 接続はできたが、うまくいかなかったこと（始められなかったポート転送など）
     warnings: Vec<String>,
 }
@@ -972,7 +972,7 @@ impl Session {
             Profile::Telnet { host, port, ip } => {
                 let t = TcpTransport::telnet(
                     &host,
-                    port.unwrap_or(mt_net::TELNET_PORT),
+                    port.unwrap_or(zetta_net::TELNET_PORT),
                     ip.into(),
                     size,
                 )?;
@@ -985,7 +985,7 @@ impl Session {
             Profile::Tcp { host, port, ip } => {
                 Box::new(TcpTransport::raw(&host, port, ip.into(), size)?)
             }
-            Profile::Unix { path } => Box::new(mt_net::UnixSocketTransport::connect(&path)?),
+            Profile::Unix { path } => Box::new(zetta_net::UnixSocketTransport::connect(&path)?),
             Profile::Replay { path, speed } => Box::new(core::replay::ReplayTransport::open(
                 std::path::Path::new(&path),
                 speed,
@@ -1353,7 +1353,7 @@ impl Session {
         names: String,
         destination: String,
     ) -> Result<Arc<TransferHandle>, MtError> {
-        let t = mt_xfer::kermit_get(std::path::PathBuf::from(destination), &names)?;
+        let t = zetta_xfer::kermit_get(std::path::PathBuf::from(destination), &names)?;
         let (handle, divert) = transfer::wrap(t);
         self.inner.start_transfer(divert)?;
         Ok(handle)
@@ -1361,7 +1361,7 @@ impl Session {
 
     /// サーバーになっている相手の Kermit を終わらせる（「Kermit > 終了」）。
     pub fn start_kermit_finish(&self) -> Result<Arc<TransferHandle>, MtError> {
-        let (handle, divert) = transfer::wrap(mt_xfer::kermit_finish());
+        let (handle, divert) = transfer::wrap(zetta_xfer::kermit_finish());
         self.inner.start_transfer(divert)?;
         Ok(handle)
     }

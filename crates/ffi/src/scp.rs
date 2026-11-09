@@ -1,7 +1,7 @@
 //! SSH SCP（TTSSH の「SSH SCP」）。内蔵の SSH 接続の上でファイルをやり取りする。
 //! 進み具合は転送ダイアログと同じ TransferProgress で返す。
 
-use mt_net::{ScpJob, ScpStatus};
+use zetta_net::{ScpJob, ScpStatus};
 
 use crate::transfer::{TransferProgress, TransferStatus};
 

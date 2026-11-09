@@ -1,6 +1,6 @@
 //! 画面確認用のテスト SSH サーバー（127.0.0.1 のみ）。ホスト鍵は起動のたびに作る。
 //!
-//!     cargo run -p mt-net --example test-sshd -- 2222
+//!     cargo run -p zetta-net --example test-sshd -- 2222
 //!
 //! 受け付ける認証：ユーザー kt のパスワード `secret`、キーボードインタラクティブの `1234`。
 //! パスワード `expired` は期限切れとして変更を求める（新しいパスワードは 6 文字以上で通す）。
@@ -8,7 +8,7 @@
 //! シェルは入力をそのまま「echo:」付きで返し、`exit` で閉じる。
 //! SSH SCP は本物の scp をフォルダ（2 つ目の引数、既定は一時フォルダの mt-test-sshd）で動かす。
 //!
-//!     cargo run -p mt-net --example test-sshd -- 2222 /tmp/scp-root
+//!     cargo run -p zetta-net --example test-sshd -- 2222 /tmp/scp-root
 
 #[path = "../tests/support/exec.rs"]
 mod exec;
@@ -127,7 +127,7 @@ impl server::Handler for Server {
     ) -> Result<(), Self::Error> {
         session.data(
             channel,
-            &b"Welcome to the Multi-Term test SSH server\r\n$ "[..],
+            &b"Welcome to the ZettaTerm test SSH server\r\n$ "[..],
         )?;
         Ok(())
     }

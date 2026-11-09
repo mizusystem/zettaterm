@@ -1,5 +1,5 @@
 [package]
-name = "mt-cli"
+name = "zetta-cli"
 description = "ヘッドレス端末と TTL 実行"
 version.workspace = true
 edition.workspace = true
@@ -8,14 +8,14 @@ publish.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "mt"
+name = "zetta"
 path = "src/main.rs"
 
 [dependencies]
-mt-core.workspace = true
-mt-serial.workspace = true
-mt-net.workspace = true
-mt-ttl.workspace = true
+zetta-core.workspace = true
+zetta-serial.workspace = true
+zetta-net.workspace = true
+zetta-ttl.workspace = true
 rpassword = "7"
 
 [lints]

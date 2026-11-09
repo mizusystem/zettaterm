@@ -1,6 +1,6 @@
-name: Release mt CLI
+name: Release zetta CLI
 
-# mt コマンド（TTL のヘッドレス実行）を Linux / Windows / macOS 向けにビルドして配る。
+# zetta コマンド（TTL のヘッドレス実行）を Linux / Windows / macOS 向けにビルドして配る。
 # - v で始まるタグを push すると、ビルドして GitHub Releases に置く（下書き。公開は手で行う）
 # - 手動実行（workflow_dispatch）はビルドだけ（成果物は Actions の Artifacts に残る）
 on:
@@ -40,13 +40,13 @@ jobs:
       - name: Install libudev (Linux, for serialport)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libudev-dev pkg-config
-      - run: cargo build --release --locked -p mt-cli --target ${{ matrix.target }}
+      - run: cargo build --release --locked -p zetta-cli --target ${{ matrix.target }}
       - name: Package
         shell: bash
         run: |
-          name="mt-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
+          name="zetta-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
           mkdir -p "dist/$name"
-          bin="target/${{ matrix.target }}/release/mt"
+          bin="target/${{ matrix.target }}/release/zetta"
           [[ "${{ runner.os }}" == "Windows" ]] && bin="$bin.exe"
           cp "$bin" docs/ttl.md THIRD_PARTY.md "dist/$name/"
           cd dist
@@ -58,7 +58,7 @@ jobs:
           echo "ASSET=dist/$name.${{ matrix.archive }}" >> "$GITHUB_ENV"
       - uses: actions/upload-artifact@v4
         with:
-          name: mt-${{ matrix.target }}
+          name: zetta-${{ matrix.target }}
           path: ${{ env.ASSET }}
 
   release:

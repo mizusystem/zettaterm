@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use mt_core::{
+use zetta_core::{
     AuthMethod, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, HostKeyStatus,
     KeyboardPrompt, PasswordChange, PasswordChangeRequest,
 };

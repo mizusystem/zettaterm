@@ -1,4 +1,4 @@
-// Modified for Multi-Term (2026): see PATCHES.md in this crate's directory.
+// Modified for ZettaTerm (2026): see PATCHES.md in this crate's directory.
 // Copyright 2016 Pierre-Étienne Meunier
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

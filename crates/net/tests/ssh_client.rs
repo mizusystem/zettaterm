@@ -10,15 +10,15 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mt_core::{
+use russh::keys::ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey};
+use russh::server::{self, Auth, Msg, Response};
+use russh::{Channel, ChannelId, MethodKind, MethodSet};
+use zetta_core::{
     AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
     HostKeyStatus, KeyboardPrompt, PasswordChange, PasswordChangeRequest, Session, SessionListener,
     SessionOptions, SessionState, WindowSize,
 };
-use mt_net::{SshOptions, SshTransport};
-use russh::keys::ssh_key::{Algorithm, LineEnding, PrivateKey, PublicKey};
-use russh::server::{self, Auth, Msg, Response};
-use russh::{Channel, ChannelId, MethodKind, MethodSet};
+use zetta_net::{SshOptions, SshTransport};
 
 #[path = "support/exec.rs"]
 mod exec;
@@ -1075,7 +1075,7 @@ fn scp_upload_and_download_over_the_same_connection() {
     std::fs::write(&b, b"scp text\n").unwrap();
     let job = files.upload(vec![a, b], "uploads");
     wait_job(&job);
-    assert_eq!(job.progress().status, mt_net::ScpStatus::Done);
+    assert_eq!(job.progress().status, zetta_net::ScpStatus::Done);
     assert_eq!(job.progress().files_done, 2);
     {
         let remote = server.remote_files.lock().unwrap();
@@ -1102,7 +1102,7 @@ fn scp_upload_and_download_over_the_same_connection() {
     let job = files.download("remote.log", out.clone());
     session.write(b"still alive".to_vec());
     wait_job(&job);
-    assert_eq!(job.progress().status, mt_net::ScpStatus::Done);
+    assert_eq!(job.progress().status, zetta_net::ScpStatus::Done);
     assert_eq!(
         std::fs::read(out.join("remote.log")).unwrap(),
         b"from the server\n"
@@ -1146,15 +1146,15 @@ fn scp_upload_and_download_over_the_same_connection() {
     let job = files.download("missing.txt", out.clone());
     wait_job(&job);
     match job.progress().status {
-        mt_net::ScpStatus::Failed(msg) => assert!(msg.contains("No such file"), "{msg}"),
+        zetta_net::ScpStatus::Failed(msg) => assert!(msg.contains("No such file"), "{msg}"),
         other => panic!("{other:?}"),
     }
     session.close();
 }
 
-fn wait_job(job: &mt_net::ScpJob) {
+fn wait_job(job: &zetta_net::ScpJob) {
     let start = Instant::now();
-    while job.progress().status == mt_net::ScpStatus::Running {
+    while job.progress().status == zetta_net::ScpStatus::Running {
         assert!(
             start.elapsed() < Duration::from_secs(10),
             "scp did not finish: {:?}",
@@ -1212,7 +1212,7 @@ fn scp_interoperates_with_openssh_scp() {
     wait_job(&job);
     assert_eq!(
         job.progress().status,
-        mt_net::ScpStatus::Done,
+        zetta_net::ScpStatus::Done,
         "{:?}",
         job.progress()
     );
@@ -1230,7 +1230,7 @@ fn scp_interoperates_with_openssh_scp() {
     wait_job(&job);
     assert_eq!(
         job.progress().status,
-        mt_net::ScpStatus::Done,
+        zetta_net::ScpStatus::Done,
         "{:?}",
         job.progress()
     );
@@ -1243,7 +1243,7 @@ fn scp_interoperates_with_openssh_scp() {
     wait_job(&job);
     assert_eq!(
         job.progress().status,
-        mt_net::ScpStatus::Done,
+        zetta_net::ScpStatus::Done,
         "{:?}",
         job.progress()
     );
@@ -1253,7 +1253,7 @@ fn scp_interoperates_with_openssh_scp() {
     let job = files.download("nothing.here", out.clone());
     wait_job(&job);
     assert!(
-        matches!(job.progress().status, mt_net::ScpStatus::Failed(_)),
+        matches!(job.progress().status, zetta_net::ScpStatus::Failed(_)),
         "{:?}",
         job.progress()
     );
@@ -1268,7 +1268,7 @@ fn scp_interoperates_with_openssh_scp() {
     wait_job(&job);
     assert_eq!(
         job.progress().status,
-        mt_net::ScpStatus::Done,
+        zetta_net::ScpStatus::Done,
         "{:?}",
         job.progress()
     );
@@ -1297,7 +1297,7 @@ fn scp_interoperates_with_openssh_scp() {
         wait_job(&job);
         assert_eq!(
             job.progress().status,
-            mt_net::ScpStatus::Done,
+            zetta_net::ScpStatus::Done,
             "{:?}",
             job.progress()
         );
@@ -1313,7 +1313,7 @@ fn scp_interoperates_with_openssh_scp() {
     wait_job(&job);
     assert_eq!(
         job.progress().status,
-        mt_net::ScpStatus::Done,
+        zetta_net::ScpStatus::Done,
         "{:?}",
         job.progress()
     );
@@ -1402,8 +1402,8 @@ fn round_trip(stream: &mut std::net::TcpStream, text: &str) -> String {
 
 #[test]
 fn local_remote_and_dynamic_forwarding() {
-    use mt_net::Forward;
     use std::io::{Read, Write};
+    use zetta_net::Forward;
     let client = random_key();
     let server = start_server(random_key(), vec![client.public_key().clone()]);
     let env = Env::new();

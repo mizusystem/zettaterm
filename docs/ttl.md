@@ -37,7 +37,7 @@
 - `filereadln` の 1 行は 64 KiB まで（続きは次の `filereadln`）
 - `wait` は、前回の一致より後に届いた受信のすべてから探す（`flushrecv` で捨てられる）
 - `loginfo` の `result` は、記録していなければ -1、記録中は 0、`logpause` 中は 1（本家はログの種類のビット）
-- `setexitcode` は `mt run` の終了コードになる（0〜255 に収める）
+- `setexitcode` は `zetta run` の終了コードになる（0〜255 に収める）
 - `scpsend` / `scprecv` は内蔵 SSH の接続だけ（「システムの ssh を使う」では使えない）。`result` は 0 成功、1 失敗
 - `getpassword` などのパスワードファイルは独自の形式（Tera Term のファイルは読めない）。中身は難読化しただけで暗号化ではないので、ファイルの置き場所に注意する
 - `exec` はシェルを通さずにプログラムを起動する（`|` や `>` は使えない。必要なら `exec 'sh -c "..."'`）。待つときの `result` は終了コード
@@ -59,7 +59,7 @@ macOS アプリは「コントロール > マクロ...」で .ttl を選ぶと�
 
 
 ```bash
-mt run macro.ttl [param2 ...]     # 受信は標準出力、messagebox などは標準エラー
-mt run --quiet macro.ttl          # 受信を出さない
-mt ports                          # シリアルポートの一覧
+zetta run macro.ttl [param2 ...]     # 受信は標準出力、messagebox などは標準エラー
+zetta run --quiet macro.ttl          # 受信を出さない
+zetta ports                          # シリアルポートの一覧
 ```

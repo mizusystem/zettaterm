@@ -175,7 +175,7 @@ Phase 1 を終えた時点で、Mac のシリアル端末として日常的に�
 | 2 | SSH / Telnet | 外部 ssh・Telnet・プロファイル／ネイティブタブ・一斉送信 | ssh_config がそのまま効く |
 | 3 | 転送・文字コード | XMODEM / YMODEM / ZMODEM / Kermit／Shift_JIS・EUC-JP の送受信 | lrzsz と相互に転送できる |
 | 4 | TTL・Linux | TTL 頻出サブセットと cli／GTK4 版の同等画面 | 既存マクロが Mac と Linux で動く |
-| 5 | 配布 | 署名・公証・自動更新／Windows には `mt` コマンドを配る | 公証済み dmg を配布 |
+| 5 | 配布 | 署名・公証・自動更新／Windows には `zetta` コマンドを配る | 公証済み dmg を配布 |
 
 （元の設計書 Artifact の図をテキスト化したもの）
 
@@ -185,7 +185,7 @@ Phase 1 を終えた時点で、Mac のシリアル端末として日常的に�
 
 Windows には Tera Term 本体があるので、ネイティブの Windows 版（`apps/windows`）は必要になるまで作らない。
 - `crates/` の Windows 対応は続ける（GitHub Actions で `cargo test` を回す）
-- `mt` コマンド（TTL のヘッドレス実行）は Windows でも配る（`.github/workflows/release-cli.yml`）
+- `zetta` コマンド（TTL のヘッドレス実行）は Windows でも配る（`.github/workflows/release-cli.yml`）
 - 画面が要るときは、まず GTK 版（`apps/linux`）を Windows でビルドして試す
 
 ### ネットワーク機器向けの追加予定（2026-11-06 追加）
@@ -196,7 +196,7 @@ Windows には Tera Term 本体があるので、ネイティブの Windows 版�
 | --- | --- | --- | --- |
 | マクロからファイル転送 | なし | TTL の `xmodemsend` / `xmodemrecv` / `ymodemsend` / `ymodemrecv` / `zmodemsend` / `zmodemrecv` / `kermitsend` / `kermitrecv` / `sendfile`（結果は `result`） | 済（Phase 4） |
 | シリアルから XMODEM でファーム送信 | 動く（128 バイト CRC 固定、実機は未確認） | 128 / 1K とチェックサム / CRC の選択、XON/XOFF のまま転送するときの警告、実機（ROMMON など）での確認 | 済（実機での確認は未） |
-| 進捗・速度・リトライ数 | ファイル名、転送済み / 全体、経過時間、バー | 速度、残り時間、累計リトライ数（`mt_xfer::Progress` と ffi の `TransferProgress` に足す） | 済 |
+| 進捗・速度・リトライ数 | ファイル名、転送済み / 全体、経過時間、バー | 速度、残り時間、累計リトライ数（`zetta_xfer::Progress` と ffi の `TransferProgress` に足す） | 済 |
 | バイナリを改変せずに送信 | プロトコル転送と SCP は変換・遅延なしで送る | Tera Term の「ファイル送信」（プロトコルなし。バイナリ指定で文字コード・改行変換を通さない。テキストは行ごとの遅延つき） | 済 |
 | ドラッグ＆ドロップ送信 | SCP ダイアログの中だけ | 端末ウィンドウへのドロップで送り方を選ぶダイアログ（`DLG_DANDD_*`：SCP / ファイル送信 / 各プロトコル / ファイル名の貼り付け） | 済 |
 

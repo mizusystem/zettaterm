@@ -1,4 +1,4 @@
-# Multi-Term による変更
+# ZettaTerm による変更
 
 crates.io の alacritty_terminal 0.26.0（Apache-2.0、LICENSE-APACHE）を写し、次だけを変えている。
 写したのは `src/`、`Cargo.toml`、`LICENSE-APACHE`、`README.md`（`tests/` は大きいので写していない。`Cargo.toml` の `[[test]]` を外した）。

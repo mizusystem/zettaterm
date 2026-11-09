@@ -1,6 +1,6 @@
 //! TERATERM.INI のインポートと、起動引数（ttermpro と同じ書き方）。
 
-use mt_core as core;
+use zetta_core as core;
 
 use crate::MtError;
 use crate::macros::{MacroConnect, macro_connect};
@@ -158,7 +158,7 @@ pub fn import_teraterm_ini(path: String) -> Result<IniImport, MtError> {
     let hosts = s
         .hosts
         .iter()
-        .filter_map(|h| mt_ttl::parse_command_line(h).ok()?.connect)
+        .filter_map(|h| zetta_ttl::parse_command_line(h).ok()?.connect)
         .map(macro_connect)
         .collect();
     Ok(IniImport {
@@ -362,7 +362,7 @@ pub struct LaunchOptions {
 /// 起動引数を読む（アプリ自身のための引数は呼び出し側で除いておく）。
 #[uniffi::export]
 pub fn parse_launch_args(args: Vec<String>) -> Result<LaunchOptions, MtError> {
-    let l = mt_ttl::parse_args(&args).map_err(|message| MtError::Io { message })?;
+    let l = zetta_ttl::parse_args(&args).map_err(|message| MtError::Io { message })?;
     Ok(LaunchOptions {
         connect: l.connect.map(macro_connect),
         log_append: l.log.as_ref().is_some_and(|x| x.1),

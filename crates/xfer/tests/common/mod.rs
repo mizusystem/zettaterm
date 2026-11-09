@@ -9,7 +9,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mt_xfer::{Status, Transfer};
+use zetta_xfer::{Status, Transfer};
 
 /// `names` のうち最初に見つかったコマンド。
 pub fn find(names: &[&str]) -> Option<String> {
@@ -169,7 +169,7 @@ pub fn run_pty(transfer: &mut dyn Transfer, program: &str, args: &[&str], cwd: &
     while start.elapsed() < Duration::from_secs(60) {
         let out = match rx.recv_timeout(Duration::from_millis(20)) {
             Ok(data) => {
-                if std::env::var_os("MT_XFER_DEBUG").is_some() {
+                if std::env::var_os("ZETTA_XFER_DEBUG").is_some() {
                     eprintln!(
                         "<< {:?}",
                         String::from_utf8_lossy(&data[..data.len().min(160)])
@@ -181,7 +181,7 @@ pub fn run_pty(transfer: &mut dyn Transfer, program: &str, args: &[&str], cwd: &
             Err(_) => transfer.tick(Instant::now()),
         };
         if !out.is_empty() {
-            if std::env::var_os("MT_XFER_DEBUG").is_some() {
+            if std::env::var_os("ZETTA_XFER_DEBUG").is_some() {
                 eprintln!(
                     ">> {:?}",
                     String::from_utf8_lossy(&out[..out.len().min(120)])

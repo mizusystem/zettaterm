@@ -1,8 +1,8 @@
-# Multi-Term セキュリティおよび不具合 外部監査レビュー
+# ZettaTerm セキュリティおよび不具合 外部監査レビュー
 
 - **監査日**: 2026-11-06
 - **対象範囲**:
-  - Rust ワークスペース全クレート (`mt-vt`, `mt-core`, `mt-net`, `mt-serial`, `mt-xfer`, `mt-ttl`, `mt-ffi`, `mt-cli`)
+  - Rust ワークスペース全クレート (`zetta-vt`, `zetta-core`, `zetta-net`, `zetta-serial`, `zetta-xfer`, `zetta-ttl`, `zetta-ffi`, `zetta-cli`)
   - macOS ネイティブ UI (`apps/macos`)
   - Linux GTK4 UI (`apps/linux`)
 
@@ -18,7 +18,7 @@
    - [S-5. [中] SCP / ファイル転送における巨大ファイル一括読み込み（OOM）とシンボリックリンク・ファイル名処理](#s-5-中-scp--ファイル転送における巨大ファイル一括読み込みoomとシンボリックリンクファイル名処理)
    - [S-6. [低] ブラケットペーストにおける C1 制御文字のサニタイズ不足](#s-6-低-ブラケットペーストにおける-c1-制御文字のサニタイズ不足)
 2. [機能上の不具合・バグ (Functional Bugs)](#2-機能上の不具合バグ-functional-bugs)
-   - [B-1. [高] TTL マクロ (`mt-ttl`) におけるパニック・無限ループ・文字破壊](#b-1-高-ttl-マクロ-mt-ttl-におけるパニック無限ループ文字破壊)
+   - [B-1. [高] TTL マクロ (`zetta-ttl`) におけるパニック・無限ループ・文字破壊](#b-1-高-ttl-マクロ-zetta-ttl-におけるパニック無限ループ文字破壊)
    - [B-2. [高] 非 UTF-8 文字コード（特に JIS / ISO-2022-JP）使用時のテキストログ破損](#b-2-高-非-utf-8-文字コード特に-jis--iso-2022-jp使用時のテキストログ破損)
    - [B-3. [中] Kermit プロトコルの `S` パケット再送時デッドロックと 8-bit クォート交渉不成立](#b-3-中-kermit-プロトコルの-s-パケット再送時デッドロックと-8-bit-クォート交渉不成立)
    - [B-4. [中] ZMODEM の `WaitOO` における実時間参照バグと 4GiB カウンタオーバーフロー](#b-4-中-zmodem-の-waitoo-における実時間参照バグと-4gib-カウンタオーバーフロー)
@@ -71,7 +71,7 @@
 - **対象箇所**:
   - `crates/core/src/transfer.rs` (`ZmodemDetector::find`, L40-L63)
   - `crates/core/src/session.rs` (`Session::receive`, L571-L583)
-  - `apps/macos/Sources/MultiTerm/TransferView.swift` (`handleTransferRequest`, L169-L179)
+  - `apps/macos/Sources/ZettaTerm/TransferView.swift` (`handleTransferRequest`, L169-L179)
   - `apps/linux/src/window.rs` (`TermWindow::transfer_request`, L809-L825)
 - **問題の詳細**:
   1. **無確認での自動ファイル書き込み**:
@@ -100,8 +100,8 @@
 
 - **対象箇所**:
   - `apps/linux/src/window.rs` (`PENDING_PASSWORD`, L934-L937, L1066-L1075)
-  - `apps/macos/Sources/MultiTerm/MacroSupport.swift` (`macroConnect`, L75-L80)
-  - `apps/macos/Sources/MultiTerm/AuthPrompts.swift` (`promptCredentials`, L110-L120)
+  - `apps/macos/Sources/ZettaTerm/MacroSupport.swift` (`macroConnect`, L75-L80)
+  - `apps/macos/Sources/ZettaTerm/AuthPrompts.swift` (`promptCredentials`, L110-L120)
 - **問題の詳細**:
   - **Linux 版**:
     TTL マクロの `connect` で指定された `/passwd=` をプロセス全体のグローバル変数 `static PENDING_PASSWORD: Mutex<Option<String>>` に保存しています。
@@ -154,7 +154,7 @@
 
 ## 2. 機能上の不具合・バグ (Functional Bugs)
 
-### B-1. [高] TTL マクロ (`mt-ttl`) におけるパニック・無限ループ・文字破壊
+### B-1. [高] TTL マクロ (`zetta-ttl`) におけるパニック・無限ループ・文字破壊
 
 - **対象箇所**:
   - `crates/ttl/src/parse.rs` (L684-L693)
@@ -248,7 +248,7 @@
 
 - **対象箇所**:
   - `apps/linux/src/window.rs` (`Tabs::install_actions`, L185-L190)
-  - `apps/macos/Sources/MultiTerm/TerminalView.swift` (`viewDidMoveToWindow`, L87-L96)
+  - `apps/macos/Sources/ZettaTerm/TerminalView.swift` (`viewDidMoveToWindow`, L87-L96)
 - **問題の詳細**:
   1. **Linux 版 `send-break` の UI フリーズ**:
      `window.rs` (L185-L190) で GTK メインスレッド上から直接 `s.send_break(300)` を呼び出しています。内部で `thread::sleep(Duration::from_millis(300))` が実行されるため、300ms の間 GUI 全体がフリーズします（macOS 版は `Task.detached` で別スレッド実行済み）。
@@ -265,7 +265,7 @@
 - [x] **S-1**: `crates/net/src/ssh_config.rs` / `ssh_client.rs` — `ProxyCommand` トークン展開時のホスト名・ユーザー名バリデーション追加
 - [x] **S-2**: `crates/net/src/ssh_client.rs` — OpenSSH ホスト証明書の検証実装または証明書アルゴリズムの除外
 - [x] **S-3**: `crates/core/src/session.rs` & UI — ZMODEM 自動受信のオプション化と `ZRQINIT` 検出チャンクの後続バイト保持
-- [x] **S-4**: `apps/linux/src/window.rs` & `apps/macos/Sources/MultiTerm/MacroSupport.swift` — マクロ SSH パスワードのセッションスコープ化
+- [x] **S-4**: `apps/linux/src/window.rs` & `apps/macos/Sources/ZettaTerm/MacroSupport.swift` — マクロ SSH パスワードのセッションスコープ化
 - [x] **S-5**: `crates/net/src/scp.rs` & `crates/xfer` — ファイル転送のストリーミング読み込み、`ChannelIn::line` 長さ上限、シンボリックリンク判定、ファイル名サニタイズ
 - [x] **S-6**: `crates/vt/src/terminal.rs` — `encode_paste` での C1 制御文字除去
 - [x] **B-1**: `crates/ttl/src/parse.rs` & `interp.rs` — 多段 1行 `if` の `owner` 解決、`wait_until` の切断検知、`for` の境界値判定、`str*` の UTF-8 文字境界処理
@@ -273,7 +273,7 @@
 - [x] **B-3**: `crates/xfer/src/kermit.rs` — `S` パケット ACK のチェックサム種別固定と `qbin` (`Y` -> `&`) ネゴシエーション修正
 - [x] **B-4**: `crates/xfer/src/zmodem.rs` — `ZFIN` 時の `now` 使用と `written` カウンタの `u64` 化
 - [x] **B-5**: `crates/core/src/session.rs` — `Session::open` の `Connected` 設定順序修正、ペースト時のローカルエコー修正、`zmodem.reset()` 追加
-- [x] **B-6**: `apps/linux/src/window.rs` & `apps/macos/Sources/MultiTerm/TerminalView.swift` — `send_break` の非同期化と `CADisplayLink` の `invalidate` 処理
+- [x] **B-6**: `apps/linux/src/window.rs` & `apps/macos/Sources/ZettaTerm/TerminalView.swift` — `send_break` の非同期化と `CADisplayLink` の `invalidate` 処理
 
 ---
 
@@ -416,8 +416,8 @@ Step 1〜4 の機能追加（ポート転送、SCP マクロ、`~/.ssh/config` �
 #### N-5. [中] macOS 版で「設定 > キーボード」の「Option キーをメタキーとして使う」が機能しない
 
 - **対象箇所**:
-  - `apps/macos/Sources/MultiTerm/KeyMapping.swift` (`modifiers(from:)`, L38-L41)
-  - `apps/macos/Sources/MultiTerm/TerminalView.swift` (`keyDown(with:)`, L518-L536)
+  - `apps/macos/Sources/ZettaTerm/KeyMapping.swift` (`modifiers(from:)`, L38-L41)
+  - `apps/macos/Sources/ZettaTerm/TerminalView.swift` (`keyDown(with:)`, L518-L536)
 - **問題の詳細**:
   「設定 > キーボード」ダイアログに「Option キーをメタキーとして使う (`metaSendsEscape`)」が追加され、`Session.setKeyboard` で Rust コアの `KeyboardConfig.meta_sends_escape` に反映されるようになっています（Linux 版は `event_mods` で `ALT_MASK` を渡しているため動作します）。
   しかし macOS 版では以下の 2 点により Option + キーで `ESC` プレフィックスが送信されません：
@@ -502,7 +502,7 @@ Step 1〜4 の機能追加（ポート転送、SCP マクロ、`~/.ssh/config` �
 - [x] **N-2**: `crates/net/src/ssh_client.rs` & `forward.rs` — リモート転送 (`-R`) の `bind_address` 区別と `bind_port == 0` 時の割り当てポート反映
 - [x] **N-3**: `crates/net/src/scp.rs` — `SshFiles::recv_file` で `local.is_dir()` の判定追加と既存ファイル上書き防止
 - [x] **N-4**: `crates/net/src/ssh_config.rs` — 複数 `LocalForward` / `RemoteForward` / `DynamicForward` 指定時のトークン分割修正
-- [x] **N-5**: `apps/macos/Sources/MultiTerm/TerminalView.swift` & `KeyMapping.swift` — macOS 版 `metaSendsEscape` 有効時の Option + キー ESC 送信対応
+- [x] **N-5**: `apps/macos/Sources/ZettaTerm/TerminalView.swift` & `KeyMapping.swift` — macOS 版 `metaSendsEscape` 有効時の Option + キー ESC 送信対応
 - [x] **N-6**: `crates/ttl/src/interp.rs` — `clipb2var` チャンク切り出し時の UTF-8 文字境界考慮
 - [x] **N-7**: `crates/vt/src/select.rs` — `find_urls` 末尾全角文字の `WIDE_SPACER` 対応（および `file://` スキームの要否確認）
 - [x] **N-8**: `crates/core/src/session.rs` — ZMODEM `route.held` 保留バッファの `tick()` フラッシュと確認ダイアログ表示中の再送考慮

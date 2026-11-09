@@ -19,12 +19,12 @@ publish = false
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-mt-core = { path = "crates/core" }
-mt-vt = { path = "crates/vt" }
-mt-serial = { path = "crates/serial" }
-mt-net = { path = "crates/net" }
-mt-xfer = { path = "crates/xfer" }
-mt-ttl = { path = "crates/ttl" }
+zetta-core = { path = "crates/core" }
+zetta-vt = { path = "crates/vt" }
+zetta-serial = { path = "crates/serial" }
+zetta-net = { path = "crates/net" }
+zetta-xfer = { path = "crates/xfer" }
+zetta-ttl = { path = "crates/ttl" }
 
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"

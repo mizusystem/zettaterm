@@ -3,7 +3,7 @@
 
 use std::io::{self, Read, Write};
 
-use mt_core::Transport;
+use zetta_core::Transport;
 
 pub struct UnixSocketTransport {
     #[cfg(unix)]

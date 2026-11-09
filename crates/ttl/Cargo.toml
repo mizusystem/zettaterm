@@ -1,5 +1,5 @@
 [package]
-name = "mt-ttl"
+name = "zetta-ttl"
 description = "TTL マクロのパーサとインタプリタ"
 version.workspace = true
 edition.workspace = true
@@ -8,12 +8,12 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "mt_ttl"
+name = "zetta_ttl"
 
 [dependencies]
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
-mt-core.workspace = true
-mt-xfer.workspace = true
+zetta-core.workspace = true
+zetta-xfer.workspace = true
 regex = "1"
 
 [dev-dependencies]

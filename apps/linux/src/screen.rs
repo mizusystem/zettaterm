@@ -1,6 +1,6 @@
 //! 画面の写し。コアの snapshot（変わった行だけ）を当てて、描画に使う全行を持つ。
 
-use mt_core::{Cursor, CursorShape, GridSnapshot, Row};
+use zetta_core::{Cursor, CursorShape, GridSnapshot, Row};
 
 pub struct Screen {
     pub cols: u16,

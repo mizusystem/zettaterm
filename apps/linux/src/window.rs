@@ -7,10 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use gtk::prelude::*;
 use gtk::{gio, glib};
-use mt_core::profile::ConnectionProfile;
-use mt_core::{SessionOptions, SessionState, TransferRequest, WindowSize};
-use mt_ttl::ConnectSpec;
-use mt_xfer::Direction;
+use zetta_core::profile::ConnectionProfile;
+use zetta_core::{SessionOptions, SessionState, TransferRequest, WindowSize};
+use zetta_ttl::ConnectSpec;
+use zetta_xfer::Direction;
 
 use crate::bridge::{Event, Listener, Prompt, Prompter};
 use crate::connect;
@@ -29,7 +29,7 @@ enum Status {
     Reconnecting,
 }
 
-type Waiter = Box<dyn FnOnce(Option<Arc<mt_core::Session>>)>;
+type Waiter = Box<dyn FnOnce(Option<Arc<zetta_core::Session>>)>;
 
 /// 1 ウィンドウ。タブ（TermWindow）を束ね、メニューの操作を今のタブに渡す。
 pub struct Tabs {
@@ -139,10 +139,10 @@ pub fn about_dialog(parent: &gtk::Window) {
     let about = gtk::AboutDialog::builder()
         .transient_for(parent)
         .modal(true)
-        .program_name("Multi-Term")
-        .version(mt_core::about::version_line())
+        .program_name("ZettaTerm")
+        .version(zetta_core::about::version_line())
         .comments(l("Tera Term の操作感を macOS・Linux で"))
-        .license(mt_core::about::NOTICES)
+        .license(zetta_core::about::NOTICES)
         .wrap_license(false)
         .build();
     about.present();
@@ -164,7 +164,7 @@ impl Tabs {
     pub fn new(app: &gtk::Application) -> Rc<Self> {
         let win = gtk::ApplicationWindow::builder()
             .application(app)
-            .title("Multi-Term")
+            .title("ZettaTerm")
             .show_menubar(true)
             .build();
         let notebook = gtk::Notebook::new();
@@ -310,7 +310,7 @@ impl Tabs {
                 {
                     dialogs::message(
                         &me.parent(),
-                        "Multi-Term",
+                        "ZettaTerm",
                         &crate::strings::error_text(&e.to_string(), None),
                         || {},
                     );
@@ -420,7 +420,7 @@ impl Tabs {
                         let Some(path) = r.ok().and_then(|f| f.path()) else {
                             return;
                         };
-                        let text = match mt_core::ini::read_ini(&path) {
+                        let text = match zetta_core::ini::read_ini(&path) {
                             Ok(ini) => {
                                 let n = settings::apply_ini(&ini);
                                 crate::term::reload_conf();
@@ -433,7 +433,7 @@ impl Tabs {
                             }
                             Err(e) => crate::strings::error_text(&e.to_string(), None),
                         };
-                        dialogs::message(&me.parent(), "Multi-Term", &text, || {});
+                        dialogs::message(&me.parent(), "ZettaTerm", &text, || {});
                     },
                 );
             }),
@@ -498,8 +498,10 @@ impl Tabs {
                     };
                     let text = match std::fs::read(&path) {
                         Ok(b) => {
-                            let keys =
-                                mt_core::keymap::parse_keyboard_cnf(&String::from_utf8_lossy(&b)).0;
+                            let keys = zetta_core::keymap::parse_keyboard_cnf(
+                                &String::from_utf8_lossy(&b),
+                            )
+                            .0;
                             let n = keys.len();
                             ALL.with(|all| {
                                 for pane in all.borrow().iter().filter_map(|w| w.upgrade()) {
@@ -515,7 +517,7 @@ impl Tabs {
                         }
                         Err(e) => crate::strings::error_text(&e.to_string(), None),
                     };
-                    dialogs::message(&p, "Multi-Term", &text, || {});
+                    dialogs::message(&p, "ZettaTerm", &text, || {});
                 });
             }),
         );
@@ -534,7 +536,7 @@ impl Tabs {
                             Ok(()) => lf("{} に保存しました", &[&path.display()]),
                             Err(e) => crate::strings::error_text(&e.to_string(), None),
                         };
-                        dialogs::message(&p, "Multi-Term", &text, || {});
+                        dialogs::message(&p, "ZettaTerm", &text, || {});
                     }
                 });
             }),
@@ -717,7 +719,7 @@ pub struct TermWindow {
     macro_tx: async_channel::Sender<MacroReq>,
     macro_stop: RefCell<Option<Arc<AtomicBool>>>,
     /// 実行中のマクロの中断・続行と今の行（マクロウィンドウ）
-    macro_control: RefCell<Option<Arc<mt_ttl::MacroControl>>>,
+    macro_control: RefCell<Option<Arc<zetta_ttl::MacroControl>>>,
     badge_line: gtk::Label,
     badge_pause: gtk::ToggleButton,
     pause_handler: Cell<Option<glib::SignalHandlerId>>,
@@ -729,7 +731,7 @@ pub struct TermWindow {
     badge_transfer: gtk::Label,
     waiters: RefCell<Vec<Waiter>>,
     /// 内蔵 SSH のときだけ。SSH SCP に使う
-    files: RefCell<Option<mt_net::SshFiles>>,
+    files: RefCell<Option<zetta_net::SshFiles>>,
     logging: Cell<bool>,
     log_paused: Cell<bool>,
     /// マクロの setmulticastname（sendmulticast の宛先の名前）
@@ -742,12 +744,12 @@ pub struct TermWindow {
     launch_log: RefCell<Option<(String, bool)>>,
     launch_macro: RefCell<Option<std::path::PathBuf>>,
     /// シリアルの信号線（シリアル接続中だけ、0.5 秒ごとに読む）
-    modem: Cell<Option<mt_core::ModemLines>>,
+    modem: Cell<Option<zetta_core::ModemLines>>,
     modem_timer: RefCell<Option<glib::SourceId>>,
     /// 信号線の表示（右下）
     lines_label: gtk::Label,
     /// 次の接続だけで使うログインの指定（マクロ・起動引数の /auth= /keyfile= /passwd=）
-    next_login: RefCell<mt_core::LoginPreset>,
+    next_login: RefCell<zetta_core::LoginPreset>,
 }
 
 impl TermWindow {
@@ -815,7 +817,7 @@ impl TermWindow {
         lines_label.set_can_target(false);
         lines_label.set_visible(false);
         overlay.add_overlay(&lines_label);
-        let tab_label = gtk::Label::new(Some("Multi-Term"));
+        let tab_label = gtk::Label::new(Some("ZettaTerm"));
         // 省略表示にすると幅が縮みきるので、最低の幅を決めておく
         tab_label.set_width_chars(12);
         tab_label.set_max_width_chars(24);
@@ -898,7 +900,7 @@ impl TermWindow {
     pub fn send_backspaces(&self, count: usize) {
         if let Some(s) = self.view.session() {
             for _ in 0..count {
-                s.key(mt_core::Key::Backspace, mt_core::Modifiers::default());
+                s.key(zetta_core::Key::Backspace, zetta_core::Modifiers::default());
             }
         }
     }
@@ -906,7 +908,7 @@ impl TermWindow {
     /// Enter キー（この接続の「送信」の改行コード）。
     pub fn send_enter(&self) {
         if let Some(s) = self.view.session() {
-            s.key(mt_core::Key::Enter, mt_core::Modifiers::default());
+            s.key(zetta_core::Key::Enter, zetta_core::Modifiers::default());
         }
     }
 
@@ -930,11 +932,11 @@ impl TermWindow {
             .borrow()
             .clone()
             .unwrap_or_else(|| Settings::load().other.title(&remote, &label));
-        // 「設定 > ウィンドウ」のタイトルは前に付ける（空なら Multi-Term）
+        // 「設定 > ウィンドウ」のタイトルは前に付ける（空なら ZettaTerm）
         let custom = Settings::load().look.title;
         if base.is_empty() {
             base = if custom.is_empty() {
-                "Multi-Term".into()
+                "ZettaTerm".into()
             } else {
                 custom
             };
@@ -946,7 +948,7 @@ impl TermWindow {
             Status::Connecting => lf("{} [接続中]", &[&label]),
             Status::Reconnecting => lf("{} [再接続待ち]", &[&base]),
             Status::Disconnected if self.profile.borrow().is_some() => lf("{} [未接続]", &[&base]),
-            Status::Disconnected => "Multi-Term".into(),
+            Status::Disconnected => "ZettaTerm".into(),
         };
         self.tab_label.set_text(&title);
         if self.is_current() {
@@ -997,7 +999,7 @@ impl TermWindow {
                         terminal,
                         ..Default::default()
                     };
-                    mt_core::Session::open(transport, options, listener)
+                    zetta_core::Session::open(transport, options, listener)
                 });
             let _ = tx.send_blocking(
                 result
@@ -1021,7 +1023,7 @@ impl TermWindow {
                     if !warnings.is_empty() {
                         dialogs::message(
                             &me.parent(),
-                            "Multi-Term",
+                            "ZettaTerm",
                             &lf(
                                 "接続しましたが、次はうまくいきませんでした。\n{}",
                                 &[&warnings.join("\n")],
@@ -1046,13 +1048,13 @@ impl TermWindow {
                         (!saved.answerback.is_empty()).then(|| saved.answerback.clone()),
                     );
                     session.set_terminal_id(
-                        mt_core::TerminalId::from_name(&saved.terminal_id).unwrap_or_default(),
+                        zetta_core::TerminalId::from_name(&saved.terminal_id).unwrap_or_default(),
                     );
                     session.set_clipboard_write(saved.copy_paste.remote_clipboard_write);
                     session.set_ambiguous_wide(saved.ambiguous_wide);
                     if let Ok(text) = std::fs::read(&saved.keymap_path) {
                         let text = String::from_utf8_lossy(&text);
-                        session.set_user_keys(mt_core::keymap::parse_keyboard_cnf(&text).0);
+                        session.set_user_keys(zetta_core::keymap::parse_keyboard_cnf(&text).0);
                     }
                     saved.other.apply(&session);
                     session.set_jis_options(saved.terminal_for(Some(&profile)).jis());
@@ -1073,7 +1075,7 @@ impl TermWindow {
                     me.status.set(Status::Disconnected);
                     me.notify_waiters(None);
                     let text = crate::strings::error_text(&e, error_subject(&profile).as_deref());
-                    dialogs::message(&me.win.clone().upcast(), "Multi-Term", &text, || {});
+                    dialogs::message(&me.win.clone().upcast(), "ZettaTerm", &text, || {});
                 }
             }
             me.update_title();
@@ -1111,7 +1113,7 @@ impl TermWindow {
         }
     }
 
-    fn notify_waiters(&self, s: Option<Arc<mt_core::Session>>) {
+    fn notify_waiters(&self, s: Option<Arc<zetta_core::Session>>) {
         for w in self.waiters.borrow_mut().drain(..) {
             w(s.clone());
         }
@@ -1132,7 +1134,7 @@ impl TermWindow {
                 session.set_jis_options(conf.jis());
                 session.set_answerback((!s.answerback.is_empty()).then(|| s.answerback.clone()));
                 session.set_terminal_id(
-                    mt_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default(),
+                    zetta_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default(),
                 );
                 session.set_ambiguous_wide(s.ambiguous_wide);
             }
@@ -1175,7 +1177,7 @@ impl TermWindow {
                     if let Err(e) = session.set_serial_settings(&choice.settings) {
                         dialogs::message(
                             &me.parent(),
-                            "Multi-Term",
+                            "ZettaTerm",
                             &crate::strings::error_text(&e.to_string(), None),
                             || {},
                         );
@@ -1207,7 +1209,7 @@ impl TermWindow {
             }
             Err(e) => dialogs::message(
                 &me.parent(),
-                "Multi-Term",
+                "ZettaTerm",
                 &crate::strings::error_text(&e.to_string(), None),
                 || {},
             ),
@@ -1215,7 +1217,7 @@ impl TermWindow {
     }
 
     /// 起動引数（ttermpro と同じ書き方）：/W= のタイトル、接続先、/L= のログ、/M= のマクロ。
-    pub fn launch(self: &Rc<Self>, l: mt_ttl::Launch) {
+    pub fn launch(self: &Rc<Self>, l: zetta_ttl::Launch) {
         if let Some(t) = l.title {
             *self.macro_title.borrow_mut() = Some(t);
             self.update_title();
@@ -1237,7 +1239,7 @@ impl TermWindow {
         }
     }
 
-    fn start_launch_extras(self: &Rc<Self>, session: &Arc<mt_core::Session>) {
+    fn start_launch_extras(self: &Rc<Self>, session: &Arc<zetta_core::Session>) {
         if let Some((path, append)) = self.launch_log.borrow_mut().take() {
             let mut opts = Settings::load().log.options(path.into());
             opts.append = append;
@@ -1247,7 +1249,7 @@ impl TermWindow {
                 Ok(()) => self.logging.set(true),
                 Err(e) => dialogs::message(
                     &self.parent(),
-                    "Multi-Term",
+                    "ZettaTerm",
                     &crate::strings::error_text(&e.to_string(), None),
                     || {},
                 ),
@@ -1260,7 +1262,7 @@ impl TermWindow {
     }
 
     /// 「設定 > ログ」の自動開始。標準のフォルダとファイル名で始める。
-    fn auto_start_log(&self, session: &Arc<mt_core::Session>, profile: &ConnectionProfile) {
+    fn auto_start_log(&self, session: &Arc<zetta_core::Session>, profile: &ConnectionProfile) {
         let conf = Settings::load().log;
         if !conf.auto_start {
             return;
@@ -1276,7 +1278,7 @@ impl TermWindow {
             Ok(()) => self.logging.set(true),
             Err(e) => dialogs::message(
                 &self.parent(),
-                "Multi-Term",
+                "ZettaTerm",
                 &crate::strings::error_text(&e.to_string(), None),
                 || {},
             ),
@@ -1422,7 +1424,7 @@ impl TermWindow {
             if let Err(e) = s.log_write(&text) {
                 dialogs::message(
                     &parent,
-                    "Multi-Term",
+                    "ZettaTerm",
                     &crate::strings::error_text(&e.to_string(), None),
                     || {},
                 );
@@ -1449,7 +1451,7 @@ impl TermWindow {
     }
 
     /// 文字コードを受信・送信とも切り替える（TTXKanjiMenu）。
-    pub fn set_charset(&self, charset: mt_core::Charset) {
+    pub fn set_charset(&self, charset: zetta_core::Charset) {
         let profile = self.profile.borrow().clone();
         let mut s = Settings::load();
         let mut conf = s.terminal_for(profile.as_ref());
@@ -1542,7 +1544,7 @@ impl TermWindow {
         if let Err(e) = s.set_lines(d, r) {
             dialogs::message(
                 &self.parent(),
-                "Multi-Term",
+                "ZettaTerm",
                 &crate::strings::error_text(&e.to_string(), None),
                 || {},
             );
@@ -1627,12 +1629,12 @@ impl TermWindow {
                 DropChoice::SendFile { binary } => {
                     let Some(s) = session else { return };
                     for p in &list {
-                        match mt_core::Session::read_file_for_send(p) {
+                        match zetta_core::Session::read_file_for_send(p) {
                             Ok(data) => s.send_file(data, binary),
                             Err(e) => {
                                 dialogs::message(
                                     &me.parent(),
-                                    "Multi-Term",
+                                    "ZettaTerm",
                                     &format!("{}: {e}", p.display()),
                                     || {},
                                 );
@@ -1685,11 +1687,11 @@ impl TermWindow {
                 let session = Arc::clone(&session);
                 let parent = me.parent();
                 crate::extras::send_file_options(&me.parent(), move |binary| {
-                    match mt_core::Session::read_file_for_send(&path) {
+                    match zetta_core::Session::read_file_for_send(&path) {
                         Ok(data) => session.send_file(data, binary),
                         Err(e) => dialogs::message(
                             &parent,
-                            "Multi-Term",
+                            "ZettaTerm",
                             &format!("{}: {e}", path.display()),
                             || {},
                         ),
@@ -1731,7 +1733,7 @@ impl TermWindow {
         let me = Rc::clone(self);
         dialogs::yes_no(
             &self.parent(),
-            "Multi-Term",
+            "ZettaTerm",
             &tt("MSG_DISCONNECT_CONF", "切断しますか？"),
             move |yes| {
                 if yes {
@@ -1965,13 +1967,13 @@ impl TermWindow {
     /// 転送を始める。XON/XOFF のシリアルで XMODEM / YMODEM なら確かめ、XMODEM はオプションを尋ねる。
     fn start_transfer(
         self: &Rc<Self>,
-        session: &Arc<mt_core::Session>,
+        session: &Arc<zetta_core::Session>,
         kind: Kind,
         direction: Direction,
     ) {
         let xon = matches!(
             &*self.profile.borrow(),
-            Some(ConnectionProfile::Serial { settings, .. }) if settings.flow == mt_core::FlowControl::XonXoff
+            Some(ConnectionProfile::Serial { settings, .. }) if settings.flow == zetta_core::FlowControl::XonXoff
         );
         let me = Rc::clone(self);
         let session = Arc::clone(session);
@@ -2086,7 +2088,7 @@ impl TermWindow {
     pub fn run_macro(self: &Rc<Self>, path: std::path::PathBuf) {
         let stop = Arc::new(AtomicBool::new(false));
         *self.macro_stop.borrow_mut() = Some(Arc::clone(&stop));
-        let control = Arc::new(mt_ttl::MacroControl::default());
+        let control = Arc::new(zetta_ttl::MacroControl::default());
         *self.macro_control.borrow_mut() = Some(Arc::clone(&control));
         self.badge_pause.set_active(false);
         {
@@ -2193,7 +2195,7 @@ impl TermWindow {
     pub fn macro_connect_profile(spec: ConnectSpec) -> ConnectionProfile {
         match spec {
             ConnectSpec::Serial { port, baud } => {
-                let mut settings = mt_core::SerialSettings::default();
+                let mut settings = zetta_core::SerialSettings::default();
                 if let Some(b) = baud {
                     settings.baud = b;
                 }
@@ -2218,8 +2220,8 @@ impl TermWindow {
     }
 
     /// マクロ・起動引数の `/auth=` `/keyfile=` `/passwd=`（次の接続の最初の認証で使う）。
-    fn login_preset(s: &mt_ttl::SshSpec) -> mt_core::LoginPreset {
-        mt_core::LoginPreset {
+    fn login_preset(s: &zetta_ttl::SshSpec) -> zetta_core::LoginPreset {
+        zetta_core::LoginPreset {
             auth: s.auth.clone(),
             key_file: s.key_file.clone(),
             password: s.password.clone(),
@@ -2355,7 +2357,7 @@ impl TermWindow {
                 *self.multicast_name.borrow_mut() = (!name.is_empty()).then_some(name);
             }
             MacroReq::RestoreSetup(path, reply) => {
-                let ok = match mt_core::ini::read_ini(&path) {
+                let ok = match zetta_core::ini::read_ini(&path) {
                     Ok(ini) => {
                         settings::apply_ini(&ini);
                         crate::term::reload_conf();
@@ -2498,18 +2500,18 @@ impl TermWindow {
 }
 
 /// 「設定 > エンコーディング」のメニューの値（id はメニューの項目の識別）。
-pub fn charsets() -> Vec<(mt_core::Charset, String, &'static str)> {
-    mt_core::Charset::ALL
+pub fn charsets() -> Vec<(zetta_core::Charset, String, &'static str)> {
+    zetta_core::Charset::ALL
         .iter()
         .map(|c| (*c, format!("{c:?}").to_lowercase(), c.label()))
         .collect()
 }
 
-fn charset_id(c: mt_core::Charset) -> String {
+fn charset_id(c: zetta_core::Charset) -> String {
     format!("{c:?}").to_lowercase()
 }
 
-fn charset_from_id(id: &str) -> Option<mt_core::Charset> {
+fn charset_from_id(id: &str) -> Option<zetta_core::Charset> {
     charsets().into_iter().find(|x| x.1 == id).map(|x| x.0)
 }
 
@@ -2545,7 +2547,7 @@ fn apply_other_everywhere() {
 /// Tera Term も読み込んだ設定をその場で使う）。
 fn apply_terminal_everywhere() {
     let s = Settings::load();
-    let id = mt_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default();
+    let id = zetta_core::TerminalId::from_name(&s.terminal_id).unwrap_or_default();
     let answerback = (!s.answerback.is_empty()).then(|| s.answerback.clone());
     ALL.with(|all| {
         for p in all.borrow().iter().filter_map(|w| w.upgrade()) {

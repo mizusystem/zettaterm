@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
-use mt_core::{
+use zetta_core::{
     AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo, KeyboardPrompt,
     PasswordChange, PasswordChangeRequest, SessionListener, SessionState, TransferRequest,
 };
@@ -69,11 +69,11 @@ pub enum Prompt {
 pub struct Prompter {
     pub tx: async_channel::Sender<Prompt>,
     /// マクロの `/auth=` `/keyfile=` `/passwd=`。この接続の最初の認証で 1 回だけ使い、接続が終わったら消す
-    pub preset: std::sync::Mutex<mt_core::LoginPreset>,
+    pub preset: std::sync::Mutex<zetta_core::LoginPreset>,
 }
 
 impl Prompter {
-    pub fn new(tx: async_channel::Sender<Prompt>, preset: mt_core::LoginPreset) -> Self {
+    pub fn new(tx: async_channel::Sender<Prompt>, preset: zetta_core::LoginPreset) -> Self {
         Self {
             tx,
             preset: std::sync::Mutex::new(preset),
@@ -82,7 +82,7 @@ impl Prompter {
 
     /// 使わなかったパスワードを消す（接続の成功・失敗のあと）。
     pub fn forget_password(&self) {
-        *self.preset.lock().unwrap_or_else(|e| e.into_inner()) = mt_core::LoginPreset::default();
+        *self.preset.lock().unwrap_or_else(|e| e.into_inner()) = zetta_core::LoginPreset::default();
     }
 }
 

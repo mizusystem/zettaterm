@@ -28,7 +28,7 @@ pub struct IniSettings {
     pub terminal_size: Option<(u16, u16)>,
     pub scroll_buffer: Option<u32>,
     /// `TerminalID`
-    pub terminal_id: Option<mt_vt::TerminalId>,
+    pub terminal_id: Option<zetta_vt::TerminalId>,
     /// `ClipboardAccessFromRemote` が write か on（書き込みを受け付ける）
     pub clipboard_write: Option<bool>,
     /// `NotifyClipboardAccess`
@@ -267,7 +267,7 @@ pub fn parse_ini(text: &str) -> IniSettings {
         Some((c.trim().parse().ok()?, r.trim().parse().ok()?))
     });
     s.scroll_buffer = get("scrollbuffsize").and_then(|v| v.parse().ok());
-    s.terminal_id = get("terminalid").and_then(mt_vt::TerminalId::from_name);
+    s.terminal_id = get("terminalid").and_then(zetta_vt::TerminalId::from_name);
     s.clipboard_write = get("clipboardaccessfromremote")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "write" | "on"));
     s.notify_clipboard = get("notifyclipboardaccess").and_then(on_off);
@@ -624,7 +624,7 @@ pub fn write_ini(s: &IniSettings) -> String {
     }
 
     let mut out = String::from(
-        "; Multi-Term が書いた TERATERM.INI（この形で読める項目だけ）\r\n[Tera Term]\r\n",
+        "; ZettaTerm が書いた TERATERM.INI（この形で読める項目だけ）\r\n[Tera Term]\r\n",
     );
     for (k, v) in tt {
         out.push_str(&format!("{k}={v}\r\n"));
@@ -730,7 +730,7 @@ Host10=/C=1 ;serial port
         assert_eq!(s.local_echo, Some(false));
         assert_eq!(s.charset_receive, Some(Charset::ShiftJis));
         assert_eq!(s.terminal_size, Some((132, 40)));
-        assert_eq!(s.terminal_id, Some(mt_vt::TerminalId::Vt220));
+        assert_eq!(s.terminal_id, Some(zetta_vt::TerminalId::Vt220));
         assert_eq!(s.paste_delay, Some(30));
         assert_eq!(s.bell.as_deref(), Some("visual"));
         assert_eq!(s.accept_title.as_deref(), Some("ahead"));

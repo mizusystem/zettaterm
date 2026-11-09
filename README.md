@@ -1,4 +1,4 @@
-# Multi-Term（仮称）
+# ZettaTerm
 
 Tera Term 互換のマルチ OS 端末アプリ。Rust の共通コアと、OS ごとのネイティブ UI（macOS: SwiftUI + AppKit、Linux: GTK4、Windows: 後回し）で構成する。
 

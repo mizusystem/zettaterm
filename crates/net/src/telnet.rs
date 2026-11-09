@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use mt_core::{Transport, WindowSize};
+use zetta_core::{Transport, WindowSize};
 
 const IAC: u8 = 255;
 const DONT: u8 = 254;
@@ -529,7 +529,7 @@ mod tests {
     use std::thread;
     use std::time::Instant;
 
-    use mt_core::{Session, SessionListener, SessionOptions, SessionState};
+    use zetta_core::{Session, SessionListener, SessionOptions, SessionState};
 
     fn parse(input: &[u8], neg: &mut Negotiation) -> (Vec<u8>, Vec<u8>) {
         let mut p = Parser::new();

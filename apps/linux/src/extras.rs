@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 use gtk::gio;
 use gtk::prelude::*;
-use mt_core::LogOptions;
-use mt_net::{ScpStatus, SshFiles};
+use zetta_core::LogOptions;
+use zetta_net::{ScpStatus, SshFiles};
 
 use crate::dialogs::modal;
 use crate::progress::{self, Snapshot, State};
@@ -23,7 +23,7 @@ fn heading(text: &str) -> gtk::Label {
 /// ファイル名は「設定 > ログ」の標準のフォルダと名前から作り、選んだ項目は次回のために覚える。
 pub fn log_dialog(
     parent: &gtk::Window,
-    profile: Option<&mt_core::ConnectionProfile>,
+    profile: Option<&zetta_core::ConnectionProfile>,
     start: impl Fn(LogOptions) + 'static,
 ) {
     let conf = crate::settings::Settings::load().log;
@@ -197,7 +197,7 @@ pub fn log_comment_dialog(parent: &gtk::Window, write: impl Fn(String) + 'static
     win.present();
 }
 
-pub fn scp_progress(parent: &gtk::Window, send: bool, job: mt_net::ScpJob) {
+pub fn scp_progress(parent: &gtk::Window, send: bool, job: zetta_net::ScpJob) {
     let title = if send {
         ssh("DLG_SCP_PROGRESS_TITLE_SENDFILE", "SCP ファイル送信中")
     } else {
@@ -677,7 +677,7 @@ pub fn broadcast_dialog(parent: &gtk::Window) {
                 return;
             }
             let new = e.text().to_string();
-            let (erase, insert) = mt_core::broadcast::realtime_diff(&sent_text.borrow(), &new);
+            let (erase, insert) = zetta_core::broadcast::realtime_diff(&sent_text.borrow(), &new);
             *sent_text.borrow_mut() = new;
             for (c, p) in checks.iter() {
                 if c.is_active() {
@@ -724,10 +724,10 @@ pub fn broadcast_dialog(parent: &gtk::Window) {
             let list = &history_list;
             if save_history.is_active() && !text.is_empty() {
                 let mut h = Settings::load().broadcast_history;
-                mt_core::broadcast::push_history(
+                zetta_core::broadcast::push_history(
                     &mut h,
                     &text,
-                    mt_core::broadcast::DEFAULT_HISTORY,
+                    zetta_core::broadcast::DEFAULT_HISTORY,
                 );
                 let names: Vec<&str> = h.iter().map(String::as_str).collect();
                 list.splice(0, list.n_items(), &names);
@@ -778,7 +778,7 @@ pub fn confirm_paste(
         let (warning, info) = (warning.clone(), info.clone());
         move |buf: &gtk::TextBuffer| {
             let t = buf.text(&buf.start_iter(), &buf.end_iter(), false);
-            let check = mt_core::check_paste(&t, &words);
+            let check = zetta_core::check_paste(&t, &words);
             warning.set_visible(!check.dangerous.is_empty());
             warning.set_text(&lf(
                 "危険な語が含まれています: {}",

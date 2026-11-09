@@ -6,9 +6,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mt_core::mock::{MockRemote, MockTransport};
-use mt_core::{Session, SessionListener, SessionOptions, SessionState};
-use mt_ttl::{ConnectSpec, Host, Interp, Outcome};
+use zetta_core::mock::{MockRemote, MockTransport};
+use zetta_core::{Session, SessionListener, SessionOptions, SessionState};
+use zetta_ttl::{ConnectSpec, Host, Interp, Outcome};
 
 struct Quiet;
 impl SessionListener for Quiet {
@@ -321,12 +321,12 @@ fn xmodem_send_from_a_macro() {
     let device = thread::spawn(move || {
         expect(&remote, b"xmodem -c flash:fw.bin\r");
         remote.send(b"Ready to receive\r\n");
-        let mut rx = mt_xfer::new_transfer(
-            mt_xfer::Protocol::XModem {
+        let mut rx = zetta_xfer::new_transfer(
+            zetta_xfer::Protocol::XModem {
                 crc: true,
                 one_k: false,
             },
-            mt_xfer::Direction::Receive(out2),
+            zetta_xfer::Direction::Receive(out2),
         )
         .unwrap();
         let first = rx.start(Instant::now());
@@ -358,7 +358,7 @@ messagebox 'done'
     let mut it = Interp::new(&mut host, Some(Arc::clone(&session)), stop);
     assert_eq!(it.run_source(src, dir.path()).unwrap(), Outcome::Finished);
     drop(it);
-    assert_eq!(device.join().unwrap(), mt_xfer::Status::Done);
+    assert_eq!(device.join().unwrap(), zetta_xfer::Status::Done);
     assert_eq!(*host.out.lock().unwrap(), ["1", "done"]);
     // XMODEM は 128 バイト単位で埋めるので、先頭が一致すればよい
     let got = std::fs::read(&out).unwrap();
@@ -616,7 +616,7 @@ clearscreen 1
     assert_eq!(out, ["0", "90 0", "1", " AB", "0"]);
     let last = remote.serial_settings().last().copied().unwrap();
     assert_eq!(last.baud, 115_200);
-    assert_eq!(last.flow, mt_core::FlowControl::RtsCts);
+    assert_eq!(last.flow, zetta_core::FlowControl::RtsCts);
     assert_eq!(remote.output_lines(), (false, true));
     assert!(session.terminal_settings().local_echo);
     session.close();
@@ -860,7 +860,7 @@ fn waitevent_times_out_or_sees_a_disconnect() {
 
 #[test]
 fn pause_holds_the_macro_until_resumed() {
-    use mt_ttl::MacroControl;
+    use zetta_ttl::MacroControl;
     let control = Arc::new(MacroControl::default());
     control
         .paused

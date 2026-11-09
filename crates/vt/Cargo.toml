@@ -1,5 +1,5 @@
 [package]
-name = "mt-vt"
+name = "zetta-vt"
 description = "VT エミュレーション、画面グリッド、変更行の追跡、スクロールバック"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "mt_vt"
+name = "zetta_vt"
 
 [dependencies]
 alacritty_terminal = "0.26.0"

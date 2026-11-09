@@ -2,12 +2,12 @@
 //! lrzsz の各コマンドを子プロセスとして起動し、標準入出力でこちらの転送とつなぐ。
 //! lrzsz が無ければ何もせずに通る（Homebrew では lsz / lrz などの名前でも探す）。
 //!
-//!     cargo test -p mt-xfer --test lrzsz -- --nocapture
+//!     cargo test -p zetta-xfer --test lrzsz -- --nocapture
 
 mod common;
 
 use common::{Files, run, sample, tool};
-use mt_xfer::{Direction, Protocol, new_transfer};
+use zetta_xfer::{Direction, Protocol, new_transfer};
 
 #[test]
 fn zmodem_send_to_rz() {

@@ -118,7 +118,7 @@ pub struct PasswordFile {
     entries: BTreeMap<String, String>,
 }
 
-const MIX: &[u8] = b"Multi-Term password file; this is obfuscation, not encryption";
+const MIX: &[u8] = b"ZettaTerm password file; this is obfuscation, not encryption";
 
 fn mix(name: &str, data: &[u8]) -> Vec<u8> {
     let key: Vec<u8> = MIX.iter().chain(name.as_bytes()).copied().collect();
@@ -270,8 +270,8 @@ pub fn parse_size(text: &str) -> Option<u64> {
 }
 
 /// Tera Term のキーコード（KEYCODE.EXE が出す PC のキーコード）を、押したキーに直す（TTL の sendkcode）。
-pub fn pc_key(code: i32) -> Option<(mt_core::Key, mt_core::Modifiers)> {
-    mt_core::from_pc_key_code(code)
+pub fn pc_key(code: i32) -> Option<(zetta_core::Key, zetta_core::Modifiers)> {
+    zetta_core::from_pc_key_code(code)
 }
 
 #[cfg(test)]
@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn pc_key_codes() {
-        use mt_core::{Key, Modifiers};
+        use zetta_core::{Key, Modifiers};
         let none = Modifiers::default();
         assert_eq!(pc_key(336), Some((Key::Down, none)));
         assert_eq!(pc_key(328), Some((Key::Up, none)));

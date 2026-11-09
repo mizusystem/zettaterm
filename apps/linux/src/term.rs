@@ -1,7 +1,7 @@
 //! 端末ビュー。DrawingArea に Pango で描き、キー入力（IME を含む）・選択・検索・スクロールを扱う。
 //!
-//! 選択や検索の一致は端末上の位置（`mt_core::Point`：0 が画面の最上行、負はスクロールバック）で持ち、
-//! 文字列や単語の範囲の計算はコア（mt_vt::select）に任せる。Mac 版の TerminalView と同じ作り。
+//! 選択や検索の一致は端末上の位置（`zetta_core::Point`：0 が画面の最上行、負はスクロールバック）で持ち、
+//! 文字列や単語の範囲の計算はコア（zetta_vt::select）に任せる。Mac 版の TerminalView と同じ作り。
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use gtk::prelude::*;
 use gtk::{gdk, gio, glib, pango};
-use mt_core::{
+use zetta_core::{
     CellFlags, CursorShape, Key, Modifiers, Point, Row, SearchQuery, Selection, Session,
 };
 
@@ -89,7 +89,7 @@ struct State {
     urls: Option<(u64, u32, Vec<Selection>)>,
     scroll_rest: f64,
     /// 押したのを相手に送ったボタン（そのあとの移動と離したのも送る）
-    mouse_reporting: Option<mt_core::MouseButton>,
+    mouse_reporting: Option<zetta_core::MouseButton>,
     /// 最後のマウスの位置（ホイールを送るとき）
     pointer: (f64, f64),
     focused: bool,
@@ -358,7 +358,7 @@ impl TermView {
     pub fn attach(&self, session: Arc<Session>) {
         let (cols, rows) = self.grid_size();
         let (w, h) = (self.area.width(), self.area.height());
-        session.resize(mt_core::WindowSize {
+        session.resize(zetta_core::WindowSize {
             cols,
             rows,
             pixel_width: w.max(0) as u16,
@@ -429,7 +429,7 @@ impl TermView {
         }
         let (cols, rows) = self.grid_size();
         if let Some(s) = self.session() {
-            s.resize(mt_core::WindowSize {
+            s.resize(zetta_core::WindowSize {
                 cols,
                 rows,
                 pixel_width: self.area.width().max(0) as u16,
@@ -509,7 +509,7 @@ impl TermView {
             return;
         }
         if c.confirm_paste {
-            let check = mt_core::check_paste(&text, &c.dangerous_words);
+            let check = zetta_core::check_paste(&text, &c.dangerous_words);
             if check.multiline || !check.dangerous.is_empty() {
                 if let Some(win) = self.window() {
                     let view = self.clone();
@@ -555,7 +555,7 @@ impl TermView {
         if let Some(text) = self.selected_text() {
             self.area
                 .clipboard()
-                .set_text(&mt_core::table_to_tsv(&text));
+                .set_text(&zetta_core::table_to_tsv(&text));
         }
     }
 
@@ -856,8 +856,8 @@ impl TermView {
 
     fn send_mouse(
         &self,
-        action: mt_core::MouseAction,
-        button: mt_core::MouseButton,
+        action: zetta_core::MouseAction,
+        button: zetta_core::MouseButton,
         x: f64,
         y: f64,
         state: gdk::ModifierType,
@@ -866,7 +866,7 @@ impl TermView {
             return false;
         };
         let p = self.cell_at(x, y);
-        session.mouse(&mt_core::MouseEvent {
+        session.mouse(&zetta_core::MouseEvent {
             action,
             button,
             col: p.col,
@@ -882,7 +882,7 @@ impl TermView {
     /// 押したとき：相手に送ったら true（選択はしない）。
     fn mouse_pressed(
         &self,
-        button: mt_core::MouseButton,
+        button: zetta_core::MouseButton,
         x: f64,
         y: f64,
         state: gdk::ModifierType,
@@ -890,7 +890,7 @@ impl TermView {
         if !self.mouse_allowed(state) {
             return false;
         }
-        let sent = self.send_mouse(mt_core::MouseAction::Press, button, x, y, state);
+        let sent = self.send_mouse(zetta_core::MouseAction::Press, button, x, y, state);
         if sent {
             self.area.grab_focus();
             self.state.borrow_mut().mouse_reporting = Some(button);
@@ -900,7 +900,7 @@ impl TermView {
 
     fn mouse_released(
         &self,
-        button: mt_core::MouseButton,
+        button: zetta_core::MouseButton,
         x: f64,
         y: f64,
         state: gdk::ModifierType,
@@ -909,7 +909,7 @@ impl TermView {
             return false;
         }
         self.state.borrow_mut().mouse_reporting = None;
-        self.send_mouse(mt_core::MouseAction::Release, button, x, y, state);
+        self.send_mouse(zetta_core::MouseAction::Release, button, x, y, state);
         true
     }
 
@@ -1181,7 +1181,7 @@ impl TermView {
         self.area.connect_resize(move |_, w, h| {
             let (cols, rows) = view.grid_size();
             if let Some(s) = view.session() {
-                s.resize(mt_core::WindowSize {
+                s.resize(zetta_core::WindowSize {
                     cols,
                     rows,
                     pixel_width: w.max(0) as u16,
@@ -1224,7 +1224,7 @@ impl TermView {
         let view = self.clone();
         drag.connect_drag_begin(move |g, x, y| {
             let state = g.current_event_state();
-            if !view.mouse_pressed(mt_core::MouseButton::Left, x, y, state) {
+            if !view.mouse_pressed(zetta_core::MouseButton::Left, x, y, state) {
                 view.press(x, y, state);
             }
         });
@@ -1233,8 +1233,8 @@ impl TermView {
             if let Some((sx, sy)) = g.start_point() {
                 if view.state.borrow().mouse_reporting.is_some() {
                     let state = g.current_event_state();
-                    let b = mt_core::MouseButton::Left;
-                    view.send_mouse(mt_core::MouseAction::Move, b, sx + dx, sy + dy, state);
+                    let b = zetta_core::MouseButton::Left;
+                    view.send_mouse(zetta_core::MouseAction::Move, b, sx + dx, sy + dy, state);
                 } else {
                     view.drag_to(sx + dx, sy + dy);
                 }
@@ -1244,7 +1244,7 @@ impl TermView {
         drag.connect_drag_end(move |g, dx, dy| {
             let (sx, sy) = g.start_point().unwrap_or_default();
             let state = g.current_event_state();
-            if !view.mouse_released(mt_core::MouseButton::Left, sx + dx, sy + dy, state) {
+            if !view.mouse_released(zetta_core::MouseButton::Left, sx + dx, sy + dy, state) {
                 view.release();
             }
         });
@@ -1255,11 +1255,21 @@ impl TermView {
         middle.set_button(gdk::BUTTON_MIDDLE);
         let view = self.clone();
         middle.connect_released(move |g, _, x, y| {
-            view.mouse_released(mt_core::MouseButton::Middle, x, y, g.current_event_state());
+            view.mouse_released(
+                zetta_core::MouseButton::Middle,
+                x,
+                y,
+                g.current_event_state(),
+            );
         });
         let view = self.clone();
         middle.connect_pressed(move |g, _, x, y| {
-            if view.mouse_pressed(mt_core::MouseButton::Middle, x, y, g.current_event_state()) {
+            if view.mouse_pressed(
+                zetta_core::MouseButton::Middle,
+                x,
+                y,
+                g.current_event_state(),
+            ) {
                 return;
             }
             if !conf().middle_click_paste {
@@ -1281,11 +1291,21 @@ impl TermView {
         right.set_button(gdk::BUTTON_SECONDARY);
         let view = self.clone();
         right.connect_released(move |g, _, x, y| {
-            view.mouse_released(mt_core::MouseButton::Right, x, y, g.current_event_state());
+            view.mouse_released(
+                zetta_core::MouseButton::Right,
+                x,
+                y,
+                g.current_event_state(),
+            );
         });
         let view = self.clone();
         right.connect_pressed(move |g, _, x, y| {
-            if view.mouse_pressed(mt_core::MouseButton::Right, x, y, g.current_event_state()) {
+            if view.mouse_pressed(
+                zetta_core::MouseButton::Right,
+                x,
+                y,
+                g.current_event_state(),
+            ) {
                 return;
             }
             if conf().right_click_paste {
@@ -1306,8 +1326,8 @@ impl TermView {
             let state = c.current_event_state();
             if view.state.borrow().mouse_reporting.is_none() && view.mouse_allowed(state) {
                 view.send_mouse(
-                    mt_core::MouseAction::Move,
-                    mt_core::MouseButton::None,
+                    zetta_core::MouseAction::Move,
+                    zetta_core::MouseButton::None,
                     x,
                     y,
                     state,
@@ -1340,13 +1360,13 @@ impl TermView {
             let n = whole.abs() as usize;
             if view.mouse_allowed(state) {
                 let b = if whole > 0.0 {
-                    mt_core::MouseButton::WheelUp
+                    zetta_core::MouseButton::WheelUp
                 } else {
-                    mt_core::MouseButton::WheelDown
+                    zetta_core::MouseButton::WheelDown
                 };
                 let (x, y) = view.state.borrow().pointer;
                 for _ in 0..n {
-                    view.send_mouse(mt_core::MouseAction::Press, b, x, y, state);
+                    view.send_mouse(zetta_core::MouseAction::Press, b, x, y, state);
                 }
                 return glib::Propagation::Stop;
             }
@@ -1482,7 +1502,7 @@ impl TermView {
         } else {
             sc.lines.clone()
         };
-        let colors = |cell: &mt_core::Cell, line: i32, col: u16| -> (u32, u32) {
+        let colors = |cell: &zetta_core::Cell, line: i32, col: u16| -> (u32, u32) {
             if marks.selection.is_some_and(|s| s.contains(line, col)) {
                 (cell.bg, cell.fg)
             } else if marks.current.is_some_and(|s| s.contains(line, col)) {

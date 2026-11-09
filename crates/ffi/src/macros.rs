@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use mt_core as core;
-use mt_ttl::{ConnectSpec, Host, Interp, Outcome};
+use zetta_core as core;
+use zetta_ttl::{ConnectSpec, Host, Interp, Outcome};
 
 use crate::Session;
 
@@ -112,7 +112,7 @@ pub struct MacroWindowPosition {
 pub struct MacroRun {
     stop: Arc<AtomicBool>,
     running: Arc<AtomicBool>,
-    control: Arc<mt_ttl::MacroControl>,
+    control: Arc<zetta_ttl::MacroControl>,
 }
 
 #[uniffi::export]
@@ -152,7 +152,7 @@ pub fn run_macro(
 ) -> Arc<MacroRun> {
     let stop = Arc::new(AtomicBool::new(false));
     let running = Arc::new(AtomicBool::new(true));
-    let control = Arc::new(mt_ttl::MacroControl::default());
+    let control = Arc::new(zetta_ttl::MacroControl::default());
     let run = Arc::new(MacroRun {
         stop: Arc::clone(&stop),
         running: Arc::clone(&running),
@@ -340,15 +340,17 @@ impl Host for HostAdapter {
     }
 
     fn local_addresses(&mut self) -> Option<Vec<std::net::IpAddr>> {
-        mt_net::local_addresses().ok()
+        zetta_net::local_addresses().ok()
     }
 
-    fn window_position(&mut self) -> Option<mt_ttl::WindowPosition> {
-        self.host.window_position().map(|p| mt_ttl::WindowPosition {
-            show: p.show,
-            window: (p.x, p.y, p.width, p.height),
-            client: (p.client_x, p.client_y, p.client_width, p.client_height),
-        })
+    fn window_position(&mut self) -> Option<zetta_ttl::WindowPosition> {
+        self.host
+            .window_position()
+            .map(|p| zetta_ttl::WindowPosition {
+                show: p.show,
+                window: (p.x, p.y, p.width, p.height),
+                client: (p.client_x, p.client_y, p.client_width, p.client_height),
+            })
     }
 
     fn restore_setup(&mut self, path: &Path) -> bool {

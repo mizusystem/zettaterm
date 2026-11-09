@@ -1,6 +1,6 @@
 [package]
-name = "multiterm-gtk"
-description = "Multi-Term の Linux 版（GTK4）"
+name = "zettaterm-gtk"
+description = "ZettaTerm の Linux 版（GTK4）"
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.94"
@@ -11,18 +11,18 @@ license = "MIT OR Apache-2.0"
 [workspace]
 
 [[bin]]
-name = "multiterm"
+name = "zettaterm"
 path = "src/main.rs"
 
 [dependencies]
 async-channel = "2"
 gtk = { package = "gtk4", version = "0.10", features = ["v4_12"] }
 pangocairo = "0.21"
-mt-core = { path = "../../crates/core" }
-mt-net = { path = "../../crates/net" }
-mt-serial = { path = "../../crates/serial" }
-mt-ttl = { path = "../../crates/ttl" }
-mt-xfer = { path = "../../crates/xfer" }
+zetta-core = { path = "../../crates/core" }
+zetta-net = { path = "../../crates/net" }
+zetta-serial = { path = "../../crates/serial" }
+zetta-ttl = { path = "../../crates/ttl" }
+zetta-xfer = { path = "../../crates/xfer" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"

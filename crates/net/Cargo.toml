@@ -1,5 +1,5 @@
 [package]
-name = "mt-net"
+name = "zetta-net"
 description = "SSH（russh、またはシステムの ssh を PTY 起動）、Telnet、生 TCP、ローカル PTY"
 version.workspace = true
 edition.workspace = true
@@ -8,11 +8,11 @@ publish.workspace = true
 license.workspace = true
 
 [lib]
-name = "mt_net"
+name = "zetta_net"
 
 [dependencies]
 if-addrs = "0.15.0"
-mt-core.workspace = true
+zetta-core.workspace = true
 portable-pty = "0.9.0"
 rand = { version = "0.10", features = ["thread_rng"] }
 russh = { version = "0.65.1", default-features = false, features = ["ring", "rsa", "flate2"] }

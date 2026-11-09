@@ -1,12 +1,12 @@
 //! シリアルポートを開いて、受信だけを一定時間表示する（何も送らない）。
 //!
-//!     cargo run -p mt-serial --example read-port -- /dev/cu.usbmodem1101 [秒]
+//!     cargo run -p zetta-serial --example read-port -- /dev/cu.usbmodem1101 [秒]
 
 use std::io::Read;
 use std::time::{Duration, Instant};
 
-use mt_core::{SerialSettings, Transport};
-use mt_serial::SerialTransport;
+use zetta_core::{SerialSettings, Transport};
+use zetta_serial::SerialTransport;
 
 fn main() -> std::io::Result<()> {
     let mut args = std::env::args().skip(1);

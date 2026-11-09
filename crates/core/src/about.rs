@@ -4,7 +4,7 @@
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// ビルドしたコミット（短い形）。分からなければ空
-pub const COMMIT: &str = env!("MT_GIT_COMMIT");
+pub const COMMIT: &str = env!("ZETTA_GIT_COMMIT");
 
 /// 参照したソフトウェアの表示（THIRD_PARTY.md。Tera Term の BSD-3-Clause の表示を含む）
 pub const NOTICES: &str = include_str!("../../../THIRD_PARTY.md");

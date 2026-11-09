@@ -15,15 +15,15 @@ use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use mt_core::{
-    AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
-    HostKeyStatus, KeyboardPrompt, PasswordChangeRequest, Transport, WindowSize,
-};
 use russh::client::{self, AuthResult, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 use russh::{ChannelMsg, MethodKind, MethodSet};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+use zetta_core::{
+    AuthMethod, AuthPrompter, AuthRequest, AuthResponse, HostKeyDecision, HostKeyInfo,
+    HostKeyStatus, KeyboardPrompt, PasswordChangeRequest, Transport, WindowSize,
+};
 
 use crate::ssh_config::{self, SshParams, StrictHostKeyChecking};
 

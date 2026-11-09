@@ -7,20 +7,22 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gtk::prelude::*;
-use mt_core::profile::{ConnectionProfile, HostHistory};
-use mt_core::{AuthPrompter, SendDelay, Transport, WindowSize};
-use mt_net::{IpVersion, LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport};
-use mt_serial::SerialTransport;
+use zetta_core::profile::{ConnectionProfile, HostHistory};
+use zetta_core::{AuthPrompter, SendDelay, Transport, WindowSize};
+use zetta_net::{
+    IpVersion, LocalPty, PtyCommand, SshOptions, SshTarget, SshTransport, TcpTransport,
+};
+use zetta_serial::SerialTransport;
 
 use crate::strings::{l, ssh, tt};
 
-/// 接続先の履歴（`~/.config/multiterm/hosts.toml`）。
+/// 接続先の履歴（`~/.config/zettaterm/hosts.toml`）。
 pub fn history_path() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("multiterm").join("hosts.toml")
+    base.join("zettaterm").join("hosts.toml")
 }
 
 pub fn load_history() -> HostHistory {
@@ -39,7 +41,7 @@ pub fn open_transport(
     profile: &ConnectionProfile,
     size: WindowSize,
     prompter: Arc<dyn AuthPrompter>,
-    files: &mut Option<mt_net::SshFiles>,
+    files: &mut Option<zetta_net::SshFiles>,
     warnings: &mut Vec<String>,
 ) -> io::Result<(Box<dyn Transport>, SendDelay)> {
     Ok(match profile {
@@ -86,7 +88,7 @@ pub fn open_transport(
                 port: *port,
                 user: user.clone(),
                 config_path: None,
-                forwards: mt_net::forward::parse_list(&ssh.forwards).0,
+                forwards: zetta_net::forward::parse_list(&ssh.forwards).0,
                 keepalive_secs: Some(ssh.keepalive),
                 forward_agent: ssh.forward_agent.then_some(true),
                 default_user: (!ssh.default_user.is_empty()).then(|| ssh.default_user.clone()),
@@ -101,7 +103,7 @@ pub fn open_transport(
         ConnectionProfile::Telnet { host, port } => {
             let t = TcpTransport::telnet(
                 host,
-                port.unwrap_or(mt_net::TELNET_PORT),
+                port.unwrap_or(zetta_net::TELNET_PORT),
                 IpVersion::Auto,
                 size,
             )?;
@@ -116,11 +118,11 @@ pub fn open_transport(
             SendDelay::default(),
         ),
         ConnectionProfile::Unix { path } => (
-            Box::new(mt_net::UnixSocketTransport::connect(path)?),
+            Box::new(zetta_net::UnixSocketTransport::connect(path)?),
             SendDelay::default(),
         ),
         ConnectionProfile::Replay { path } => (
-            Box::new(mt_core::replay::ReplayTransport::open(
+            Box::new(zetta_core::replay::ReplayTransport::open(
                 std::path::Path::new(path),
                 1.0,
             )?),
@@ -209,7 +211,7 @@ pub fn show_dialog(
     }
 
     let ports = gtk::ComboBoxText::with_entry();
-    for d in mt_serial::list_devices() {
+    for d in zetta_serial::list_devices() {
         ports.append_text(&d.path);
     }
     ports.set_active(Some(0));
@@ -325,16 +327,16 @@ pub fn show_dialog(
             poke.set_sensitive(false);
             status.set_text(&l("調べています…"));
             let settings = crate::settings::Settings::load().serial;
-            let options = mt_serial::DetectOptions {
+            let options = zetta_serial::DetectOptions {
                 poke: poke.is_active(),
                 wait: std::time::Duration::from_secs(wait.value() as u64),
                 ..Default::default()
             };
-            let (tx, rx) = async_channel::unbounded::<Result<u32, Result<Option<mt_serial::Detected>, String>>>();
+            let (tx, rx) = async_channel::unbounded::<Result<u32, Result<Option<zetta_serial::Detected>, String>>>();
             let thread_port = port.clone();
             std::thread::spawn(move || {
                 let progress = tx.clone();
-                let r = mt_serial::detect(&thread_port, &settings, &options, &stop, |b| {
+                let r = zetta_serial::detect(&thread_port, &settings, &options, &stop, |b| {
                     let _ = progress.send_blocking(Ok(b));
                 })
                 .map_err(|e| e.to_string());
@@ -527,7 +529,7 @@ pub fn show_dialog(
             let user = user.or((!typed_user.is_empty()).then_some(typed_user));
             // ホスト欄が /path か unix:path なら UNIX ドメインソケット（仮想マシンのシリアルなど）。
             // SSH の接続先が / で始まることは無いので、サービスの選択によらない
-            if let Some(path) = mt_core::profile::socket_path(&name) {
+            if let Some(path) = zetta_core::profile::socket_path(&name) {
                 ConnectionProfile::Unix { path }
             } else if svc_ssh.is_active() {
                 ConnectionProfile::Ssh {

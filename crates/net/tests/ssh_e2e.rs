@@ -2,7 +2,7 @@
 //! ssh_config の別名（HostName / Port / User / IdentityFile）経由でつながることを確かめる。
 //!
 //! sshd と ssh-keygen が必要なので既定では回さない：
-//!     cargo test -p mt-net --test ssh_e2e -- --ignored --nocapture
+//!     cargo test -p zetta-net --test ssh_e2e -- --ignored --nocapture
 
 #![cfg(unix)]
 
@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use mt_core::{Session, SessionListener, SessionOptions, SessionState, WindowSize};
-use mt_net::SshTarget;
+use zetta_core::{Session, SessionListener, SessionOptions, SessionState, WindowSize};
+use zetta_net::SshTarget;
 
 struct Quiet;
 impl SessionListener for Quiet {

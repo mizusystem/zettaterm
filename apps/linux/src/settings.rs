@@ -1,15 +1,15 @@
-//! 「設定」メニュー（端末・シリアルポート）と、その保存（`~/.config/multiterm/settings.toml`）。
+//! 「設定」メニュー（端末・シリアルポート）と、その保存（`~/.config/zettaterm/settings.toml`）。
 //! 端末の設定は Mac 版と同じく、シリアルとそれ以外で別々に持つ。
 
 use std::rc::Rc;
 
 use gtk::prelude::*;
-use mt_core::profile::ConnectionProfile;
-use mt_core::{
+use serde::{Deserialize, Serialize};
+use zetta_core::profile::ConnectionProfile;
+use zetta_core::{
     Charset, FlowControl, NewlineReceive, NewlineSend, Parity, SendDelay, SerialSettings, StopBits,
     TerminalSettings,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::dialogs::modal;
 use crate::strings::{l, tt};
@@ -25,7 +25,7 @@ pub struct KeyboardConf {
 
 impl Default for KeyboardConf {
     fn default() -> Self {
-        let k = mt_core::KeyboardOptions::default();
+        let k = zetta_core::KeyboardOptions::default();
         Self {
             backspace_sends_bs: k.backspace_sends_bs,
             delete_sends_del: k.delete_sends_del,
@@ -35,8 +35,8 @@ impl Default for KeyboardConf {
 }
 
 impl KeyboardConf {
-    pub fn core(self) -> mt_core::KeyboardOptions {
-        mt_core::KeyboardOptions {
+    pub fn core(self) -> zetta_core::KeyboardOptions {
+        zetta_core::KeyboardOptions {
             backspace_sends_bs: self.backspace_sends_bs,
             delete_sends_del: self.delete_sends_del,
             meta_sends_escape: self.meta_sends_escape,
@@ -108,7 +108,7 @@ pub struct SshConf {
 impl SshConf {
     /// 交渉の優先順位をコアに渡す。知らない名前を返す。
     pub fn apply_algorithms(&self) -> Vec<String> {
-        mt_net::algorithms::set(Some(mt_net::algorithms::AlgorithmPrefs {
+        zetta_net::algorithms::set(Some(zetta_net::algorithms::AlgorithmPrefs {
             kex: self.kex.clone(),
             cipher: self.cipher.clone(),
             mac: self.mac.clone(),
@@ -137,7 +137,7 @@ impl Default for SshConf {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Look {
-    /// 配色の名前（mt_core::themes の名前）。ANSI の 16 色はここから
+    /// 配色の名前（zetta_core::themes の名前）。ANSI の 16 色はここから
     pub theme: String,
     pub foreground: u32,
     pub background: u32,
@@ -152,7 +152,7 @@ pub struct Look {
     pub url_color: Option<u32>,
     /// スクロールバッファの行数（ScrollBuffSize。0 で持たない）
     pub scrollback: usize,
-    /// ウィンドウのタイトル（Title。空なら Multi-Term）
+    /// ウィンドウのタイトル（Title。空なら ZettaTerm）
     pub title: String,
     /// 背景画像（空なら無し）と、その濃さ（パーセント）
     pub background_image: String,
@@ -166,7 +166,7 @@ pub struct Look {
 
 impl Default for Look {
     fn default() -> Self {
-        let a = mt_core::Appearance::default();
+        let a = zetta_core::Appearance::default();
         Self {
             theme: "xterm".to_owned(),
             foreground: a.foreground,
@@ -179,7 +179,7 @@ impl Default for Look {
             char_spacing: 0,
             bold_color: None,
             url_color: None,
-            scrollback: mt_core::session::DEFAULT_SCROLLBACK,
+            scrollback: zetta_core::session::DEFAULT_SCROLLBACK,
             title: String::new(),
             background_image: String::new(),
             background_alpha: 25,
@@ -191,11 +191,11 @@ impl Default for Look {
 impl Look {
     /// 配色の ANSI の 16 色
     pub fn theme_ansi(theme: &str) -> [u32; 16] {
-        mt_core::themes()
+        zetta_core::themes()
             .into_iter()
             .find(|(n, _)| *n == theme)
             .map(|(_, a)| a.ansi)
-            .unwrap_or(mt_core::Appearance::default().ansi)
+            .unwrap_or(zetta_core::Appearance::default().ansi)
     }
 
     /// 今の ANSI の 16 色（個別に変えていればそちら）
@@ -204,17 +204,17 @@ impl Look {
             .unwrap_or_else(|_| Self::theme_ansi(&self.theme))
     }
 
-    pub fn appearance(&self) -> mt_core::Appearance {
+    pub fn appearance(&self) -> zetta_core::Appearance {
         let ansi = self.palette();
-        mt_core::Appearance {
+        zetta_core::Appearance {
             foreground: self.foreground,
             background: self.background,
             cursor: self.cursor,
             ansi,
             cursor_shape: match self.cursor_shape.as_str() {
-                "underline" => mt_core::CursorShape::Underline,
-                "beam" => mt_core::CursorShape::Beam,
-                _ => mt_core::CursorShape::Block,
+                "underline" => zetta_core::CursorShape::Underline,
+                "beam" => zetta_core::CursorShape::Beam,
+                _ => zetta_core::CursorShape::Block,
             },
             cursor_blink: self.cursor_blink,
         }
@@ -253,7 +253,7 @@ impl Default for LogConf {
     fn default() -> Self {
         Self {
             folder: gtk::glib::home_dir().to_string_lossy().into_owned(),
-            name: mt_core::DEFAULT_LOG_NAME.to_owned(),
+            name: zetta_core::DEFAULT_LOG_NAME.to_owned(),
             auto_start: false,
             append: true,
             binary: false,
@@ -284,7 +284,7 @@ impl LogConf {
             Some(ConnectionProfile::Serial { port, .. }) => (port.clone(), port.clone()),
             _ => ("localhost".to_owned(), "shell".to_owned()),
         };
-        let vars = mt_core::LogNameVars {
+        let vars = zetta_core::LogNameVars {
             host,
             port,
             user: String::new(),
@@ -293,21 +293,21 @@ impl LogConf {
             Some(rest) => gtk::glib::home_dir().join(rest),
             None => std::path::PathBuf::from(&self.folder),
         };
-        folder.join(mt_core::expand_log_name_now(&self.name, &vars))
+        folder.join(zetta_core::expand_log_name_now(&self.name, &vars))
     }
 
     /// ダイアログで選んだ書き込みモードなどで、`path` に書く設定。
-    pub fn options(&self, path: std::path::PathBuf) -> mt_core::LogOptions {
-        let mut o = mt_core::LogOptions::new(path);
+    pub fn options(&self, path: std::path::PathBuf) -> zetta_core::LogOptions {
+        let mut o = zetta_core::LogOptions::new(path);
         o.append = self.append;
         o.format = if self.ttyrec {
-            mt_core::LogFormat::Ttyrec
+            zetta_core::LogFormat::Ttyrec
         } else if self.binary {
-            mt_core::LogFormat::Binary
+            zetta_core::LogFormat::Binary
         } else {
-            mt_core::LogFormat::Text
+            zetta_core::LogFormat::Text
         };
-        use mt_core::TimestampKind as K;
+        use zetta_core::TimestampKind as K;
         let kind = match self.timestamp_kind.as_str() {
             "utc" => K::Utc,
             "elapsed-log" => K::ElapsedLogging,
@@ -316,7 +316,7 @@ impl LogConf {
             _ if self.utc => K::Utc,
             _ => K::Local,
         };
-        o.timestamp = (self.timestamp && o.format == mt_core::LogFormat::Text).then_some(kind);
+        o.timestamp = (self.timestamp && o.format == zetta_core::LogFormat::Text).then_some(kind);
         o.include_screen = self.include_screen;
         o.bom = self.bom;
         o.rotate_size = (self.rotate_kib > 0).then_some(self.rotate_kib * 1024);
@@ -421,7 +421,7 @@ pub fn tcpip_dialog(parent: &gtk::Window) {
         s.term_type = term.text().trim().to_owned();
         s.telnet_keepalive = keepalive.value() as u32;
         s.save();
-        mt_net::set_term_type(Some(s.term_type.clone()));
+        zetta_net::set_term_type(Some(s.term_type.clone()));
     });
     win.present();
 }
@@ -456,20 +456,20 @@ impl ProxyConf {
     /// コアに渡す（起動時と、設定を変えたとき）。
     pub fn apply(&self) {
         let kind = match self.kind.as_str() {
-            "http" => mt_net::ProxyKind::Http,
-            "socks4" => mt_net::ProxyKind::Socks4,
-            "socks5" => mt_net::ProxyKind::Socks5,
+            "http" => zetta_net::ProxyKind::Http,
+            "socks4" => zetta_net::ProxyKind::Socks4,
+            "socks5" => zetta_net::ProxyKind::Socks5,
             _ => {
-                mt_net::proxy::set(None);
+                zetta_net::proxy::set(None);
                 return;
             }
         };
         if self.host.trim().is_empty() {
-            mt_net::proxy::set(None);
+            zetta_net::proxy::set(None);
             return;
         }
         let password = PROXY_PASSWORD.with(|p| p.borrow().clone());
-        mt_net::proxy::set(Some(mt_net::Proxy {
+        zetta_net::proxy::set(Some(zetta_net::Proxy {
             kind,
             host: self.host.trim().to_owned(),
             port: self.port,
@@ -578,7 +578,7 @@ impl Default for OtherConf {
             title_change: "overwrite".into(),
             remote_clear_scrollback: false,
             remote_cursor_style: false,
-            paste_delay: mt_core::session::DEFAULT_PASTE_DELAY_MS,
+            paste_delay: zetta_core::session::DEFAULT_PASTE_DELAY_MS,
             alpha_active: 255,
             alpha_inactive: 255,
             auto_reconnect: true,
@@ -605,8 +605,8 @@ impl OtherConf {
     }
 
     /// 接続に効かせる（制御シーケンスと貼り付けの遅延）。
-    pub fn apply(&self, session: &mt_core::Session) {
-        session.set_remote_control(mt_core::RemoteControl {
+    pub fn apply(&self, session: &zetta_core::Session) {
+        session.set_remote_control(zetta_core::RemoteControl {
             clear_scrollback: self.remote_clear_scrollback,
             cursor_style: self.remote_cursor_style,
         });
@@ -845,9 +845,9 @@ impl Default for CopyPaste {
             right_click_paste: false,
             middle_click_paste: true,
             confirm_paste: true,
-            dangerous_words: mt_core::default_dangerous_words(),
+            dangerous_words: zetta_core::default_dangerous_words(),
             trim_trailing_newline: false,
-            delimiters: mt_core::DEFAULT_DELIMITERS.to_owned(),
+            delimiters: zetta_core::DEFAULT_DELIMITERS.to_owned(),
             clickable_url: true,
             remote_clipboard_write: false,
             notify_clipboard: true,
@@ -872,9 +872,9 @@ pub struct TermConf {
 }
 
 impl TermConf {
-    pub fn jis(self) -> mt_core::JisOptions {
+    pub fn jis(self) -> zetta_core::JisOptions {
         let pick = |c: char, ok: &[char]| if ok.contains(&c) { c as u8 } else { b'B' };
-        mt_core::JisOptions {
+        zetta_core::JisOptions {
             kanji_in: pick(self.kanji_in, &['B', '@']),
             kanji_out: pick(self.kanji_out, &['B', 'J', 'H']),
             kana_7bit: self.kana_7bit,
@@ -1142,15 +1142,15 @@ pub fn terminal_dialog(
     answerback.set_text(&Settings::load().answerback);
     grid.attach(&label(tt("DLG_TERM_ANSBACK", "応答:")), 0, 6, 1, 1);
     grid.attach(&answerback, 1, 6, 1, 1);
-    let ids: Vec<String> = mt_core::TerminalId::ALL
+    let ids: Vec<String> = zetta_core::TerminalId::ALL
         .iter()
         .map(|t| t.name().to_owned())
         .collect();
     let saved_id =
-        mt_core::TerminalId::from_name(&Settings::load().terminal_id).unwrap_or_default();
+        zetta_core::TerminalId::from_name(&Settings::load().terminal_id).unwrap_or_default();
     let term_id = dropdown(
         &ids,
-        mt_core::TerminalId::ALL
+        zetta_core::TerminalId::ALL
             .iter()
             .position(|t| *t == saved_id)
             .unwrap_or(0),
@@ -1203,8 +1203,8 @@ pub fn terminal_dialog(
         let mut saved = Settings::load();
         saved.answerback = answerback.text().to_string();
         saved.ambiguous_wide = ambiguous.is_active();
-        saved.terminal_id = mt_core::TerminalId::ALL
-            [(term_id.selected() as usize).min(mt_core::TerminalId::ALL.len() - 1)]
+        saved.terminal_id = zetta_core::TerminalId::ALL
+            [(term_id.selected() as usize).min(zetta_core::TerminalId::ALL.len() - 1)]
         .name()
         .into();
         let size = (cols.value() as u16, rows.value() as u16);
@@ -1249,7 +1249,7 @@ pub fn serial_dialog(
         .column_spacing(10)
         .build();
 
-    let mut ports: Vec<String> = mt_serial::list_devices()
+    let mut ports: Vec<String> = zetta_serial::list_devices()
         .into_iter()
         .map(|d| d.path)
         .collect();
@@ -1499,7 +1499,7 @@ pub fn copy_paste_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     let w = words.clone();
     reset.connect_clicked(move |_| {
         w.buffer()
-            .set_text(&mt_core::default_dangerous_words().join("\n"))
+            .set_text(&zetta_core::default_dangerous_words().join("\n"))
     });
     content.append(&reset);
 
@@ -1638,7 +1638,7 @@ pub fn log_settings_dialog(parent: &gtk::Window, profile: Option<ConnectionProfi
         s.log.folder = folder.text().to_string();
         let n = name.text().trim().to_owned();
         s.log.name = if n.is_empty() {
-            mt_core::DEFAULT_LOG_NAME.to_owned()
+            zetta_core::DEFAULT_LOG_NAME.to_owned()
         } else {
             n
         };
@@ -1677,7 +1677,7 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
         .row_spacing(8)
         .column_spacing(10)
         .build();
-    let names: Vec<String> = mt_core::themes()
+    let names: Vec<String> = zetta_core::themes()
         .iter()
         .map(|(n, _)| (*n).to_owned())
         .collect();
@@ -1723,7 +1723,7 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     {
         let (fg, bg, cur, ansi) = (fg.clone(), bg.clone(), cur.clone(), ansi.clone());
         theme.connect_selected_notify(move |d| {
-            if let Some((_, a)) = mt_core::themes().into_iter().nth(d.selected() as usize) {
+            if let Some((_, a)) = zetta_core::themes().into_iter().nth(d.selected() as usize) {
                 fg.set_rgba(&rgba(a.foreground));
                 bg.set_rgba(&rgba(a.background));
                 cur.set_rgba(&rgba(a.cursor));
@@ -1791,7 +1791,7 @@ pub fn window_dialog(parent: &gtk::Window, applied: impl Fn() + 'static) {
     );
     grid.attach(&scroll_row, 1, 9, 1, 1);
     let title = gtk::Entry::new();
-    title.set_placeholder_text(Some("Multi-Term"));
+    title.set_placeholder_text(Some("ZettaTerm"));
     title.set_text(&current.title);
     grid.attach(&label(tt("DLG_WIN_TITLELABEL", "タイトル:")), 0, 10, 1, 1);
     grid.attach(&title, 1, 10, 1, 1);
@@ -1950,7 +1950,7 @@ pub fn ssh_dialog(parent: &gtk::Window) {
     auth.attach(&key, 1, 1, 1, 1);
     content.append(&auth);
     // 交渉の優先順位。書いた名前が前に来て、書かなかったものは既定の順で後ろに並ぶ
-    let defaults = mt_net::algorithms::defaults();
+    let defaults = zetta_net::algorithms::defaults();
     let algo = |now: &[String], def: &[String]| {
         let e = gtk::Entry::new();
         e.set_text(&now.join(", "));
@@ -2032,7 +2032,7 @@ pub fn ssh_dialog(parent: &gtk::Window) {
             .filter(|l| !l.is_empty())
             .map(str::to_owned)
             .collect();
-        let (_, bad) = mt_net::forward::parse_list(&lines);
+        let (_, bad) = zetta_net::forward::parse_list(&lines);
         if !bad.is_empty() {
             error.set_text(&crate::strings::lf(
                 "読めない行があります: {}",
@@ -2082,7 +2082,7 @@ pub fn ssh_dialog(parent: &gtk::Window) {
 }
 
 /// TERATERM.INI から読めた設定を、この版の設定に移す。足した接続先の数を返す。
-pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
+pub fn apply_ini(ini: &zetta_core::ini::IniSettings) -> usize {
     let mut s = Settings::load();
     if let Some(ser) = ini.serial {
         s.serial = ser;
@@ -2184,7 +2184,7 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     }
     if let Some(t) = &ini.term_type {
         s.term_type = t.clone();
-        mt_net::set_term_type(Some(t.clone()));
+        zetta_net::set_term_type(Some(t.clone()));
     }
     if let Some(v) = ini.ambiguous_wide {
         s.ambiguous_wide = v;
@@ -2246,7 +2246,10 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
     s.save();
     let mut n = 0;
     for h in ini.hosts.iter().rev() {
-        if let Some(spec) = mt_ttl::parse_command_line(h).ok().and_then(|l| l.connect) {
+        if let Some(spec) = zetta_ttl::parse_command_line(h)
+            .ok()
+            .and_then(|l| l.connect)
+        {
             let profile = crate::window::TermWindow::macro_connect_profile(spec);
             // Windows の COMn はこの OS では開けない
             if matches!(&profile, ConnectionProfile::Serial { port, .. } if port.to_ascii_uppercase().starts_with("COM"))
@@ -2263,7 +2266,7 @@ pub fn apply_ini(ini: &mt_core::ini::IniSettings) -> usize {
 /// 「設定 > SSH 鍵生成...」（TTSSH の鍵生成）。OpenSSH の形式で書く。
 pub fn keygen_dialog(parent: &gtk::Window) {
     use crate::strings::ssh;
-    use mt_net::keygen::KeyKind;
+    use zetta_net::keygen::KeyKind;
     let (win, content, row) = modal(parent, &ssh("DLG_KEYGEN_TITLE", "鍵生成"));
     let kinds = [
         (KeyKind::Ed25519, "Ed25519"),
@@ -2364,8 +2367,8 @@ pub fn keygen_dialog(parent: &gtk::Window) {
         let (tx, rx) = async_channel::bounded(1);
         // RSA は数秒かかるので別スレッドで
         std::thread::spawn(move || {
-            let r = mt_net::keygen::generate(k, &c, &p).and_then(|key| {
-                let pub_path = mt_net::keygen::save(&key, std::path::Path::new(&file))?;
+            let r = zetta_net::keygen::generate(k, &c, &p).and_then(|key| {
+                let pub_path = zetta_net::keygen::save(&key, std::path::Path::new(&file))?;
                 Ok((key, pub_path))
             });
             let _ = tx.send_blocking(r.map_err(|e| e.to_string()));
@@ -2434,7 +2437,7 @@ pub fn export_ini(path: &std::path::Path) -> std::io::Result<()> {
     let look = &s.look;
     let font = gtk::pango::FontDescription::from_string(&look.font);
     let px = (f64::from(font.size()) / f64::from(gtk::pango::SCALE) * 96.0 / 72.0).round() as u32;
-    let ini = mt_core::ini::IniSettings {
+    let ini = zetta_core::ini::IniSettings {
         com_port: s.serial_port.clone(),
         serial: Some(s.serial),
         delay: Some(s.delay),
@@ -2444,7 +2447,7 @@ pub fn export_ini(path: &std::path::Path) -> std::io::Result<()> {
         charset_receive: Some(t.charset_receive),
         charset_send: Some(t.charset_send),
         scroll_buffer: Some(look.scrollback.min(u32::MAX as usize) as u32),
-        terminal_id: mt_core::TerminalId::from_name(&s.terminal_id),
+        terminal_id: zetta_core::TerminalId::from_name(&s.terminal_id),
         terminal_size: Some(s.terminal_size),
         clipboard_write: Some(s.copy_paste.remote_clipboard_write),
         notify_clipboard: Some(s.copy_paste.notify_clipboard),
@@ -2500,5 +2503,5 @@ pub fn export_ini(path: &std::path::Path) -> std::io::Result<()> {
             .filter_map(host_line)
             .collect(),
     };
-    std::fs::write(path, mt_core::ini::write_ini(&ini))
+    std::fs::write(path, zetta_core::ini::write_ini(&ini))
 }

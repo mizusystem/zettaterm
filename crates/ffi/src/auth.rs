@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use mt_core as core;
+use zetta_core as core;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum HostKeyStatus {
@@ -262,7 +262,7 @@ impl From<core::AuthResponse> for AuthResponse {
     }
 }
 
-/// マクロ・起動引数の `/auth=` `/keyfile=` `/passwd=`（TTSSH の自動ログイン。`mt_core::LoginPreset`）。
+/// マクロ・起動引数の `/auth=` `/keyfile=` `/passwd=`（TTSSH の自動ログイン。`zetta_core::LoginPreset`）。
 #[derive(Clone, Debug, Default, PartialEq, Eq, uniffi::Record)]
 pub struct LoginPreset {
     pub auth: Option<String>,

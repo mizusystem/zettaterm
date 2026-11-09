@@ -12,7 +12,7 @@
 
 - 順序は第 7 章の Step 1 → 4、その後に残りの章
 - `[x]` は Mac 版と Linux（GTK）版の両方で実装済み。片方だけのものは項目の後ろに注記する。`[-]` は作らないと決めたもの
-- 選択・検索・URL・貼り付けの確認のような判断はコア（`mt_vt::select`、`mt_core::paste`）に置き、両 UI はそれを呼ぶだけにする
+- 選択・検索・URL・貼り付けの確認のような判断はコア（`zetta_vt::select`、`zetta_core::paste`）に置き、両 UI はそれを呼ぶだけにする
 - 次は作らない（理由つき、2026-11-08 に確定）：TEK ウィンドウ、Quick-VAN / B-Plus（本家には残っているが、使われておらず相手もいない）、Windows の名前付きパイプ（Windows 版を作らないため）
 - それ以外は実装を目指す。alacritty_terminal の制約がある曖昧な幅、macOS の mark / space パリティも、改造や代わりの処理で入れる
 
@@ -28,9 +28,9 @@
 
 1. [メインメニュー構成の未実装項目](#1-メインメニュー構成の未実装項目)
 2. [ダイアログ・設定項目の不足](#2-ダイアログ設定項目の不足)
-3. [通信・プロトコル層の不足機能 (`mt-net` / `mt-serial`)](#3-通信プロトコル層の不足機能-mt-net--mt-serial)
-4. [端末画面・UI 操作の不足機能 (`mt-vt` / `TerminalView`)](#4-端末画面ui-操作の不足機能-mt-vt--terminalview)
-5. [TTL マクロ (`mt-ttl`) の未実装コマンド一覧](#5-ttl-マクロ-mt-ttl-の未実装コマンド一覧)
+3. [通信・プロトコル層の不足機能 (`zetta-net` / `zetta-serial`)](#3-通信プロトコル層の不足機能-zetta-net--zetta-serial)
+4. [端末画面・UI 操作の不足機能 (`zetta-vt` / `TerminalView`)](#4-端末画面ui-操作の不足機能-zetta-vt--terminalview)
+5. [TTL マクロ (`zetta-ttl`) の未実装コマンド一覧](#5-ttl-マクロ-zetta-ttl-の未実装コマンド一覧)
 6. [設定ファイル互換・CLI 引数・標準プラグイン (TTX) 相当機能](#6-設定ファイル互換cli-引数標準プラグイン-ttx-相当機能)
 7. [推奨実装優先度（フェーズ別チェックリスト）](#7-推奨実装優先度フェーズ別チェックリスト)
 
@@ -38,7 +38,7 @@
 
 ## 1. メインメニュー構成の未実装項目
 
-現在 `apps/macos/Sources/MultiTerm/MultiTermApp.swift` および `apps/linux/src/window.rs` には、「編集」「ウィンドウ」「ヘルプ」メニュー自体、および既存メニュー内の以下の項目が未実装です。
+現在 `apps/macos/Sources/ZettaTerm/ZettaTermApp.swift` および `apps/linux/src/window.rs` には、「編集」「ウィンドウ」「ヘルプ」メニュー自体、および既存メニュー内の以下の項目が未実装です。
 
 ### 1-1. 「ファイル (File)」メニュー (`MENU_FILE`)
 - [x] **ログを中断 (`MENU_FILE_PAUSELOG`)**: ログ記録の一時停止・再開トグル
@@ -155,7 +155,7 @@
 
 ---
 
-## 3. 通信・プロトコル層の不足機能 (`mt-net` / `mt-serial`)
+## 3. 通信・プロトコル層の不足機能 (`zetta-net` / `zetta-serial`)
 
 ### 3-1. SSH (`crates/net/src/ssh_client.rs`)
 - [x] **ポートフォワーディング（トンネリング）の実装**（※X11 転送は未実装）:
@@ -165,7 +165,7 @@
   - X11 フォワーディング
 - [x] **SSH エージェント転送 (`auth-agent-req@openssh.com`)** と要求時確認通知（※macOS / Linux のみ。要求時の確認・通知は未実装）
 - [x] **SSH キープアライブ (HeartBeat)** タスク（無通信時に指定秒間隔で `keepalive@openssh.com` または ignore パケットを送信）
-- [x] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**（russh の写しを `vendor/russh` に置いて、メッセージ 60 を扱う変更を当てた。サーバーが求めたら旧・新・確認の 3 欄のダイアログを出し、新と確認が違えば「新パスワードが一致しません.」。新しいパスワードが通らずにまた求められたら、もう一度尋ねる。`mt` は端末で尋ねる。OpenSSH の期限切れパスワードはキーボードインタラクティブ（PAM）で来るので、そちらは前から変更できる）
+- [x] **SSH パスワード変更対応 (`SSH_MSG_USERAUTH_PASSWD_CHANGEREQ` / `DLG_PASSCHG_TITLE`)**（russh の写しを `vendor/russh` に置いて、メッセージ 60 を扱う変更を当てた。サーバーが求めたら旧・新・確認の 3 欄のダイアログを出し、新と確認が違えば「新パスワードが一致しません.」。新しいパスワードが通らずにまた求められたら、もう一度尋ねる。`zetta` は端末で尋ねる。OpenSSH の期限切れパスワードはキーボードインタラクティブ（PAM）で来るので、そちらは前から変更できる）
 - [x] **プロキシ経由の接続 (TTProxy 相当)**: HTTP CONNECT / SOCKS4 / SOCKS5 プロキシ設定（※「設定 > プロキシ...」。Telnet・TCP・内蔵 SSH。パスワードは保存しない。TTProxy の URL 表記・ログ・プロンプト文字列は未対応）
 
 ### 3-2. Telnet / TCP (`crates/net/src/telnet.rs`)
@@ -182,7 +182,7 @@
 
 ---
 
-## 4. 端末画面・UI 操作の不足機能 (`mt-vt` / `TerminalView`)
+## 4. 端末画面・UI 操作の不足機能 (`zetta-vt` / `TerminalView`)
 
 - [x] **スクロールバック・画面内テキスト検索（Find バー `Cmd+F` / `Ctrl+Shift+F`）**:
   - キーワード検索、正規表現オプション、大文字小文字区別、一致箇所のハイライトと前後移動
@@ -201,7 +201,7 @@
 
 ---
 
-## 5. TTL マクロ (`mt-ttl`) の未実装コマンド一覧
+## 5. TTL マクロ (`zetta-ttl`) の未実装コマンド一覧
 
 本家の約 230 予約語のうち、現在 80 コマンドが実装済み（`docs/ttl.md` 参照）。未実装の主要コマンドは以下の通りです：
 
@@ -244,7 +244,7 @@
 - [x] `getpassword` / `setpassword` / `ispassword` / `delpassword`: パスワードファイルへの暗号化保存と取得（マクロ内に平文パスワードを書かないための定番機能）
 - [x] `clipb2var` / `var2clipb`: クリップボードと変数の相互コピー
 - [x] `exec`: 外部コマンド（ローカルの `ping` やスクリプト等）を起動する
-- [x] `setexitcode`: マクロ終了時のプロセスの終了コードを設定する（CLI `mt run` で特に有用）
+- [x] `setexitcode`: マクロ終了時のプロセスの終了コードを設定する（CLI `zetta run` で特に有用）
 - [x] `getver`: Tera Term バージョン文字列の取得とバージョン比較
 - [x] `gethostname` / `getipv4addr` / `getipv6addr`: 接続先ホスト名やローカル IP アドレス一覧の取得
 - [x] `getttdir` / `getspecialfolder`: インストールフォルダや OS 特殊フォルダ（Desktop, Documents 等）のパス取得
@@ -317,7 +317,7 @@
 ### 8-1. 完了が確認された主要領域
 1. **UI・日常操作（Step 1 & 第 1, 2, 4 章）**
    - 選択時自動コピー (`AutoTextCopy`)、右クリック貼り付け、Option/Alt 矩形選択、折り返し行連結コピー、単語区切り文字 (`DelimList`)
-   - 複数行ペースト確認ダイアログ (`ConfirmChangePaste`) と危険コマンド赤字警告 (`mt_core::paste`)
+   - 複数行ペースト確認ダイアログ (`ConfirmChangePaste`) と危険コマンド赤字警告 (`zetta_core::paste`)
    - 「編集」メニュー一式（コピー、テーブルコピー TSV、貼り付け `<CR>`、画面クリア、バッファクリア、選択解除、画面選択、全選択）
    - 端末内検索バー（正規表現・大小文字区別・前後移動・ハイライト）、縦スクロールバー、クリッカブル URL
    - 「コントロール」メニュー（端末リセット、リモートタイトルリセット、Telnet `IAC AYT` 送信）
@@ -331,7 +331,7 @@
    - 予約語数が当初の 80 コマンドから **127 コマンド**へ大幅拡充（`wait4all`, `waitn`, `setbaud`, `setflowctrl`, `getmodemstatus`, `scpsend`, `scprecv`, `sendbroadcast` 系, `logwrite` / `logpause` / `logstart` / `loginfo`, `listbox`, `filenamebox`, `dirnamebox`, `clearscreen`, `setecho`, フォルダ・ファイル・シーク・ロック操作一式, `makepath` / `basename` / `dirname`, `getpassword` パスワードファイル一式（難読化。暗号化ではない）, `clipb2var` / `var2clipb`, `exec`, `setexitcode`, `getver`, `gethostname`, `getttdir`, `getspecialfolder`, `uptime`, `crc16` / `crc32` / `checksum*` 等）
 4. **TTSSH・設定ファイル・CLI 引数（Step 4 & 第 3, 6 章）**
    - SSH ポートフォワーディング (`-L`, `-R`, `-D`)、SSH エージェント転送 (`auth-agent-req@openssh.com`)、SSH HeartBeat、SSH 鍵生成 GUI（Ed25519 / ECDSA / RSA）
-   - `TERATERM.INI` インポータ (`mt_core::ini`) と `ttermpro.exe` 互換 CLI 引数パーサ (`mt_ttl::parse_args`)
+   - `TERATERM.INI` インポータ (`zetta_core::ini`) と `ttermpro.exe` 互換 CLI 引数パーサ (`zetta_ttl::parse_args`)
 
 ### 8-2. 現時点での残存未実装項目（今後の拡張候補）
 優先度の高い主要機能は出揃っており、残りは以下の補助的・詳細な項目のみとなっています。

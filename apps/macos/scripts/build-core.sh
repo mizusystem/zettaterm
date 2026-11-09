@@ -5,9 +5,9 @@
 #   PROFILE=debug apps/macos/scripts/build-core.sh
 #
 # 出力
-#   apps/macos/build/MTCoreFFI.xcframework      静的ライブラリ + C ヘッダ + modulemap
-#   apps/macos/Sources/MTCore/Generated/        UniFFI が生成した Swift
-#   apps/macos/Sources/MultiTerm/Resources/     spec/ から写した Tera Term の文言
+#   apps/macos/build/ZettaCoreFFI.xcframework      静的ライブラリ + C ヘッダ + modulemap
+#   apps/macos/Sources/ZettaCore/Generated/        UniFFI が生成した Swift
+#   apps/macos/Sources/ZettaTerm/Resources/     spec/ から写した Tera Term の文言
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -23,21 +23,21 @@ else PROFILE_FLAG=; PROFILE_DIR=debug; fi
 
 for t in "${TARGETS[@]}"; do
   rustup target add "$t" >/dev/null 2>&1 || true
-  cargo build -p mt-ffi $PROFILE_FLAG --target "$t"
+  cargo build -p zetta-ffi $PROFILE_FLAG --target "$t"
 done
-LIB="$ROOT/target/${TARGETS[0]}/$PROFILE_DIR/libmt_ffi.a"
+LIB="$ROOT/target/${TARGETS[0]}/$PROFILE_DIR/libzetta_ffi.a"
 
 GEN="$APP/build/generated"
 rm -rf "$GEN"
 mkdir -p "$GEN/include"
-cargo run -q -p mt-ffi --features bindgen --bin uniffi-bindgen-swift -- \
+cargo run -q -p zetta-ffi --features bindgen --bin uniffi-bindgen-swift -- \
   --swift-sources --headers --modulemap \
-  --module-name mt_ffiFFI --modulemap-filename module.modulemap \
+  --module-name zetta_ffiFFI --modulemap-filename module.modulemap \
   "$LIB" "$GEN"
 mv "$GEN"/*.h "$GEN/module.modulemap" "$GEN/include/"
 
 # XCFramework は xcodebuild を使わず直接組み立てる（Command Line Tools だけでもビルドできるように）
-XCF="$APP/build/MTCoreFFI.xcframework"
+XCF="$APP/build/ZettaCoreFFI.xcframework"
 SLICE="macos-arm64"
 rm -rf "$XCF"
 mkdir -p "$XCF/$SLICE/Headers"
@@ -56,7 +56,7 @@ cat > "$XCF/Info.plist" <<PLIST
 			<key>LibraryIdentifier</key>
 			<string>$SLICE</string>
 			<key>LibraryPath</key>
-			<string>libmt_ffi.a</string>
+			<string>libzetta_ffi.a</string>
 			<key>SupportedArchitectures</key>
 			<array>
 				<string>arm64</string>
@@ -73,11 +73,11 @@ cat > "$XCF/Info.plist" <<PLIST
 </plist>
 PLIST
 
-mkdir -p "$APP/Sources/MTCore/Generated"
-cp "$GEN"/*.swift "$APP/Sources/MTCore/Generated/"
+mkdir -p "$APP/Sources/ZettaCore/Generated"
+cp "$GEN"/*.swift "$APP/Sources/ZettaCore/Generated/"
 # Tera Term の文言（spec/ は tools/extract-tt-ui の生成物）
-RES="$APP/Sources/MultiTerm/Resources/spec"
-rm -rf "$APP/Sources/MultiTerm/Resources"
+RES="$APP/Sources/ZettaTerm/Resources/spec"
+rm -rf "$APP/Sources/ZettaTerm/Resources"
 mkdir -p "$RES"
 # 全言語を入れておく（表示言語は Info.plist の CFBundleLocalizations と OS の設定で決まる）
 cp "$ROOT"/spec/lang/*.json "$ROOT"/spec/*-options.json "$RES/"

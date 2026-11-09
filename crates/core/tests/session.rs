@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use mt_core::mock::MockTransport;
-use mt_core::{
+use zetta_core::mock::MockTransport;
+use zetta_core::{
     Key, LogOptions, Modifiers, SendDelay, SerialSettings, Session, SessionListener,
     SessionOptions, SessionState, WindowSize,
 };
@@ -33,7 +33,7 @@ impl SessionListener for Recorder {
 const WAIT: Duration = Duration::from_secs(2);
 
 /// `want` の長さになるまで受け取ってつなげる。
-fn recv_until(remote: &mt_core::mock::MockRemote, want: &[u8]) -> Vec<u8> {
+fn recv_until(remote: &zetta_core::mock::MockRemote, want: &[u8]) -> Vec<u8> {
     let mut got = Vec::new();
     let start = Instant::now();
     while got.len() < want.len() && start.elapsed() < WAIT {
@@ -305,7 +305,7 @@ fn log_records_received_text() {
 
 #[test]
 fn lf_only_device_lines_start_at_column_zero_in_lf_mode() {
-    use mt_core::{NewlineReceive, TerminalSettings};
+    use zetta_core::{NewlineReceive, TerminalSettings};
     let (transport, remote) = MockTransport::pair();
     let rec = Arc::new(Recorder::default());
     let session = open(transport, &rec);
@@ -321,7 +321,7 @@ fn lf_only_device_lines_start_at_column_zero_in_lf_mode() {
 
 #[test]
 fn enter_uses_send_newline_and_local_echo_shows_input() {
-    use mt_core::{NewlineSend, TerminalSettings};
+    use zetta_core::{NewlineSend, TerminalSettings};
     let (transport, remote) = MockTransport::pair();
     let rec = Arc::new(Recorder::default());
     let session = open(transport, &rec);
@@ -345,7 +345,7 @@ fn enter_uses_send_newline_and_local_echo_shows_input() {
 
 #[test]
 fn shift_jis_is_converted_both_ways() {
-    use mt_core::{Charset, TerminalSettings};
+    use zetta_core::{Charset, TerminalSettings};
     let (transport, remote) = MockTransport::pair();
     let rec = Arc::new(Recorder::default());
     let session = open(transport, &rec);
@@ -369,7 +369,7 @@ struct EchoDivert {
     ticks: Arc<AtomicUsize>,
 }
 
-impl mt_core::ByteDivert for EchoDivert {
+impl zetta_core::ByteDivert for EchoDivert {
     fn start(&mut self) -> Vec<u8> {
         b"START".to_vec()
     }
@@ -452,13 +452,13 @@ fn cancel_transfer_sends_the_cancel_sequence() {
 #[test]
 fn zmodem_start_is_detected() {
     #[derive(Default)]
-    struct Requests(Mutex<Vec<mt_core::TransferRequest>>);
+    struct Requests(Mutex<Vec<zetta_core::TransferRequest>>);
     impl SessionListener for Requests {
         fn on_damage(&self) {}
         fn on_state(&self, _: SessionState) {}
         fn on_bell(&self) {}
         fn on_title(&self, _: String) {}
-        fn on_transfer_request(&self, r: mt_core::TransferRequest) {
+        fn on_transfer_request(&self, r: zetta_core::TransferRequest) {
             self.0.lock().unwrap().push(r);
         }
     }
@@ -473,7 +473,7 @@ fn zmodem_start_is_detected() {
     assert!(wait_until(|| !listener.0.lock().unwrap().is_empty()));
     assert_eq!(
         *listener.0.lock().unwrap(),
-        [mt_core::TransferRequest::ZmodemReceive]
+        [zetta_core::TransferRequest::ZmodemReceive]
     );
     // ヘッダより手前は画面に出て、ヘッダは出ない
     assert!(wait_until(|| screen_text(&session).contains("$ sz file")));
@@ -487,9 +487,9 @@ fn send_file_binary_is_untouched_and_text_follows_newline_setting() {
     let rec = Arc::new(Recorder::default());
     let options = SessionOptions {
         size: WindowSize::new(20, 4),
-        terminal: mt_core::TerminalSettings {
-            newline_send: mt_core::NewlineSend::CrLf,
-            charset_send: mt_core::Charset::ShiftJis,
+        terminal: zetta_core::TerminalSettings {
+            newline_send: zetta_core::NewlineSend::CrLf,
+            charset_send: zetta_core::Charset::ShiftJis,
             ..Default::default()
         },
         ..Default::default()
@@ -526,7 +526,7 @@ fn send_file_binary_is_untouched_and_text_follows_newline_setting() {
 #[test]
 fn zmodem_bytes_after_the_header_go_to_the_transfer_or_back_to_the_screen() {
     struct Recording(Arc<Mutex<Vec<u8>>>);
-    impl mt_core::ByteDivert for Recording {
+    impl zetta_core::ByteDivert for Recording {
         fn start(&mut self) -> Vec<u8> {
             Vec::new()
         }
@@ -585,7 +585,7 @@ fn held_zmodem_bytes_flush_on_their_own_and_resends_are_not_asked_again() {
         fn on_state(&self, _: SessionState) {}
         fn on_bell(&self) {}
         fn on_title(&self, _: String) {}
-        fn on_transfer_request(&self, _: mt_core::TransferRequest) {
+        fn on_transfer_request(&self, _: zetta_core::TransferRequest) {
             *self.0.lock().unwrap() += 1;
         }
     }
@@ -622,8 +622,8 @@ fn text_log_is_utf8_even_with_jis() {
     let rec = Arc::new(Recorder::default());
     let options = SessionOptions {
         size: WindowSize::new(20, 4),
-        terminal: mt_core::TerminalSettings {
-            charset_receive: mt_core::Charset::Jis,
+        terminal: zetta_core::TerminalSettings {
+            charset_receive: zetta_core::Charset::Jis,
             ..Default::default()
         },
         ..Default::default()
@@ -644,7 +644,7 @@ fn paste_echo_does_not_show_bracketed_paste_markers() {
     let (transport, remote) = MockTransport::pair();
     let rec = Arc::new(Recorder::default());
     let session = open(transport, &rec);
-    session.set_terminal_settings(mt_core::TerminalSettings {
+    session.set_terminal_settings(zetta_core::TerminalSettings {
         local_echo: true,
         ..Default::default()
     });
@@ -754,7 +754,7 @@ fn answerback_and_keyboard_options() {
     assert_eq!(remote.recv(WAIT).unwrap(), b"RTR-01");
     session.key(Key::Backspace, Modifiers::default());
     assert_eq!(remote.recv(WAIT).unwrap(), [0x7f]);
-    session.set_keyboard(mt_core::KeyboardOptions {
+    session.set_keyboard(zetta_core::KeyboardOptions {
         backspace_sends_bs: true,
         ..Default::default()
     });
