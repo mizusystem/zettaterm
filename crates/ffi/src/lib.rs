@@ -389,6 +389,61 @@ pub fn version_line() -> String {
     core::about::version_line()
 }
 
+/// エラーの種類（UI が Tera Term の文言を選ぶため）。中身は `mt_core::error_text::ErrorClass`。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ErrorClass {
+    Refused,
+    TimedOut,
+    Unreachable,
+    HostNotFound,
+    NotFound,
+    Denied,
+    ConnectionLost,
+    AuthCanceled,
+    HostKeyRejected,
+    HostEmpty,
+    SpaceParityUnsupported,
+    DsrDtrUnsupported,
+    TransferRunning,
+    Other,
+}
+
+/// 分類したエラー。`subject` は文の先頭の対象（ポートやホスト）、`detail` は元の英語の文。
+#[derive(Clone, Debug, uniffi::Record)]
+pub struct ErrorInfo {
+    pub class: ErrorClass,
+    pub subject: Option<String>,
+    pub detail: String,
+}
+
+/// コアや OS の英語のエラーの文を分類する。
+#[uniffi::export]
+pub fn classify_error(message: String) -> ErrorInfo {
+    use core::error_text::ErrorClass as C;
+    let i = core::error_text::classify(&message);
+    let class = match i.class {
+        C::Refused => ErrorClass::Refused,
+        C::TimedOut => ErrorClass::TimedOut,
+        C::Unreachable => ErrorClass::Unreachable,
+        C::HostNotFound => ErrorClass::HostNotFound,
+        C::NotFound => ErrorClass::NotFound,
+        C::Denied => ErrorClass::Denied,
+        C::ConnectionLost => ErrorClass::ConnectionLost,
+        C::AuthCanceled => ErrorClass::AuthCanceled,
+        C::HostKeyRejected => ErrorClass::HostKeyRejected,
+        C::HostEmpty => ErrorClass::HostEmpty,
+        C::SpaceParityUnsupported => ErrorClass::SpaceParityUnsupported,
+        C::DsrDtrUnsupported => ErrorClass::DsrDtrUnsupported,
+        C::TransferRunning => ErrorClass::TransferRunning,
+        C::Other => ErrorClass::Other,
+    };
+    ErrorInfo {
+        class,
+        subject: i.subject,
+        detail: i.detail,
+    }
+}
+
 /// 参照したソフトウェアの表示（Tera Term の BSD-3-Clause の表示を含む）。
 #[uniffi::export]
 pub fn third_party_notices() -> String {

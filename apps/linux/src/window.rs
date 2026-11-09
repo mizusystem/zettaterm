@@ -308,7 +308,12 @@ impl Tabs {
                 if let Some(s) = me.view.session()
                     && let Err(e) = s.reset_port()
                 {
-                    dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {});
+                    dialogs::message(
+                        &me.parent(),
+                        "Multi-Term",
+                        &crate::strings::error_text(&e.to_string(), None),
+                        || {},
+                    );
                 }
             }),
         );
@@ -426,7 +431,7 @@ impl Tabs {
                                     &[&path.display(), &n],
                                 )
                             }
-                            Err(e) => e.to_string(),
+                            Err(e) => crate::strings::error_text(&e.to_string(), None),
                         };
                         dialogs::message(&me.parent(), "Multi-Term", &text, || {});
                     },
@@ -508,7 +513,7 @@ impl Tabs {
                             s.save();
                             lf("キーマップを読み込みました（{} 個のキー）", &[&n])
                         }
-                        Err(e) => e.to_string(),
+                        Err(e) => crate::strings::error_text(&e.to_string(), None),
                     };
                     dialogs::message(&p, "Multi-Term", &text, || {});
                 });
@@ -527,7 +532,7 @@ impl Tabs {
                     if let Some(path) = r.ok().and_then(|f| f.path()) {
                         let text = match settings::export_ini(&path) {
                             Ok(()) => lf("{} に保存しました", &[&path.display()]),
-                            Err(e) => e.to_string(),
+                            Err(e) => crate::strings::error_text(&e.to_string(), None),
                         };
                         dialogs::message(&p, "Multi-Term", &text, || {});
                     }
@@ -1067,7 +1072,8 @@ impl TermWindow {
                 Err(e) => {
                     me.status.set(Status::Disconnected);
                     me.notify_waiters(None);
-                    dialogs::message(&me.win.clone().upcast(), "Multi-Term", &e, || {});
+                    let text = crate::strings::error_text(&e, error_subject(&profile).as_deref());
+                    dialogs::message(&me.win.clone().upcast(), "Multi-Term", &text, || {});
                 }
             }
             me.update_title();
@@ -1167,7 +1173,12 @@ impl TermWindow {
                 };
                 if reset && let Some(session) = me.view.session() {
                     if let Err(e) = session.set_serial_settings(&choice.settings) {
-                        dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {});
+                        dialogs::message(
+                            &me.parent(),
+                            "Multi-Term",
+                            &crate::strings::error_text(&e.to_string(), None),
+                            || {},
+                        );
                         return;
                     }
                     session.set_send_delay(choice.delay);
@@ -1194,7 +1205,12 @@ impl TermWindow {
                 me.log_paused.set(false);
                 me.sync_menu_state();
             }
-            Err(e) => dialogs::message(&me.parent(), "Multi-Term", &e.to_string(), || {}),
+            Err(e) => dialogs::message(
+                &me.parent(),
+                "Multi-Term",
+                &crate::strings::error_text(&e.to_string(), None),
+                || {},
+            ),
         });
     }
 
@@ -1229,7 +1245,12 @@ impl TermWindow {
             opts.include_screen = true;
             match session.log_start(&opts) {
                 Ok(()) => self.logging.set(true),
-                Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),
+                Err(e) => dialogs::message(
+                    &self.parent(),
+                    "Multi-Term",
+                    &crate::strings::error_text(&e.to_string(), None),
+                    || {},
+                ),
             }
         }
         let m = self.launch_macro.borrow_mut().take();
@@ -1253,7 +1274,12 @@ impl TermWindow {
         opts.include_screen = true;
         match session.log_start(&opts) {
             Ok(()) => self.logging.set(true),
-            Err(e) => dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {}),
+            Err(e) => dialogs::message(
+                &self.parent(),
+                "Multi-Term",
+                &crate::strings::error_text(&e.to_string(), None),
+                || {},
+            ),
         }
     }
 
@@ -1394,7 +1420,12 @@ impl TermWindow {
         let parent = self.parent();
         crate::extras::log_comment_dialog(&self.parent(), move |text| {
             if let Err(e) = s.log_write(&text) {
-                dialogs::message(&parent, "Multi-Term", &e.to_string(), || {});
+                dialogs::message(
+                    &parent,
+                    "Multi-Term",
+                    &crate::strings::error_text(&e.to_string(), None),
+                    || {},
+                );
             }
         });
     }
@@ -1509,7 +1540,12 @@ impl TermWindow {
             (m.dtr, !m.rts)
         };
         if let Err(e) = s.set_lines(d, r) {
-            dialogs::message(&self.parent(), "Multi-Term", &e.to_string(), || {});
+            dialogs::message(
+                &self.parent(),
+                "Multi-Term",
+                &crate::strings::error_text(&e.to_string(), None),
+                || {},
+            );
         }
         self.poll_modem();
     }
@@ -2564,6 +2600,20 @@ fn shlex_split(text: &str) -> Option<Vec<String>> {
         out.push(cur);
     }
     Some(out)
+}
+
+/// エラーの文に入れる対象（シリアルはポート、TCP/IP はホスト）。
+fn error_subject(profile: &ConnectionProfile) -> Option<String> {
+    match profile {
+        ConnectionProfile::Ssh { host, .. }
+        | ConnectionProfile::Telnet { host, .. }
+        | ConnectionProfile::Tcp { host, .. } => Some(host.clone()),
+        ConnectionProfile::Serial { port, .. } => Some(port.clone()),
+        ConnectionProfile::Replay { path, .. } | ConnectionProfile::Unix { path, .. } => {
+            Some(path.clone())
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]

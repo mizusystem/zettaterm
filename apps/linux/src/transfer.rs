@@ -195,7 +195,12 @@ fn start_titled(
     let send = matches!(direction, Direction::Send(_));
     match mt_xfer::new_transfer(protocol, direction) {
         Ok(t) => start_box(parent, session, title, send, t),
-        Err(e) => crate::dialogs::message(parent, &title, &e.to_string(), || {}),
+        Err(e) => crate::dialogs::message(
+            parent,
+            &title,
+            &crate::strings::error_text(&e.to_string(), None),
+            || {},
+        ),
     }
 }
 
@@ -204,7 +209,12 @@ pub fn start_kermit_get(parent: &gtk::Window, session: &Arc<Session>, names: &st
     let title = format!("{}（Kermit）", crate::strings::l("ファイル受信"));
     match mt_xfer::kermit_get(downloads_dir(), names) {
         Ok(t) => start_box(parent, session, title, false, t),
-        Err(e) => crate::dialogs::message(parent, &title, &e.to_string(), || {}),
+        Err(e) => crate::dialogs::message(
+            parent,
+            &title,
+            &crate::strings::error_text(&e.to_string(), None),
+            || {},
+        ),
     }
 }
 
@@ -224,7 +234,12 @@ fn start_box(
 ) {
     let shared: Shared = Arc::new(Mutex::new(transfer));
     if let Err(e) = session.start_transfer(Box::new(Divert(Arc::clone(&shared)))) {
-        crate::dialogs::message(parent, &title, &e.to_string(), || {});
+        crate::dialogs::message(
+            parent,
+            &title,
+            &crate::strings::error_text(&e.to_string(), None),
+            || {},
+        );
         return;
     }
 

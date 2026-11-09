@@ -101,6 +101,15 @@ enum ConnectTarget: Codable, Hashable, Sendable {
         }
     }
 
+    /// エラーの文に入れる対象（シリアルはポート、TCP/IP はホスト）。
+    var errorSubject: String? {
+        switch self {
+        case let .serial(port, _): return port
+        case let .unix(path), let .replay(path): return path
+        default: return host
+        }
+    }
+
     /// ホスト名（TCP/IP のときだけ）。
     var host: String? {
         switch self {

@@ -7,6 +7,7 @@ pub mod about;
 pub mod auth;
 pub mod broadcast;
 pub mod charset;
+pub mod error_text;
 pub mod ini;
 pub mod keymap;
 pub mod log;

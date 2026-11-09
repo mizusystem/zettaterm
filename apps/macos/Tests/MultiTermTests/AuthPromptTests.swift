@@ -42,8 +42,15 @@ final class AuthPromptTests: XCTestCase {
 
     func testCoreMessagesAreLocalized() {
         // 表示言語（テストの実行環境では英語になることがある）によらず、対応表の文に置き換わる
-        XCTAssertEqual(TerminalController.localized("authentication canceled"), L("認証を中止しました。"))
-        XCTAssertTrue(TerminalController.localized("10.0.0.1: connection timed out").hasPrefix(L("接続がタイムアウトしました。")))
+        XCTAssertTrue(TerminalController.localized("authentication canceled").hasPrefix(L("認証を中止しました。")))
+        XCTAssertTrue(TerminalController.localized("10.0.0.1: connection timed out")
+            .hasPrefix(TT.text("MSG_COMM_TIMEOUT_ERROR", "接続がタイムアウトしました")))
+        // OS の文は、Tera Term の文言に対象（ポート）を入れて出し、元の文を添える
+        let busy = TerminalController.localized("Resource busy", subject: "/dev/cu.usbserial-1")
+        XCTAssertTrue(busy.hasPrefix(TT.text("MSG_CANTOPEN_ERROR_DENIED", "").replacingOccurrences(of: "%s", with: "/dev/cu.usbserial-1")))
+        XCTAssertTrue(busy.hasSuffix("（Resource busy）"))
+        XCTAssertTrue(TerminalController.localized("Connection refused (os error 61)")
+            .hasPrefix(TT.text("MSG_COMM_REFUSE_ERROR", "")))
         XCTAssertNotEqual(L("認証を中止しました。"), "authentication canceled")
         XCTAssertEqual(TerminalController.localized("something else"), "something else")
     }

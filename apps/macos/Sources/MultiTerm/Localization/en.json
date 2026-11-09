@@ -27,10 +27,7 @@
   "%@ [未接続]": "%@ [Disconnected]",
   "認証を中止しました。": "Authentication was canceled.",
   "サーバーのホスト鍵を受け入れなかったため、接続を中止しました。": "The connection was stopped because the server's host key was not accepted.",
-  "接続がタイムアウトしました。": "The connection timed out.",
-  "接続を拒否されました（ホストまたはポートを確かめてください）。": "The connection was refused (check the host and port).",
   "ホストを入力してください。": "Enter a host.",
-  "ホストに到達できません。同じ LAN 内のホストなら、「システム設定 > プライバシーとセキュリティ > ローカルネットワーク」で Multi-Term を許可してください。": "The host is unreachable. If it is on your local network, allow Multi-Term in System Settings > Privacy & Security > Local Network.",
   "エンコーディング": "Encoding",
   "シリアル接続用の設定として保存します。LF だけで改行する機器（ESP32 など）は受信を LF か AUTO にします。": "Saved as the settings for serial connections. For devices that end lines with LF only (such as ESP32), set Receive to LF or AUTO.",
   "シェル・SSH・Telnet 用の設定として保存します（シリアル用とは別）。通常は受信 CR のままにします。": "Saved as the settings for shell, SSH and Telnet (separate from serial). Normally leave Receive at CR.",
@@ -152,5 +149,10 @@
   "なし": "None",
   "Tera Term のキーボード設定ファイル（KEYBOARD.CNF）を選んでください。": "Choose a Tera Term keyboard file (KEYBOARD.CNF).",
   "キーマップを読み込みました（%@ 個のキー）": "Loaded the keymap (%@ keys)",
-  "新しいパスワードは受け付けられませんでした。": "The new password was not accepted."
+  "新しいパスワードは受け付けられませんでした。": "The new password was not accepted.",
+  "同じ LAN 内のホストなら、「システム設定 > プライバシーとセキュリティ > ローカルネットワーク」で Multi-Term を許可してください。": "If the host is on your local network, allow Multi-Term in System Settings > Privacy & Security > Local Network.",
+  "相手が接続を切りました。": "The other side closed the connection.",
+  "この OS では、8 ビットと space パリティの組み合わせは使えません。": "8-bit data with space parity is not available on this OS.",
+  "この OS では、DSR/DTR フロー制御は使えません。": "DSR/DTR flow control is not available on this OS.",
+  "ファイル転送の最中です。": "A file transfer is in progress."
 }

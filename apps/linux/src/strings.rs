@@ -99,6 +99,44 @@ pub fn l(ja: &str) -> String {
         .unwrap_or_else(|| ja.to_owned())
 }
 
+/// コアや OS の英語のエラーを、Tera Term の文言（表示言語のもの）か、このアプリの文言にする。
+/// 元の英語の文は詳しい情報として下に添える。見分けられないものはそのまま。
+/// `subject` は文に対象が無いときに入れる名前（ポートやホスト）。
+pub fn error_text(message: &str, subject: Option<&str>) -> String {
+    use mt_core::error_text::{ErrorClass as C, classify};
+    let info = classify(message);
+    let what = info.subject.as_deref().or(subject).unwrap_or("");
+    let named = |key: &str, ja: &str| tt(key, ja).replace("%s", what);
+    let text = match info.class {
+        C::Refused => tt("MSG_COMM_REFUSE_ERROR", "接続が拒否されました"),
+        C::TimedOut => tt("MSG_COMM_TIMEOUT_ERROR", "接続がタイムアウトしました"),
+        C::Unreachable => tt("MSG_COMM_REACH_ERROR", "ネットワークに到達できません"),
+        C::HostNotFound => tt("MSG_INVALID_HOST_ERROR", "無効なホスト"),
+        C::NotFound if what.is_empty() => tt("MSG_CANTOPEN_FILE_ERROR", "ファイルが開けません"),
+        C::NotFound => named("MSG_CANTOPEN_ERROR_NOTFOUND", "%sが見つかりません。"),
+        C::Denied if what.is_empty() => tt("MSG_CANTOPEN_FILE_ERROR", "ファイルが開けません"),
+        C::Denied => named(
+            "MSG_CANTOPEN_ERROR_DENIED",
+            "%sへのアクセスが拒否されました。",
+        ),
+        C::ConnectionLost => l("相手が接続を切りました。"),
+        C::AuthCanceled => l("認証を中止しました。"),
+        C::HostKeyRejected => l("サーバーのホスト鍵を受け入れなかったため、接続を中止しました。"),
+        C::HostEmpty => l("ホストを入力してください。"),
+        C::SpaceParityUnsupported => {
+            l("この OS では、8 ビットと space パリティの組み合わせは使えません。")
+        }
+        C::DsrDtrUnsupported => l("この OS では、DSR/DTR フロー制御は使えません。"),
+        C::TransferRunning => l("ファイル転送の最中です。"),
+        C::Other => return message.to_owned(),
+    };
+    if text == message {
+        text
+    } else {
+        format!("{text}\n（{message}）")
+    }
+}
+
 /// 書式つき。訳の中の `{}` に `args` を順に入れる。
 pub fn lf(ja: &str, args: &[&dyn std::fmt::Display]) -> String {
     let template = l(ja);

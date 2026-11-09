@@ -126,6 +126,7 @@ messagebox inputstr 'filenamebox'
 - [x] 設定などのシートのためにウィンドウを広げたまま、閉じても戻らず端末の行数が増えていた → 閉じたら元の桁数と行数に戻すようにした（ウィンドウの設定を開け閉めして 24 × 80 のまま）
 - [x] マクロの停止の確認（「本当にこのマクロスクリプトを停止しますか？」）を出している間もマクロが進んでいた（GTK も同じ）→ 確認の間は止め、「いいえ」で続けるようにした
 - [x] フォントを大きくすると、24 × 80 のままウィンドウが広がる
+- [x] 接続やポートのエラーが、日本語の設定でも英語（`Connection refused (os error 61)` など）で出ていた（GTK は訳す仕組みが無かった）→ コアで種類を見分け（mt_core::error_text）、Tera Term の文言（MSG_COMM_REFUSE_ERROR・MSG_INVALID_HOST_ERROR・MSG_CANTOPEN_ERROR_NOTFOUND など）に元の文を添えて出すようにした。Mac と GTK で、接続拒否・無効なホスト・無いシリアルポートを確認（2026-11-10）
 
 ## Linux（GTK）版
 

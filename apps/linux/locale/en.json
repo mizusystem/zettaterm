@@ -119,5 +119,12 @@
   "新しいパスワードは受け付けられませんでした。": "The new password was not accepted.",
   "ホストリストへ追加": "Add to host list",
   "その他": "Other",
-  "サービス:": "Service:"
+  "サービス:": "Service:",
+  "相手が接続を切りました。": "The other side closed the connection.",
+  "認証を中止しました。": "Authentication was canceled.",
+  "サーバーのホスト鍵を受け入れなかったため、接続を中止しました。": "The connection was stopped because the server's host key was not accepted.",
+  "ホストを入力してください。": "Enter a host.",
+  "この OS では、8 ビットと space パリティの組み合わせは使えません。": "8-bit data with space parity is not available on this OS.",
+  "この OS では、DSR/DTR フロー制御は使えません。": "DSR/DTR flow control is not available on this OS.",
+  "ファイル転送の最中です。": "A file transfer is in progress."
 }

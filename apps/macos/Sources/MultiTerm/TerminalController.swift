@@ -600,11 +600,12 @@ final class TerminalController: ObservableObject {
     }
 
     func report(_ error: Error) {
-        errorMessage = Self.describe(error)
+        errorMessage = Self.describe(error, subject: target?.errorSubject)
     }
 
-    nonisolated static func describe(_ error: Error) -> String {
-        localized(rawMessage(error))
+    /// `subject` は文に対象が無いときに入れる名前（ポートやホスト）。
+    nonisolated static func describe(_ error: Error, subject: String? = nil) -> String {
+        localized(rawMessage(error), subject: subject)
     }
 
     /// コアのエラーは MtError.Io(message:)。メッセージだけを取り出す
@@ -616,21 +617,41 @@ final class TerminalController: ObservableObject {
         return error.localizedDescription
     }
 
-    /// コアの英語のメッセージのうち、よく出るものを日本語にする。
-    nonisolated static func localized(_ message: String) -> String {
-        let table: [(String, String)] = [
-            ("authentication canceled", "認証を中止しました。"),
-            ("Unknown server key", "サーバーのホスト鍵を受け入れなかったため、接続を中止しました。"),
-            ("connection timed out", "接続がタイムアウトしました。"),
-            ("Connection refused", "接続を拒否されました（ホストまたはポートを確かめてください）。"),
-            ("host is empty", "ホストを入力してください。"),
-            // LAN 内のアドレスで出るときは、たいてい macOS のローカルネットワークの許可がない
-            ("No route to host", "ホストに到達できません。同じ LAN 内のホストなら、「システム設定 > プライバシーとセキュリティ > ローカルネットワーク」で Multi-Term を許可してください。"),
-        ]
-        for (en, ja) in table where message.contains(en) {
-            return message == en ? L(ja) : "\(L(ja))\n（\(message)）"
+    /// コアや OS の英語のエラーを、Tera Term の文言（表示言語のもの）か、このアプリの文言にする。
+    /// 元の英語の文は詳しい情報として下に添える。見分けられないものはそのまま。
+    nonisolated static func localized(_ message: String, subject: String? = nil) -> String {
+        let info = classifyError(message: message)
+        let what = info.subject ?? subject ?? ""
+        func named(_ key: String, _ ja: String) -> String {
+            TT.text(key, ja).replacingOccurrences(of: "%s", with: what)
         }
-        return message
+        let text: String
+        switch info.class {
+        case .refused: text = TT.text("MSG_COMM_REFUSE_ERROR", "接続が拒否されました")
+        case .timedOut: text = TT.text("MSG_COMM_TIMEOUT_ERROR", "接続がタイムアウトしました")
+        case .unreachable:
+            text = TT.text("MSG_COMM_REACH_ERROR", "ネットワークに到達できません")
+                // LAN 内のアドレスで出るときは、たいてい macOS のローカルネットワークの許可がない
+                + (message.contains("No route to host")
+                    ? "\n" + L("同じ LAN 内のホストなら、「システム設定 > プライバシーとセキュリティ > ローカルネットワーク」で Multi-Term を許可してください。")
+                    : "")
+        case .hostNotFound: text = TT.text("MSG_INVALID_HOST_ERROR", "無効なホスト")
+        case .notFound:
+            text = what.isEmpty ? TT.text("MSG_CANTOPEN_FILE_ERROR", "ファイルが開けません")
+                : named("MSG_CANTOPEN_ERROR_NOTFOUND", "%sが見つかりません。")
+        case .denied:
+            text = what.isEmpty ? TT.text("MSG_CANTOPEN_FILE_ERROR", "ファイルが開けません")
+                : named("MSG_CANTOPEN_ERROR_DENIED", "%sへのアクセスが拒否されました。")
+        case .connectionLost: text = L("相手が接続を切りました。")
+        case .authCanceled: text = L("認証を中止しました。")
+        case .hostKeyRejected: text = L("サーバーのホスト鍵を受け入れなかったため、接続を中止しました。")
+        case .hostEmpty: text = L("ホストを入力してください。")
+        case .spaceParityUnsupported: text = L("この OS では、8 ビットと space パリティの組み合わせは使えません。")
+        case .dsrDtrUnsupported: text = L("この OS では、DSR/DTR フロー制御は使えません。")
+        case .transferRunning: text = L("ファイル転送の最中です。")
+        case .other: return message
+        }
+        return text == message ? text : "\(text)\n（\(message)）"
     }
 }
 
