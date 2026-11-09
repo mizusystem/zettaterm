@@ -61,7 +61,9 @@ extension TerminalController {
     func macroFinished(stopped: Bool, error: String?) {
         macro = nil
         if let error {
-            errorMessage = L("マクロを中止しました。\n%@", error)
+            // 本家の ttpmacro は英語で出すが、日本語の表示では読めるようにする
+            let text = Lang.code == "ja" ? macroErrorJapanese(error: error) : error
+            errorMessage = L("マクロを中止しました。\n%@", text)
         }
     }
 

@@ -2383,7 +2383,10 @@ impl TermWindow {
                     dialogs::message(
                         &parent,
                         "MACRO",
-                        &lf("マクロを中止しました。\n{}", &[&e]),
+                        &lf(
+                            "マクロを中止しました。\n{}",
+                            &[&crate::strings::macro_error_text(&e)],
+                        ),
                         || {},
                     );
                 }

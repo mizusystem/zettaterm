@@ -127,6 +127,7 @@ messagebox inputstr 'filenamebox'
 - [x] マクロの停止の確認（「本当にこのマクロスクリプトを停止しますか？」）を出している間もマクロが進んでいた（GTK も同じ）→ 確認の間は止め、「いいえ」で続けるようにした
 - [x] フォントを大きくすると、24 × 80 のままウィンドウが広がる
 - [x] 接続やポートのエラーが、日本語の設定でも英語（`Connection refused (os error 61)` など）で出ていた（GTK は訳す仕組みが無かった）→ コアで種類を見分け（mt_core::error_text）、Tera Term の文言（MSG_COMM_REFUSE_ERROR・MSG_INVALID_HOST_ERROR・MSG_CANTOPEN_ERROR_NOTFOUND など）に元の文を添えて出すようにした。Mac と GTK で、接続拒否・無効なホスト・無いシリアルポートを確認（2026-11-10）
+- [x] マクロのエラー（`no label 'retry'` など約 70 種類）を、日本語の表示では「bad.ttl の 2 行目: ラベル 'retry' がありません」のように出す（本家の ttpmacro は英語のまま。互換以上の追加。英語の表示は今まで通り）。Mac と GTK で確認（2026-11-10）
 
 ## Linux（GTK）版
 

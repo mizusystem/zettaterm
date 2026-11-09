@@ -99,6 +99,15 @@ pub fn l(ja: &str) -> String {
         .unwrap_or_else(|| ja.to_owned())
 }
 
+/// マクロのエラー（`ファイル:行: 文`）。本家の ttpmacro は英語で出すが、日本語の表示では日本語にする。
+pub fn macro_error_text(error: &str) -> String {
+    if lang() == "ja_JP" {
+        mt_ttl::japanese_error(error)
+    } else {
+        error.to_owned()
+    }
+}
+
 /// コアや OS の英語のエラーを、Tera Term の文言（表示言語のもの）か、このアプリの文言にする。
 /// 元の英語の文は詳しい情報として下に添える。見分けられないものはそのまま。
 /// `subject` は文に対象が無いときに入れる名前（ポートやホスト）。

@@ -389,6 +389,12 @@ pub fn version_line() -> String {
     core::about::version_line()
 }
 
+/// マクロのエラー（`ファイル:行: 文`）を日本語にする。日本語の表示のときに UI が呼ぶ。
+#[uniffi::export]
+pub fn macro_error_japanese(error: String) -> String {
+    mt_ttl::japanese_error(&error)
+}
+
 /// エラーの種類（UI が Tera Term の文言を選ぶため）。中身は `mt_core::error_text::ErrorClass`。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum ErrorClass {

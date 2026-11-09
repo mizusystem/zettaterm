@@ -9,6 +9,7 @@
 mod connect;
 mod format;
 mod interp;
+mod messages;
 mod parse;
 mod util;
 
@@ -16,4 +17,5 @@ pub use connect::{ConnectSpec, Launch, SshSpec, parse_args, parse_command_line, 
 pub use interp::{
     DialogPosition, Host, Interp, MacroControl, MacroError, Outcome, Value, WindowPosition,
 };
+pub use messages::{japanese_error, japanese_message};
 pub use parse::{ParseError, parse};
