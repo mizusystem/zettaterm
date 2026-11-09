@@ -4,8 +4,10 @@
 //! - macOS の任意ボーレートは IOSSIOSPEED、Linux は termios2 / BOTHER（serialport クレート経由）
 //! - テストは擬似端末の対で書く。実機が必要なテストは `#[ignore]`
 
+mod detect;
 mod devices;
 mod port;
 
+pub use detect::{CANDIDATES, DetectOptions, Detected, detect, pick, readability};
 pub use devices::{DeviceWatcher, list_devices};
 pub use port::SerialTransport;

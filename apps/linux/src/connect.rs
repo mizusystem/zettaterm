@@ -276,14 +276,123 @@ pub fn show_dialog(
     baud_box.append(&gtk::Label::new(Some(&tt("DLG_SERIAL_BAUD", "スピード:"))));
     baud_box.append(&baud);
     grid.attach(&baud_box, 2, 7, 1, 1);
+    // 速度の自動検出（Tera Term には無い追加）。接続する前に、速度を変えながら受信して読める速度を探す
+    let detect = gtk::Button::with_label(&l("自動検出"));
+    let poke = gtk::CheckButton::with_label(&l("Enter を送って調べる"));
+    let detect_status = gtk::Label::new(None);
+    detect_status.set_xalign(0.0);
+    detect_status.set_wrap(true);
+    detect_status.add_css_class("dim-label");
+    // 1 つの速度で受信を待つ秒数（数秒おきにしか出力しない機器では長くする）
+    let wait = gtk::SpinButton::with_range(1.0, 10.0, 1.0);
+    wait.set_value(2.0);
+    let detect_box = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    detect_box.append(&detect);
+    detect_box.append(&poke);
+    detect_box.append(&gtk::Label::new(Some(&l("1 つの速度で待つ秒数:"))));
+    detect_box.append(&wait);
+    let detect_rows = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    detect_rows.append(&detect_box);
+    detect_rows.append(&detect_status);
+    grid.attach(&detect_rows, 1, 8, 2, 1);
+    let detect_cancel: Rc<RefCell<Option<Arc<std::sync::atomic::AtomicBool>>>> =
+        Rc::new(RefCell::new(None));
+    {
+        let (ports, baud, poke, wait, status, cancel) = (
+            ports.clone(),
+            baud.clone(),
+            poke.clone(),
+            wait.clone(),
+            detect_status.clone(),
+            Rc::clone(&detect_cancel),
+        );
+        detect.connect_clicked(move |button| {
+            // 調べている最中なら止める
+            if let Some(c) = cancel.borrow_mut().take() {
+                c.store(true, std::sync::atomic::Ordering::SeqCst);
+                return;
+            }
+            let Some(port) = ports
+                .active_text()
+                .map(|s| s.to_string())
+                .filter(|s| !s.is_empty())
+            else {
+                return;
+            };
+            let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            *cancel.borrow_mut() = Some(Arc::clone(&stop));
+            button.set_label(&tt("BTN_CANCEL", "キャンセル"));
+            poke.set_sensitive(false);
+            status.set_text(&l("調べています…"));
+            let settings = crate::settings::Settings::load().serial;
+            let options = mt_serial::DetectOptions {
+                poke: poke.is_active(),
+                wait: std::time::Duration::from_secs(wait.value() as u64),
+                ..Default::default()
+            };
+            let (tx, rx) = async_channel::unbounded::<Result<u32, Result<Option<mt_serial::Detected>, String>>>();
+            let thread_port = port.clone();
+            std::thread::spawn(move || {
+                let progress = tx.clone();
+                let r = mt_serial::detect(&thread_port, &settings, &options, &stop, |b| {
+                    let _ = progress.send_blocking(Ok(b));
+                })
+                .map_err(|e| e.to_string());
+                let _ = tx.send_blocking(Err(r));
+            });
+            let (button, baud, poke, status, cancel) = (
+                button.clone(),
+                baud.clone(),
+                poke.clone(),
+                status.clone(),
+                Rc::clone(&cancel),
+            );
+            gtk::glib::spawn_future_local(async move {
+                while let Ok(msg) = rx.recv().await {
+                    match msg {
+                        Ok(b) => status.set_text(&crate::strings::lf("{} bps を調べています…", &[&b])),
+                        Err(done) => {
+                            let canceled = cancel.borrow_mut().take().is_none();
+                            button.set_label(&l("自動検出"));
+                            poke.set_sensitive(true);
+                            let text = match done {
+                                Ok(Some(d)) => {
+                                    if let Some(e) = baud.child().and_downcast::<gtk::Entry>() {
+                                        e.set_text(&d.baud.to_string());
+                                    }
+                                    let line = d
+                                        .sample
+                                        .lines()
+                                        .map(str::trim)
+                                        .find(|l| !l.is_empty())
+                                        .unwrap_or("")
+                                        .chars()
+                                        .take(40)
+                                        .collect::<String>();
+                                    crate::strings::lf("{} bps で読めました：{}", &[&d.baud, &line])
+                                }
+                                Ok(None) if canceled => l("中止しました。"),
+                                Ok(None) => l(
+                                    "読める速度が見つかりませんでした。相手が何か送るとき（起動の直後など）にもう一度試すか、「Enter を送って調べる」をオンにしてください。",
+                                ),
+                                Err(e) => crate::strings::error_text(&e, Some(&port)),
+                            };
+                            status.set_text(&text);
+                            break;
+                        }
+                    }
+                }
+            });
+        });
+    }
     grid.attach(
         &gtk::Separator::new(gtk::Orientation::Horizontal),
         0,
-        8,
+        9,
         3,
         1,
     );
-    grid.attach(&local, 0, 9, 3, 1);
+    grid.attach(&local, 0, 10, 3, 1);
 
     let buttons = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     buttons.set_halign(gtk::Align::End);
@@ -292,7 +401,7 @@ pub fn show_dialog(
     ok.add_css_class("suggested-action");
     buttons.append(&cancel);
     buttons.append(&ok);
-    grid.attach(&buttons, 0, 10, 3, 1);
+    grid.attach(&buttons, 0, 11, 3, 1);
 
     // 選んだ種類の欄だけ使えるようにする
     let tcp_widgets: Vec<gtk::Widget> = vec![
@@ -303,7 +412,11 @@ pub fn show_dialog(
         system_ssh.clone().upcast(),
         user_box.clone().upcast(),
     ];
-    let serial_widgets: Vec<gtk::Widget> = vec![ports.clone().upcast(), baud_box.clone().upcast()];
+    let serial_widgets: Vec<gtk::Widget> = vec![
+        ports.clone().upcast(),
+        baud_box.clone().upcast(),
+        detect_rows.clone().upcast(),
+    ];
     let sync = {
         let (tcp, serial) = (tcp.clone(), serial.clone());
         Rc::new(move || {

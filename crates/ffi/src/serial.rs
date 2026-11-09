@@ -404,3 +404,62 @@ impl TerminalSettings {
         }
     }
 }
+
+/// 通信速度の自動検出の結果。
+#[derive(Clone, Debug, PartialEq, uniffi::Record)]
+pub struct DetectedBaud {
+    pub baud: u32,
+    /// 読める度合い（0〜1）
+    pub score: f32,
+    /// その速度で受け取った文字の見本
+    pub sample: String,
+}
+
+/// 通信速度の自動検出（Tera Term には無い追加）。`run` は終わるまで戻らないので UI のスレッドから呼ばない。
+/// 進み具合は `trying`（今試している速度。0 は始まる前）、`cancel` で途中で止める。
+#[derive(uniffi::Object, Default)]
+pub struct BaudDetector {
+    cancel: std::sync::atomic::AtomicBool,
+    trying: std::sync::atomic::AtomicU32,
+}
+
+#[uniffi::export]
+impl BaudDetector {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// `port` を `settings`（速度以外）で開いて調べる。`wait_ms` は 1 つの速度で待つ時間、
+    /// `poke` は各速度の初めに CR を送るか。読めるものが無ければ None。
+    pub fn run(
+        &self,
+        port: String,
+        settings: SerialSettings,
+        wait_ms: u32,
+        poke: bool,
+    ) -> Result<Option<DetectedBaud>, MtError> {
+        use std::sync::atomic::Ordering;
+        let options = mt_serial::DetectOptions {
+            wait: std::time::Duration::from_millis(u64::from(wait_ms.clamp(200, 20_000))),
+            poke,
+            candidates: Vec::new(),
+        };
+        let found = mt_serial::detect(&port, &settings.port(), &options, &self.cancel, |b| {
+            self.trying.store(b, Ordering::SeqCst);
+        })?;
+        Ok(found.map(|d| DetectedBaud {
+            baud: d.baud,
+            score: d.score,
+            sample: d.sample,
+        }))
+    }
+
+    pub fn cancel(&self) {
+        self.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn trying(&self) -> u32 {
+        self.trying.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}

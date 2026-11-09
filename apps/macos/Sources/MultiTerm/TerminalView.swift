@@ -47,8 +47,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     /// 最初にウィンドウに入ったとき、端末サイズの設定に合わせたか
     private var fittedStartupSize = false
     /// 今の端末の桁数と行数（まだ決まっていなければウィンドウの大きさから）
-    /// 接続を始めて端末の大きさが決まったか（まだなら起動時の大きさで開く）
-    var hasGrid: Bool { gridSize.cols > 0 }
+    /// 接続を始めたことがあるか（まだなら、シートを閉じたあと起動時の大きさに戻す）
+    private(set) var hasStarted = false
     var terminalSize: (cols: UInt16, rows: UInt16) {
         gridSize.cols > 0 ? gridSize : geometry.size(width: bounds.width - scrollerWidth, height: bounds.height)
     }
@@ -260,6 +260,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     /// コアの接続（Telnet の TCP 接続など）は別スレッドで待つ。待っている間に別の接続や切断が
     /// 頼まれたら、できあがった接続は閉じて CancellationError を投げる。
     func connect(_ profile: Profile) async throws {
+        hasStarted = true
         disconnect()
         screen = ScreenBuffer()
         closedSession = nil

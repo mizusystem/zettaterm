@@ -80,7 +80,10 @@ struct TerminalWindow: View {
             .background(WindowAccessor { window in
                 WindowTabs.attach(window, asTab: request?.asTab ?? false)
                 if let sheet = controller.sheet {
-                    DispatchQueue.main.async { ensureRoom(for: sheet) }
+                    DispatchQueue.main.async {
+                        rememberGridForSheet()
+                        ensureRoom(for: sheet)
+                    }
                 }
             })
             .navigationTitle(controller.windowTitle)
@@ -88,7 +91,10 @@ struct TerminalWindow: View {
             .focusedSceneObject(controller)
             .onAppear { controller.open(request) }
             .onChange(of: controller.sheet) { _, sheet in
-                if let sheet { ensureRoom(for: sheet) }
+                if let sheet {
+                    rememberGridForSheet()
+                    ensureRoom(for: sheet)
+                }
             }
             .sheet(item: $controller.sheet, onDismiss: {
                 controller.authSheetDismissed()
@@ -154,17 +160,33 @@ extension TerminalWindow {
         grow(window, toFit: need)
     }
 
+    /// シートを閉じたら戻す桁数と行数を覚える（接続前の新しいウィンドウは起動時の大きさ）。
+    /// シートは SwiftUI がウィンドウを広げることもあるので、広げる処理とは別に、出た時点で覚える。
+    fileprivate func rememberGridForSheet() {
+        guard controller.gridBeforeSheet == nil else { return }
+        let view = controller.view
+        controller.gridBeforeSheet = view.hasStarted
+            ? (Int(view.terminalSize.cols), Int(view.terminalSize.rows))
+            : TerminalConfig.startupSize
+    }
+
     /// シートのために広げたウィンドウを、閉じたら元の桁数と行数に戻す（Tera Term のダイアログは端末の大きさを変えない）。
     fileprivate func shrinkBackAfterSheet() {
         guard let grid = controller.gridBeforeSheet else { return }
         controller.gridBeforeSheet = nil
-        guard let window = controller.view.window, !window.styleMask.contains(.fullScreen) else { return }
-        controller.view.fitWindow(cols: grid.cols, rows: grid.rows)
+        // シートが閉じ切ってから（閉じる直後は SwiftUI がウィンドウの大きさを直すことがある）
+        let view = controller.view
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            guard let window = view.window, !window.styleMask.contains(.fullScreen) else { return }
+            view.fitWindow(cols: grid.cols, rows: grid.rows)
+        }
     }
 
     /// 表示されたシートの大きさに合わせて広げる（タイトルバーとタブの分を足す）。
     fileprivate func growToFit(sheet size: CGSize) {
-        guard let window = controller.view.window, !window.styleMask.contains(.fullScreen),
+        // 閉じる途中の大きさの変化では広げない（閉じたら元の大きさに戻すので）
+        guard controller.sheet != nil,
+              let window = controller.view.window, !window.styleMask.contains(.fullScreen),
               size.width > 0, size.height > 0 else { return }
         grow(window, toFit: CGSize(width: size.width + 40, height: size.height + 90))
     }
@@ -173,13 +195,7 @@ extension TerminalWindow {
         var frame = window.frame
         let w = max(frame.width, need.width), h = max(frame.height, need.height)
         guard w != frame.width || h != frame.height else { return }
-        // 閉じたら戻す大きさ（接続前の新しいウィンドウは起動時の大きさ）
-        if controller.gridBeforeSheet == nil {
-            let view = controller.view
-            controller.gridBeforeSheet = view.hasGrid
-                ? (Int(view.terminalSize.cols), Int(view.terminalSize.rows))
-                : TerminalConfig.startupSize
-        }
+        rememberGridForSheet()
         // 上端をそろえたまま下へ広げる
         frame.origin.y -= h - frame.height
         frame.size = CGSize(width: w, height: h)

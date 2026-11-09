@@ -17,7 +17,7 @@ const READ_TIMEOUT: Duration = Duration::from_millis(100);
 /// OS が持たない mark / space パリティを、データビットを 1 つ増やして作るときの変換
 /// （7 ビット + mark なら 8 ビット・パリティなしで、8 ビット目をいつも 1 にする）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Emulation {
+pub(crate) struct Emulation {
     /// 受信で残すビット
     keep: u8,
     /// 送信で立てるビット
@@ -126,7 +126,7 @@ fn find_again_in(
 type Opened = (Box<dyn SerialPort>, Option<i32>, Emulation);
 
 #[cfg(unix)]
-fn open_port(path: &str, s: &SerialSettings) -> io::Result<Opened> {
+pub(crate) fn open_port(path: &str, s: &SerialSettings) -> io::Result<Opened> {
     use std::os::fd::AsRawFd;
     let port = serialport::new(path, s.baud)
         .timeout(READ_TIMEOUT)
@@ -139,7 +139,7 @@ fn open_port(path: &str, s: &SerialSettings) -> io::Result<Opened> {
 }
 
 #[cfg(not(unix))]
-fn open_port(path: &str, s: &SerialSettings) -> io::Result<Opened> {
+pub(crate) fn open_port(path: &str, s: &SerialSettings) -> io::Result<Opened> {
     let mut port = serialport::new(path, s.baud)
         .timeout(READ_TIMEOUT)
         .open()
@@ -268,7 +268,7 @@ mod termios {
     }
 }
 
-fn to_io(e: serialport::Error) -> io::Error {
+pub(crate) fn to_io(e: serialport::Error) -> io::Error {
     let kind = match e.kind() {
         serialport::ErrorKind::NoDevice => io::ErrorKind::NotFound,
         serialport::ErrorKind::InvalidInput => io::ErrorKind::InvalidInput,

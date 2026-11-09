@@ -126,5 +126,13 @@
   "ホストを入力してください。": "Enter a host.",
   "この OS では、8 ビットと space パリティの組み合わせは使えません。": "8-bit data with space parity is not available on this OS.",
   "この OS では、DSR/DTR フロー制御は使えません。": "DSR/DTR flow control is not available on this OS.",
-  "ファイル転送の最中です。": "A file transfer is in progress."
+  "ファイル転送の最中です。": "A file transfer is in progress.",
+  "自動検出": "Detect",
+  "Enter を送って調べる": "Send Enter to check",
+  "調べています…": "Checking…",
+  "{} bps を調べています…": "Trying {} bps…",
+  "{} bps で読めました：{}": "Readable at {} bps: {}",
+  "中止しました。": "Canceled.",
+  "読める速度が見つかりませんでした。相手が何か送るとき（起動の直後など）にもう一度試すか、「Enter を送って調べる」をオンにしてください。": "No readable speed was found. Try again while the device is sending (right after it starts), or turn on “Send Enter to check”.",
+  "1 つの速度で待つ秒数:": "Seconds to wait per speed:"
 }

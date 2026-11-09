@@ -23,6 +23,12 @@ struct NewConnectionView: View {
     @State private var portText = "22"
     @State private var ip: ConnectTarget.IP = .auto
     @State private var serialPort = ""
+    /// シリアルの速度（「設定 > シリアルポート」のもの。自動検出で変わる）
+    @State private var baud = SerialConfig.saved.baud
+    @StateObject private var detection = BaudDetection()
+    @AppStorage("serial.detectPoke") private var detectPoke = false
+    /// 1 つの速度で受信を待つ秒数（数秒おきにしか出力しない機器では長くする）
+    @AppStorage("serial.detectWait") private var detectWait = 2
 
     private var port: UInt16? { UInt16(portText.trimmingCharacters(in: .whitespaces)) }
 
@@ -126,6 +132,32 @@ struct NewConnectionView: View {
             }
             .disabled(kind != .serial)
             .padding(.leading, 18)
+            // 速度の自動検出（Tera Term には無い追加）
+            HStack(spacing: 10) {
+                Text(L("スピード: %@ bps", String(baud)))
+                Button(detection.running ? TT.text("BTN_CANCEL", "キャンセル") : L("自動検出")) {
+                    if detection.running {
+                        detection.cancel()
+                    } else {
+                        detection.start(port: serialPort, poke: detectPoke, waitSeconds: detectWait)
+                    }
+                }
+                .disabled(serialPort.isEmpty)
+                Toggle(L("Enter を送って調べる"), isOn: $detectPoke)
+                    .disabled(detection.running)
+                Stepper(L("1 つの速度で %@ 秒待つ", String(detectWait)), value: $detectWait, in: 1...10)
+                    .fixedSize()
+                    .disabled(detection.running)
+            }
+            .disabled(kind != .serial)
+            .padding(.leading, 18)
+            if kind == .serial, let status = detection.status {
+                Text(status)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 18)
+            }
             if kind == .serial && devices.devices.isEmpty {
                 Text(L("シリアルデバイスが見つかりません。USB シリアルを挿すと一覧に出ます。"))
                     .font(.callout)
@@ -153,6 +185,14 @@ struct NewConnectionView: View {
             // 既定のポートのままなら、サービスに合わせて変える
             if portText == defaultPort(old) || portText.isEmpty { portText = defaultPort(new) }
         }
+        .onChange(of: detection.found) { _, found in
+            guard let found else { return }
+            var config = SerialConfig.saved
+            config.baud = found
+            config.save()
+            baud = found
+        }
+        .onDisappear { detection.cancel() }
         .onChange(of: devices.devices) { _, _ in
             if serialPort.isEmpty, let first = devices.devices.first { serialPort = first.path }
         }
