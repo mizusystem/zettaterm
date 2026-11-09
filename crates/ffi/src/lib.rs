@@ -412,6 +412,7 @@ pub enum ErrorClass {
     SpaceParityUnsupported,
     DsrDtrUnsupported,
     TransferRunning,
+    SpeedUnchanged,
     Other,
 }
 
@@ -442,6 +443,7 @@ pub fn classify_error(message: String) -> ErrorInfo {
         C::SpaceParityUnsupported => ErrorClass::SpaceParityUnsupported,
         C::DsrDtrUnsupported => ErrorClass::DsrDtrUnsupported,
         C::TransferRunning => ErrorClass::TransferRunning,
+        C::SpeedUnchanged => ErrorClass::SpeedUnchanged,
         C::Other => ErrorClass::Other,
     };
     ErrorInfo {

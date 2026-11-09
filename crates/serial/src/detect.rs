@@ -6,7 +6,7 @@
 //! 相手が何も送ってこなければ決められない。`poke` で各速度の初めに CR を 1 つ送れる（既定は送らない。
 //! 1 文字のコマンドを解釈する機器があるため）。
 
-use std::io::{self, Read, Write};
+use std::io;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -134,40 +134,84 @@ pub fn detect(
     };
     let (mut port, _, _) = crate::port::open_port(path, &first)?;
     let mut results = Vec::new();
-    let mut buf = [0u8; 1024];
     for baud in candidates {
-        if cancel.load(Ordering::SeqCst) {
-            return Ok(None);
-        }
         trying(baud);
-        port.set_baud_rate(baud).map_err(crate::port::to_io)?;
-        // 前の速度で受けた残りを捨てる
-        thread_sleep_short();
-        let _ = port.clear(ClearBuffer::Input);
-        if options.poke {
-            let _ = port.write_all(b"\r");
-            let _ = port.flush();
-        }
-        let mut got = Vec::new();
-        let until = Instant::now() + options.wait;
-        while Instant::now() < until && got.len() < MAX_SAMPLE {
-            if cancel.load(Ordering::SeqCst) {
-                return Ok(None);
-            }
-            match port.read(&mut buf) {
-                Ok(n) => got.extend_from_slice(&buf[..n]),
-                Err(e) if e.kind() == io::ErrorKind::TimedOut => {}
-                Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
-                Err(e) => return Err(e),
-            }
-        }
+        let Some(got) = listen(port.as_mut(), baud, options, cancel)? else {
+            return Ok(None);
+        };
         let sure = got.len() >= ENOUGH && readability(&got) >= SURE;
         results.push((baud, got));
         if sure {
             break;
         }
     }
-    Ok(pick(&results))
+    let Some(best) = pick(&results) else {
+        return Ok(None);
+    };
+    // 速度を変えても受信が変わらないアダプタ（ドライバの不調など）だと、最初の速度で「読める」と
+    // 決めてしまう。かけ離れた速度でも確かめ、そこでも読めたら結果を採らない
+    if !results.iter().any(|(b, _)| far_apart(*b, best.baud)) {
+        let control = if best.baud <= 19_200 { 115_200 } else { 9_600 };
+        trying(control);
+        let Some(got) = listen(port.as_mut(), control, options, cancel)? else {
+            return Ok(None);
+        };
+        results.push((control, got));
+    }
+    if speed_ignored(&results, best.baud) {
+        return Err(io::Error::other(
+            "the serial adapter did not change speed; unplug it and plug it in again",
+        ));
+    }
+    Ok(Some(best))
+}
+
+/// `baud` に切り替えて `options.wait` だけ受信する。止められたら None。
+fn listen(
+    port: &mut dyn serialport::SerialPort,
+    baud: u32,
+    options: &DetectOptions,
+    cancel: &AtomicBool,
+) -> io::Result<Option<Vec<u8>>> {
+    if cancel.load(Ordering::SeqCst) {
+        return Ok(None);
+    }
+    port.set_baud_rate(baud).map_err(crate::port::to_io)?;
+    // 前の速度で受けた残りを捨てる
+    thread_sleep_short();
+    let _ = port.clear(ClearBuffer::Input);
+    if options.poke {
+        let _ = port.write_all(b"\r");
+        let _ = port.flush();
+    }
+    let mut buf = [0u8; 1024];
+    let mut got = Vec::new();
+    let until = Instant::now() + options.wait;
+    while Instant::now() < until && got.len() < MAX_SAMPLE {
+        if cancel.load(Ordering::SeqCst) {
+            return Ok(None);
+        }
+        match port.read(&mut buf) {
+            Ok(n) => got.extend_from_slice(&buf[..n]),
+            Err(e) if e.kind() == io::ErrorKind::TimedOut => {}
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(Some(got))
+}
+
+/// 3 倍以上離れた速度か（同じ文字が両方で読めることは、ふつう無い）。
+fn far_apart(a: u32, b: u32) -> bool {
+    let (lo, hi) = (a.min(b), a.max(b));
+    lo > 0 && hi / lo >= 3
+}
+
+/// 選んだ速度とかけ離れた速度でも読めていたら、速度の切り替えが効いていない。
+pub fn speed_ignored(results: &[(u32, Vec<u8>)], best: u32) -> bool {
+    results
+        .iter()
+        .any(|(b, bytes)| far_apart(*b, best) && readability(bytes) >= ACCEPT)
 }
 
 fn thread_sleep_short() {
@@ -209,6 +253,30 @@ mod tests {
         assert_eq!(d.baud, 74_880);
         assert!(d.sample.starts_with("rst:0x1"));
         // どれも読めなければ決めない
-        assert_eq!(pick(&[(115_200, noise), (9_600, Vec::new())]), None);
+        assert_eq!(pick(&[(115_200, noise.clone()), (9_600, Vec::new())]), None);
+    }
+
+    #[test]
+    fn notices_an_adapter_that_ignores_speed_changes() {
+        let text = b"Press ENTER to get started.\r\r\nPress ENTER to get started.\r\r\n".to_vec();
+        let noise = vec![
+            0x00, 0xf8, 0x80, 0xfe, 0x00, 0x78, 0x80, 0xe0, 0x1c, 0xff, 0x00, 0x86, 0x98, 0xf0,
+            0x00, 0x80,
+        ];
+        // 115200 でも 9600 でも同じように読める
+        assert!(speed_ignored(
+            &[(115_200, text.clone()), (9_600, text.clone())],
+            115_200
+        ));
+        // ふつうは、かけ離れた速度では化ける
+        assert!(!speed_ignored(
+            &[(115_200, noise), (9_600, text.clone())],
+            9_600
+        ));
+        // 近い速度（2 倍以内）は比べない
+        assert!(!speed_ignored(
+            &[(57_600, text.clone()), (115_200, text)],
+            115_200
+        ));
     }
 }

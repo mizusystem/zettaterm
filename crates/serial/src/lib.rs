@@ -8,6 +8,6 @@ mod detect;
 mod devices;
 mod port;
 
-pub use detect::{CANDIDATES, DetectOptions, Detected, detect, pick, readability};
+pub use detect::{CANDIDATES, DetectOptions, Detected, detect, pick, readability, speed_ignored};
 pub use devices::{DeviceWatcher, list_devices};
 pub use port::SerialTransport;

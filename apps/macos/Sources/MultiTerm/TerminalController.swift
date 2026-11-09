@@ -649,6 +649,7 @@ final class TerminalController: ObservableObject {
         case .spaceParityUnsupported: text = L("この OS では、8 ビットと space パリティの組み合わせは使えません。")
         case .dsrDtrUnsupported: text = L("この OS では、DSR/DTR フロー制御は使えません。")
         case .transferRunning: text = L("ファイル転送の最中です。")
+        case .speedUnchanged: text = L("シリアルのアダプタが速度の切り替えに応じていません。アダプタを抜いて挿し直してから、もう一度試してください。")
         case .other: return message
         }
         return text == message ? text : "\(text)\n（\(message)）"

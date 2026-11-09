@@ -137,6 +137,9 @@ pub fn error_text(message: &str, subject: Option<&str>) -> String {
         }
         C::DsrDtrUnsupported => l("この OS では、DSR/DTR フロー制御は使えません。"),
         C::TransferRunning => l("ファイル転送の最中です。"),
+        C::SpeedUnchanged => l(
+            "シリアルのアダプタが速度の切り替えに応じていません。アダプタを抜いて挿し直してから、もう一度試してください。",
+        ),
         C::Other => return message.to_owned(),
     };
     if text == message {

@@ -134,5 +134,6 @@
   "{} bps で読めました：{}": "Readable at {} bps: {}",
   "中止しました。": "Canceled.",
   "読める速度が見つかりませんでした。相手が何か送るとき（起動の直後など）にもう一度試すか、「Enter を送って調べる」をオンにしてください。": "No readable speed was found. Try again while the device is sending (right after it starts), or turn on “Send Enter to check”.",
-  "1 つの速度で待つ秒数:": "Seconds to wait per speed:"
+  "1 つの速度で待つ秒数:": "Seconds to wait per speed:",
+  "シリアルのアダプタが速度の切り替えに応じていません。アダプタを抜いて挿し直してから、もう一度試してください。": "The serial adapter did not change speed. Unplug it, plug it in again, and try once more."
 }

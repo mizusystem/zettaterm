@@ -364,7 +364,8 @@ pub fn show_dialog(
                                         .sample
                                         .lines()
                                         .map(str::trim)
-                                        .find(|l| !l.is_empty())
+                                        // 最後の読める行（プロンプトが来ることが多い）
+                                        .rfind(|l| l.chars().any(char::is_alphabetic))
                                         .unwrap_or("")
                                         .chars()
                                         .take(40)

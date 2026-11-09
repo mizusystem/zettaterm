@@ -57,11 +57,11 @@ final class BaudDetection: ObservableObject {
         detector?.cancel()
     }
 
-    /// 見本の最初の読める行（長ければ切る）
+    /// 見本の最後の読める行（プロンプトが来ることが多い。長ければ切る）
     private static func preview(_ sample: String) -> String {
         let line = sample.split(whereSeparator: \.isNewline)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty } ?? ""
+            .last { $0.contains(where: \.isLetter) } ?? ""
         return line.count > 40 ? String(line.prefix(40)) + "…" : line
     }
 }

@@ -163,5 +163,6 @@
   "スピード: %@ bps": "Speed: %@ bps",
   "自動検出": "Detect",
   "Enter を送って調べる": "Send Enter to check",
-  "1 つの速度で %@ 秒待つ": "Wait %@ s per speed"
+  "1 つの速度で %@ 秒待つ": "Wait %@ s per speed",
+  "シリアルのアダプタが速度の切り替えに応じていません。アダプタを抜いて挿し直してから、もう一度試してください。": "The serial adapter did not change speed. Unplug it, plug it in again, and try once more."
 }

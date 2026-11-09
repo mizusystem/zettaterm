@@ -33,6 +33,8 @@ pub enum ErrorClass {
     DsrDtrUnsupported,
     /// ファイル転送の最中
     TransferRunning,
+    /// シリアルのアダプタが速度の切り替えに応じていない（速度の自動検出）
+    SpeedUnchanged,
     /// 見分けられない（元の文をそのまま出す）
     Other,
 }
@@ -63,6 +65,8 @@ pub fn classify(message: &str) -> ErrorInfo {
         ErrorClass::DsrDtrUnsupported
     } else if has(&["a transfer is already running"]) {
         ErrorClass::TransferRunning
+    } else if has(&["did not change speed"]) {
+        ErrorClass::SpeedUnchanged
     } else if has(&["connection refused", "(os error 61)", "(os error 111)"]) {
         ErrorClass::Refused
     } else if has(&["timed out", "(os error 60)", "(os error 110)"]) {
