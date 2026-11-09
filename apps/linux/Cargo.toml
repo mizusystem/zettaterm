@@ -5,6 +5,7 @@ version = "0.0.0"
 edition = "2024"
 rust-version = "1.94"
 publish = false
+license = "MIT OR Apache-2.0"
 
 # GTK4 の開発ライブラリが要るので、ルートのワークスペースには入れない
 [workspace]

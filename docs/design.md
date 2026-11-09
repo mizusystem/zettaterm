@@ -160,7 +160,7 @@ Mac での読み替え
 - Alt 系のショートカットは Cmd に置換（新しい接続 Cmd+N、切断 Cmd+W など）。Alt+C / Alt+V でのコピー・貼り付けは互換設定として残す
 - シリアル設定の「新規オープン / クローズ＆新規オープン / 現在の接続を再設定」の使い分けはそのまま再現する。Tera Term 利用者が迷わないため
 
-ライセンスは 3 条項 BSD。文言や設定仕様を流用するので、`THIRD_PARTY.md` と About 画面に Tera Term Project の著作権表示を入れる。
+Tera Term のライセンスは 3 条項 BSD。文言や設定仕様を流用するので、`THIRD_PARTY.md` と About 画面に Tera Term Project の著作権表示を入れる。
 
 ## ロードマップ
 
@@ -259,7 +259,7 @@ model: opus
 ## 未決事項
 
 - [ ] アプリ名とリポジトリ名
-- [ ] ライセンス：MIT/Apache-2.0 デュアルか BSD-3-Clause
+- [x] ライセンス → MIT OR Apache-2.0 のデュアル（`LICENSE-MIT`、`LICENSE-APACHE`。2026-11-09）
 - [ ] macOS の最低対応バージョン（最新のみに絞るか）
 - [ ] VT エンジン：alacritty\_terminal で確定するか、libghostty-vt の API 安定を待つか
 - [x] SSH をいつ純 Rust（russh）に切り替えるか → Phase 2 で切り替えた（2026-11-06）。TTSSH と同じく認証はダイアログ。ssh_config の対応外の項目が要る接続のため、システムの ssh も選べるようにしてある

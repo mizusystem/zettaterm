@@ -1,3 +1,4 @@
+// Modified for Multi-Term (2026): see PATCHES.md in this crate's directory.
 //! Exports the `Term` type which is a high-level API for the Grid.
 
 use std::ops::{Index, IndexMut, Range};

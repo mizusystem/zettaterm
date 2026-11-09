@@ -16,7 +16,7 @@ version = "0.0.0"
 edition = "2024"
 rust-version = "1.94"
 publish = false
-# license: 未決（MIT/Apache-2.0 デュアルか BSD-3-Clause）。docs/design.md の未決事項を参照。
+license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 mt-core = { path = "crates/core" }
