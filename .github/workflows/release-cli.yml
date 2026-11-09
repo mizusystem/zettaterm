@@ -48,7 +48,10 @@ jobs:
           mkdir -p "dist/$name"
           bin="target/${{ matrix.target }}/release/zetta"
           [[ "${{ runner.os }}" == "Windows" ]] && bin="$bin.exe"
-          cp "$bin" docs/ttl.md THIRD_PARTY.md "dist/$name/"
+          cp "$bin" README.md LICENSE-MIT LICENSE-APACHE THIRD_PARTY.md docs/ttl.md "dist/$name/"
+          # 組み込まれた依存クレートのライセンス表示（バイナリを配るときに要る）
+          py=python3; command -v python3 >/dev/null || py=python
+          $py scripts/third-party-licenses.py zetta-cli ${{ matrix.target }} > "dist/$name/THIRD_PARTY_LICENSES.txt"
           cd dist
           if [[ "${{ matrix.archive }}" == "zip" ]]; then
             7z a "$name.zip" "$name" > /dev/null

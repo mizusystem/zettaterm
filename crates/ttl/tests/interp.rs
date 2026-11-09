@@ -683,10 +683,12 @@ ispassword 'pw.dat' 'r1'
 int2str s result
 messagebox s
 basename n 'x/y.ttl'
-getver v '0.0.0'
+getver v 'CURRENT_VERSION'
 int2str s result
 messagebox s
 "#;
+    // getver は今の版と比べる（同じなら 0）
+    let src = &src.replace("CURRENT_VERSION", env!("CARGO_PKG_VERSION"));
     let mut host = TestHost {
         answers: vec!["asked".into()],
         ..Default::default()

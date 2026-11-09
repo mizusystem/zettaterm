@@ -3109,7 +3109,7 @@ checksum = "e13084392c5e4bc371903e2935a5eaeed24905a7511356b883835e18a78f6879"
 
 [[package]]
 name = "zetta-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "encoding_rs",
@@ -3120,7 +3120,7 @@ dependencies = [
 
 [[package]]
 name = "zetta-net"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "if-addrs",
  "portable-pty",
@@ -3133,7 +3133,7 @@ dependencies = [
 
 [[package]]
 name = "zetta-serial"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "libc",
  "serialport",
@@ -3142,7 +3142,7 @@ dependencies = [
 
 [[package]]
 name = "zetta-ttl"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "regex",
@@ -3152,7 +3152,7 @@ dependencies = [
 
 [[package]]
 name = "zetta-vt"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "regex",
@@ -3160,11 +3160,11 @@ dependencies = [
 
 [[package]]
 name = "zetta-xfer"
-version = "0.0.0"
+version = "0.1.0"
 
 [[package]]
 name = "zettaterm-gtk"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "async-channel",
  "gtk4",
