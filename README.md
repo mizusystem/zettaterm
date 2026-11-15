@@ -8,6 +8,10 @@ ZettaTerm は、Tera Term と同じメニュー・ダイアログ・TTL マク�
 シリアルコンソールでのネットワーク機器の設定や、組み込み機器の開発で Tera Term に慣れた人が、
 Mac や Linux でも同じ手順で作業できることを目指しています。
 
+<p align="center">
+  <img src="assets/screenshots/mac-terminal.png" alt="macOS 版の端末の画面。色と日本語の表示">
+</p>
+
 - **macOS**（Apple Silicon）：SwiftUI + AppKit のネイティブアプリ
 - **Linux**：GTK4 のネイティブアプリ
 - **Windows / Linux / macOS**：TTL マクロを画面なしで動かす `zetta` コマンド
@@ -19,6 +23,15 @@ Mac や Linux でも同じ手順で作業できることを目指しています
 
 *English summary: ZettaTerm is a terminal emulator for macOS and Linux that follows Tera Term's menus,
 dialogs and TTL macro language, built on a shared Rust core. It is not affiliated with the Tera Term Project.*
+
+## 画面
+
+「新しい接続」や「シリアルポート」の設定は、Tera Term と同じ項目・同じ文言です（macOS 版）。
+
+<p align="center">
+  <img src="assets/screenshots/mac-new-connection.png" width="49%" alt="macOS 版の「新しい接続」ダイアログ">
+  <img src="assets/screenshots/mac-serial-port.png" width="49%" alt="macOS 版の「シリアルポート」の設定">
+</p>
 
 ## できること
 
