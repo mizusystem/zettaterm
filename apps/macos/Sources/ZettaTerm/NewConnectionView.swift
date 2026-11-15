@@ -143,7 +143,13 @@ struct NewConnectionView: View {
                     }
                 }
                 .disabled(serialPort.isEmpty)
+            }
+            .disabled(kind != .serial)
+            .padding(.leading, 18)
+            // 1 行に並べると幅が足りず、チェックボックスの文言が折り返す
+            HStack(spacing: 16) {
                 Toggle(L("Enter を送って調べる"), isOn: $detectPoke)
+                    .fixedSize()
                     .disabled(detection.running)
                 Stepper(L("1 つの速度で %@ 秒待つ", String(detectWait)), value: $detectWait, in: 1...10)
                     .fixedSize()

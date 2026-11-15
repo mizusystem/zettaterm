@@ -89,7 +89,11 @@ struct TerminalWindow: View {
             .navigationTitle(controller.windowTitle)
             .frame(minWidth: 200, minHeight: 100)
             .focusedSceneObject(controller)
-            .onAppear { controller.open(request) }
+            .onAppear {
+                // 起動時に端末の大きさへ合わせると、先に出ていたシートがはみ出す。合わせた後で広げ直す
+                controller.view.afterStartupFit = { refitSheet() }
+                controller.open(request)
+            }
             .onChange(of: controller.sheet) { _, sheet in
                 if let sheet {
                     rememberGridForSheet()
@@ -98,6 +102,7 @@ struct TerminalWindow: View {
             }
             .sheet(item: $controller.sheet, onDismiss: {
                 controller.authSheetDismissed()
+                controller.sheetSize = nil
                 shrinkBackAfterSheet()
                 controller.focusTerminal()
             }) { sheet in
@@ -185,10 +190,22 @@ extension TerminalWindow {
     /// 表示されたシートの大きさに合わせて広げる（タイトルバーとタブの分を足す）。
     fileprivate func growToFit(sheet size: CGSize) {
         // 閉じる途中の大きさの変化では広げない（閉じたら元の大きさに戻すので）
-        guard controller.sheet != nil,
-              let window = controller.view.window, !window.styleMask.contains(.fullScreen),
-              size.width > 0, size.height > 0 else { return }
+        guard controller.sheet != nil, size.width > 0, size.height > 0 else { return }
+        // ウィンドウがまだ無いとき（起動直後）のために覚えておく
+        controller.sheetSize = size
+        guard let window = controller.view.window, !window.styleMask.contains(.fullScreen) else { return }
         grow(window, toFit: CGSize(width: size.width + 40, height: size.height + 90))
+    }
+
+    /// 出ているシートに合わせて、もう一度ウィンドウを広げる。
+    fileprivate func refitSheet() {
+        guard let sheet = controller.sheet else { return }
+        rememberGridForSheet()
+        if let size = controller.sheetSize {
+            growToFit(sheet: size)
+        } else {
+            ensureRoom(for: sheet)
+        }
     }
 
     private func grow(_ window: NSWindow, toFit need: CGSize) {

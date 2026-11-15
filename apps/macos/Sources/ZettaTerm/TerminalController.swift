@@ -67,6 +67,8 @@ final class TerminalController: ObservableObject {
     @Published var sheet: Sheet?
     /// シートのために広げる前の端末の桁数と行数（閉じたら戻す）
     var gridBeforeSheet: (cols: Int, rows: Int)?
+    /// 出ているシートの測った大きさ（起動時の大きさ合わせの後で、もう一度ウィンドウを広げるのに使う）
+    var sheetSize: CGSize?
     @Published var errorMessage: String?
     /// しばらく右上に出す短い知らせ（相手がクリップボードに書いたときなど）
     @Published var notice: String?

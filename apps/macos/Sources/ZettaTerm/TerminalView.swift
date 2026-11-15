@@ -46,6 +46,8 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
     private var gridSize: (cols: UInt16, rows: UInt16) = (0, 0)
     /// 最初にウィンドウに入ったとき、端末サイズの設定に合わせたか
     private var fittedStartupSize = false
+    /// 起動時の大きさ合わせの後に呼ぶ（出ているシートに合わせてウィンドウを広げ直す）
+    var afterStartupFit: (() -> Void)?
     /// 今の端末の桁数と行数（まだ決まっていなければウィンドウの大きさから）
     /// 接続を始めたことがあるか（まだなら、シートを閉じたあと起動時の大きさに戻す）
     private(set) var hasStarted = false
@@ -247,6 +249,7 @@ final class TerminalView: NSView, @preconcurrency NSTextInputClient {
                       window.tabbedWindows?.count ?? 1 <= 1 else { return }
                 let size = TerminalConfig.startupSize
                 self.fitWindow(cols: size.cols, rows: size.rows)
+                self.afterStartupFit?()
             }
         }
         if displayLink == nil {
