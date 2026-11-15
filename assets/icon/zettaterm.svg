@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- ZettaTerm のアイコン（平らな版。Linux と README 用）。Mac は ZettaTerm.icon（Liquid Glass）を使う -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a96fa"/>
+      <stop offset="1" stop-color="#0862d6"/>
+    </linearGradient>
+    <linearGradient id="z" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d4e6fb"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  <path d="M222 282H622V382L362 642H622V742H222V642L482 382H222Z" fill="url(#z)" stroke="url(#z)" stroke-width="28" stroke-linejoin="round"/>
+  <rect x="664" y="684" width="164" height="72" rx="14" fill="#a8f0ff"/>
+</svg>

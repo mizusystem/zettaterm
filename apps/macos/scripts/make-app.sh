@@ -39,6 +39,10 @@ cat > "$BUNDLE/Contents/Info.plist" <<PLIST
 	<string>ZettaTerm</string>
 	<key>CFBundleDisplayName</key>
 	<string>ZettaTerm</string>
+	<key>CFBundleIconFile</key>
+	<string>ZettaTerm</string>
+	<key>CFBundleIconName</key>
+	<string>ZettaTerm</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -62,5 +66,20 @@ for lang in ja en; do
   printf '"CFBundleDisplayName" = "ZettaTerm";\n"CFBundleName" = "ZettaTerm";\n' \
     > "$BUNDLE/Contents/Resources/$lang.lproj/InfoPlist.strings"
 done
+# アイコン。assets/icon/ZettaTerm.icon（Icon Composer の形式。Liquid Glass）を actool でコンパイルする。
+# Assets.car が macOS 26 以降の重ねたガラスの表示、ZettaTerm.icns がそれより前の macOS 向け。
+# actool は Xcode に入っている。無ければ、コンパイル済みの icns だけを入れる
+ICON_DIR="$APP_DIR/../../assets/icon"
+XCODE_DEV="/Applications/Xcode.app/Contents/Developer"
+ICON_TMP="$(mktemp -d)"
+if { [[ -d "$XCODE_DEV" ]] && DEVELOPER_DIR="$XCODE_DEV" xcrun actool "$ICON_DIR/ZettaTerm.icon" \
+      --compile "$BUNDLE/Contents/Resources" --app-icon ZettaTerm --platform macosx \
+      --minimum-deployment-target 14.0 --output-partial-info-plist "$ICON_TMP/partial.plist" \
+      >/dev/null 2>&1; } && [[ -f "$BUNDLE/Contents/Resources/Assets.car" ]]; then
+  :
+else
+  echo "note: actool (Xcode) が使えないので、コンパイル済みのアイコン（Liquid Glass なし）を入れます" >&2
+  cp "$ICON_DIR/ZettaTerm.icns" "$BUNDLE/Contents/Resources/ZettaTerm.icns"
+fi
 codesign --force --sign - "$BUNDLE" >/dev/null 2>&1 || true
 echo "built: $BUNDLE"

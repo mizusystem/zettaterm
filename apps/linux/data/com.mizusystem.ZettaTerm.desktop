@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=ZettaTerm
+GenericName=Terminal
+GenericName[ja]=端末
+Comment=Terminal emulator with Tera Term's menus, dialogs and TTL macros
+Comment[ja]=Tera Term の操作感で使える端末（シリアル・SSH・Telnet、TTL マクロ）
+Exec=zettaterm
+Icon=com.mizusystem.ZettaTerm
+Terminal=false
+Categories=System;TerminalEmulator;GTK;
+StartupWMClass=com.mizusystem.ZettaTerm

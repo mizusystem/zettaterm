@@ -382,6 +382,8 @@ fn main() -> glib::ExitCode {
         .flags(gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_startup(|app| {
+        // アイコンはテーマから名前で引く（data/ の SVG を hicolor に入れたとき。apps/linux/README.md）
+        gtk::Window::set_default_icon_name("com.mizusystem.ZettaTerm");
         app.set_menubar(Some(&menu()));
         let saved = settings::Settings::load();
         saved.proxy.apply();

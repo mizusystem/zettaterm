@@ -1,3 +1,5 @@
+<img src="assets/icon/zettaterm-512.png" width="128" alt="ZettaTerm のアイコン">
+
 # ZettaTerm
 
 Tera Term の操作感を、macOS と Linux で。

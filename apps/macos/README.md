@@ -10,6 +10,10 @@ apps/macos/scripts/make-app.sh     # build/ZettaTerm.app を組み立てる（�
 open apps/macos/build/ZettaTerm.app
 ```
 
+アイコンは `assets/icon/ZettaTerm.icon`（Icon Composer の形式。図形は手書きの SVG、Liquid Glass 対応）を
+`make-app.sh` が actool でコンパイルして入れる。actool は Xcode に入っているので、Xcode が無いときは
+コンパイル済みの `assets/icon/ZettaTerm.icns` を使う（`.icon` を変えたら icns と `zettaterm-512.png` も作り直す）。
+
 `crates/` の公開 API を変えたら `build-core.sh` からやり直す。Swift だけ直したときは `make-app.sh` だけでよい。
 テストは `cd apps/macos && swift test`（XCTest を使うので Xcode が必要。`xcode-select` が
 Command Line Tools を指しているなら `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer` を付ける）。

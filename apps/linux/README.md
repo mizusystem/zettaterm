@@ -9,6 +9,15 @@ cargo run --manifest-path apps/linux/Cargo.toml
 cargo run --manifest-path apps/linux/Cargo.toml -- --macro x.ttl   # 起動してすぐマクロを実行
 ```
 
+アプリの一覧（ランチャー）に出すには、実行ファイルとアイコン、`.desktop` を置く：
+
+```bash
+cargo build --release --manifest-path apps/linux/Cargo.toml
+install -Dm755 apps/linux/target/release/zettaterm ~/.local/bin/zettaterm
+install -Dm644 apps/linux/data/com.mizusystem.ZettaTerm.svg ~/.local/share/icons/hicolor/scalable/apps/com.mizusystem.ZettaTerm.svg
+install -Dm644 apps/linux/data/com.mizusystem.ZettaTerm.desktop ~/.local/share/applications/com.mizusystem.ZettaTerm.desktop
+```
+
 macOS でも `brew install gtk4` で動く（画面の確認用。メニューは画面上端のメニューバーに出る）。
 
 ## できること
