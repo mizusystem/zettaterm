@@ -2,7 +2,7 @@
 
 # ZettaTerm
 
-Tera Term の操作感を、macOS と Linux で。
+Tera Term の操作感をmacOS と Linux で使えます。
 
 ZettaTerm は、Tera Term と同じメニュー・ダイアログ・TTL マクロで使える端末アプリです。
 シリアルコンソールでのネットワーク機器の設定や、組み込み機器の開発で Tera Term に慣れた人が、
