@@ -37,7 +37,7 @@ dialogs and TTL macro language, built on a shared Rust core. It is not affiliate
 
 ### 接続
 - **シリアル**：任意のボーレート、データ長・パリティ（mark / space を含む）・ストップビット・フロー制御、
-  ブレーク送信、DTR / RTS、信号線の表示。USB シリアルを抜き差ししても自動でつなぎ直す
+  ブレーク送信、DTR / RTS、信号線の表示。USBシリアル自動再接続。
 - **SSH**：内蔵の SSH（パスワード・公開鍵・キーボードインタラクティブ・エージェント、ホスト鍵の確認、
   パスワード変更、`~/.ssh/config`、ProxyJump）。ポート転送（-L / -R / -D）と SSH SCP
 - **Telnet**、生の TCP、ローカルシェル、UNIX ドメインソケット。SOCKS / HTTP プロキシ経由の接続
@@ -59,7 +59,7 @@ dialogs and TTL macro language, built on a shared Rust core. It is not affiliate
 - メニュー・ダイアログの文言は Tera Term の言語ファイルから（日本語・英語ほか 13 言語）
 
 ### Tera Term に無いもの
-- シリアルの**通信速度の自動検出**（速度を変えながら受信し、読める速度を探す）
+- シリアルの**通信速度の自動検出**（速度を変えながら受信し読める速度を探します）
 - 接続エラーやマクロのエラーを日本語で表示
 
 ## 入れ方
